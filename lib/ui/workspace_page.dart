@@ -342,6 +342,7 @@ class _RailButton extends StatelessWidget {
                   ? scheme.primaryContainer.withValues(alpha: 0.55)
                   : Colors.transparent,
               child: InkWell(
+                mouseCursor: SystemMouseCursors.click,
                 onTap: onTap,
                 child: Center(
                   child: AppIcon(

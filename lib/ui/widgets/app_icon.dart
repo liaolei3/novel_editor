@@ -25,7 +25,6 @@ final Map<IconData, IconData> _pixelMap = {
   Icons.delete_forever: Pixel.trash,
   Icons.auto_stories_outlined: Pixel.bookopen,
   Icons.history_edu: Pixel.notes,
-  Icons.emoji_events: Pixel.trophy,
   Icons.chevron_right: Pixel.chevronright,
   Icons.folder_off_outlined: Pixel.folderx,
   Icons.description: Pixel.filealt,

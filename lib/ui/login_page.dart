@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../state/settings_controller.dart';
 import 'widgets/app_icon.dart';
+import 'widgets/top_message.dart';
 
 /// 登录弹窗（FR-12）：手机号/邮箱注册登录。
 ///
@@ -105,8 +106,7 @@ class _LoginDialogState extends State<LoginDialog> {
     }
     await context.read<SettingsController>().setSyncEnabled(true);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已${_register ? '注册' : '登录'}：$id（本地模拟），云同步已开启')));
+      showTopMessage(context, '已${_register ? '注册' : '登录'}：$id（本地模拟），云同步已开启');
       Navigator.pop(context);
     }
   }

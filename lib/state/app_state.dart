@@ -31,8 +31,9 @@ class AppState extends ChangeNotifier {
     required this.session,
     required this.sync,
   }) {
-    // 编辑器内容变化 → 防抖自动保存 + 实时字数（未绑定则手动输入不会落盘）。
-    editorController.addListener(onEditorChanged);
+    // 仅文档内容变化时通知（document.changes 流不发纯选区事件），
+    // 光标移动不再触发保存；未绑定则手动输入不会落盘。
+    _docSub = editorController.document.changes.listen((_) => onEditorChanged());
   }
 
   final SettingsController settings;
@@ -60,8 +61,14 @@ class AppState extends ChangeNotifier {
 
   StreamSubscription<SyncEvent>? _syncSub;
 
+  /// document.changes 内容变化订阅；document 实例被替换时需重绑。
+  StreamSubscription? _docSub;
+
   /// 程序化加载文档期间为 true，抑制 onEditorChanged 误触发。
   bool _loadingDoc = false;
+
+  /// 上次编辑器文档序列化结果，用于忽略纯光标/选区变化。
+  String? _lastDocJson;
 
 
   Future<void> loadShelf() async {
@@ -117,19 +124,29 @@ class AppState extends ChangeNotifier {
     currentChapter = chapter;
     _loadingDoc = true;
     try {
-      editorController.document =
-          RichTextCodec.documentFromContent(chapter.content);
+      replaceDocument(RichTextCodec.documentFromContent(chapter.content),
+          fireChange: false);
       final docLen = editorController.document.length;
       editorController.updateSelection(
           TextSelection.collapsed(offset: chapter.cursorOffset.clamp(0, docLen)),
           ChangeSource.local);
     } finally {
       _loadingDoc = false;
+      _lastDocJson = jsonEncode(editorController.document.toDelta().toJson());
     }
 
     await durability.autoSnapshotIfNeeded(chapter);
     await autosave.flush();
     notifyListeners();
+  }
+
+  /// 替换编辑器文档并重绑内容变化监听。
+  /// [fireChange] 为 true 时按一次内容变化处理（回滚/替换等主动修改场景）。
+  void replaceDocument(Document doc, {bool fireChange = true}) {
+    editorController.document = doc;
+    _docSub?.cancel();
+    _docSub = editorController.document.changes.listen((_) => onEditorChanged());
+    if (fireChange) onEditorChanged();
   }
 
   /// 编辑器内容变化：防抖自动保存 + 实时字数。
@@ -138,6 +155,8 @@ class AppState extends ChangeNotifier {
     final chapter = currentChapter;
     if (chapter == null) return;
     final content = jsonEncode(editorController.document.toDelta().toJson());
+    if (content == _lastDocJson) return;
+    _lastDocJson = content;
     final plainText = editorController.document.toPlainText();
     final nowChars = _countChars(plainText);
     final delta = nowChars - chapter.charCount;
@@ -312,8 +331,7 @@ class AppState extends ChangeNotifier {
 
   /// 重置编辑器为空文档。
   void _resetEditor() {
-    editorController.document =
-        RichTextCodec.documentFromContent('');
+    replaceDocument(RichTextCodec.documentFromContent(''), fireChange: false);
     editorController.updateSelection(
         const TextSelection.collapsed(offset: 0), ChangeSource.local);
   }
@@ -321,6 +339,7 @@ class AppState extends ChangeNotifier {
   @override
   void dispose() {
     _syncSub?.cancel();
+    _docSub?.cancel();
     editorController.dispose();
     autosave.dispose();
     super.dispose();

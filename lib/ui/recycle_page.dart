@@ -7,6 +7,7 @@ import '../../data/models.dart';
 import '../../state/app_state.dart';
 import 'app_root.dart';
 import 'widgets/app_icon.dart';
+import 'widgets/top_message.dart';
 import 'widgets/window_controls.dart';
 
 /// 回收站（FR-6 / NFR-R5 / 9.1）：已删卷/章/素材，保留 30 天，可恢复/彻底删除。
@@ -114,7 +115,7 @@ class _RecycleViewState extends State<RecycleView> {
     await state.restoreRecycleItem(item);
     await _refresh();
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已恢复「${_titleOf(item)}」')));
+      showTopMessage(context, '已恢复「${_titleOf(item)}」');
     }
   }
 

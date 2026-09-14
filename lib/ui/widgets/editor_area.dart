@@ -18,6 +18,7 @@ import '../../state/app_state.dart';
 import '../common/file_io.dart';
 import 'app_icon.dart';
 import 'search_replace_bar.dart';
+import 'top_message.dart';
 
 /// 编辑器区域：富文本工具栏 + 正文输入；沉浸/夜间/字体行距由全局设置控制。
 /// Stateful：持有稳定的 FocusNode/ScrollController——QuillEditor.basic 每次
@@ -43,6 +44,9 @@ class _EditorAreaState extends State<EditorArea> {
   List<int> _searchOffsets = const [];
   int _searchIndex = 0;
   String _searchQuery = '';
+
+  /// 上一次渲染的章节 id，用于检测章节切换并复位滚动位置
+  String? _lastChapterId;
 
   void _onSearchChanged(List<int> offsets, int index, String query) {
     setState(() {
@@ -119,8 +123,11 @@ class _EditorAreaState extends State<EditorArea> {
     final children = <InlineSpan>[];
     int pos = 0;
     for (final (ms, me, isCurrent) in ranges) {
-      final localStart = ms - nodeStart;
-      final localEnd = me - nodeStart;
+      // 匹配可能跨节点（起点在上一节点、终点在下一节点），
+      // 必须钳制到当前节点文本边界内，否则 substring 抛 RangeError
+      // 导致编辑器子树渲染出 RenderErrorBox 并连锁崩溃。
+      final localStart = (ms - nodeStart).clamp(0, text.length);
+      final localEnd = (me - nodeStart).clamp(0, text.length);
 
       if (localStart > pos) {
         children.add(TextSpan(
@@ -130,16 +137,16 @@ class _EditorAreaState extends State<EditorArea> {
         ));
       }
 
-      children.add(TextSpan(
-        text: text.substring(localStart,
-            localEnd > text.length ? text.length : localEnd),
-        style: (style ?? const TextStyle()).copyWith(
-          background: Paint()..color = isCurrent ? currentColor : matchColor,
-        ),
-        recognizer: recognizer,
-      ));
-
-      pos = localEnd;
+      if (localEnd > pos) {
+        children.add(TextSpan(
+          text: text.substring(localStart, localEnd),
+          style: (style ?? const TextStyle()).copyWith(
+            background: Paint()..color = isCurrent ? currentColor : matchColor,
+          ),
+          recognizer: recognizer,
+        ));
+        pos = localEnd;
+      }
     }
 
     if (pos < text.length) {
@@ -160,6 +167,16 @@ class _EditorAreaState extends State<EditorArea> {
 
     if (chapter == null) {
       return const Center(child: Text('从左侧目录选择或新建一个章节开始写作'));
+    }
+
+    // 切换章节时将编辑器滚动位置复位到顶部（State 跨章节复用，滚动位置会残留）
+    if (chapter.id != _lastChapterId) {
+      _lastChapterId = chapter.id;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.jumpTo(0);
+        }
+      });
     }
 
     final sessionChars = state.session.sessionChars;
@@ -256,8 +273,7 @@ class _EditorAreaState extends State<EditorArea> {
         };
         if (s == SaveState.failed) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
-                content: Text('自动保存失败，请检查磁盘空间；正文仍在内存中，请勿关闭应用。')));
+            showTopMessage(ctx, '自动保存失败，请检查磁盘空间；正文仍在内存中，请勿关闭应用。');
           });
         }
         return Tooltip(
@@ -309,12 +325,19 @@ class _EditorAreaState extends State<EditorArea> {
     );
 
     final children = <Widget>[
+      // 历史按钮在 initState 时订阅 document.changes 流；replaceDocument
+      // 整体替换 Document 实例后旧流不再发事件，按钮会永久置灰。
+      // 用 Document 实例作 key，替换文档时重建按钮以重新订阅新流。
       QuillToolbarHistoryButton(
+        // Document 未重写 toString/==，直接插值得到的 key 恒定不变，
+        // 必须用 identityHashCode 区分实例（替换文档时 key 才会变化）。
+        key: ValueKey('undo-${identityHashCode(state.editorController.document)}'),
         controller: state.editorController,
         isUndo: true,
         baseOptions: base,
       ),
       QuillToolbarHistoryButton(
+        key: ValueKey('redo-${identityHashCode(state.editorController.document)}'),
         controller: state.editorController,
         isUndo: false,
         baseOptions: base,
@@ -378,8 +401,7 @@ class _EditorAreaState extends State<EditorArea> {
           onPressed: () async {
             await state.durability.manualSnapshot(state.currentChapter!);
             if (context.mounted) {
-              ScaffoldMessenger.of(context)
-                  .showSnackBar(const SnackBar(content: Text('已创建手动快照')));
+              showTopMessage(context, '已创建手动快照');
             }
           },
         ),
@@ -465,7 +487,7 @@ class _EditorAreaState extends State<EditorArea> {
     final after = TextFormatter.format(before);
     if (after == before) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('排版完成：无需修改')));
+        showTopMessage(context, '排版完成：无需修改');
       }
       return;
     }
@@ -508,12 +530,10 @@ class _EditorAreaState extends State<EditorArea> {
     );
     if (apply != true) return;
     await state.durability.manualSnapshot(chapter);
-    state.editorController.document = RichTextCodec.documentFromContent(after);
-    state.onEditorChanged();
+    state.replaceDocument(RichTextCodec.documentFromContent(after));
     await state.autosave.flush();
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('排版已应用；如需撤销请前往「历史快照」回滚')));
+      showTopMessage(context, '排版已应用；如需撤销请前往「历史快照」回滚');
     }
   }
 
@@ -544,14 +564,14 @@ class _EditorAreaState extends State<EditorArea> {
         await state.chapters.updateContent(ch);
       }
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已导入 ${parts.length} 个章节')));
+        showTopMessage(context, '已导入 ${parts.length} 个章节');
       }
     } else {
       final raw = await FileIO.pickReadText(ext: ['docx']);
       if (raw == null) return;
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('docx 导入请在导出对话框中使用 TXT 版本；MVP 暂不解析二进制 docx')));
+        showTopMessage(
+            context, 'docx 导入请在导出对话框中使用 TXT 版本；MVP 暂不解析二进制 docx');
       }
     }
   }
@@ -619,8 +639,7 @@ class _EditorAreaState extends State<EditorArea> {
 
   void _toast(BuildContext context, String? path) {
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(path == null ? '已取消导出' : '导出成功：$path')));
+    showTopMessage(context, path == null ? '已取消导出' : '导出成功：$path');
   }
 }
 

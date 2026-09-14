@@ -6,6 +6,7 @@ import '../../core/utils/rich_text_codec.dart';
 import '../../core/utils/sensitive_words.dart';
 import '../../state/app_state.dart';
 import '../widgets/app_icon.dart';
+import '../widgets/top_message.dart';
 
 /// 敏感词检测面板（FR-26）：内置词库 + 命中列表 + 替换建议，不做强制屏蔽。
 class SensitivePanel extends StatefulWidget {
@@ -52,13 +53,11 @@ class _SensitivePanelState extends State<SensitivePanel> {
                     final plain =
                         RichTextCodec.plainTextFromDeltaJson(chapter.content);
                     final replaced = scanner.replaceAll(plain, _suggestion);
-                    state.editorController.document =
-                        RichTextCodec.documentFromContent(replaced);
-                    state.onEditorChanged();
+                    state
+                        .replaceDocument(RichTextCodec.documentFromContent(replaced));
                     await state.autosave.flush();
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context)
-                          .showSnackBar(const SnackBar(content: Text('已替换全部命中词')));
+                      showTopMessage(context, '已替换全部命中词');
                     }
                     setState(() => _hits = scanner.scan(replaced));
                   },

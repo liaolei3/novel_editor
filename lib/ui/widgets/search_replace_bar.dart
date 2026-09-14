@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart';
+import 'top_message.dart';
 
 /// 编辑区内嵌搜索替换栏：匹配偏移随正文变化自动刷新
 /// （订阅 document.changes，仅重算不挪光标），查询词/选项变化时才主动定位。
@@ -179,8 +180,7 @@ class _SearchReplaceBarState extends State<SearchReplaceBar> {
       widget.controller.replaceText(off, _query.length, _replaceCtrl.text, null);
     }
     _recompute(relocate: false);
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text('已替换 $count 处')));
+    showTopMessage(context, '已替换 $count 处');
   }
 
   void _notifySearchChanged() {

@@ -12,6 +12,7 @@ import '../../state/app_state.dart';
 import '../../state/settings_controller.dart';
 import 'common/file_io.dart';
 import 'conflict_page.dart';
+import 'widgets/top_message.dart';
 import 'recycle_page.dart';
 import 'widgets/app_icon.dart';
 import 'widgets/window_controls.dart';
@@ -170,21 +171,20 @@ class SettingsPage extends StatelessWidget {
       );
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('切换失败：$e')));
+        showTopMessage(context, '切换失败：$e');
       }
     }
   }
 
   Future<void> _syncNow(BuildContext context, AppState state) async {
     if (state.currentBook == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请先打开一部作品')));
+      showTopMessage(context, '请先打开一部作品');
       return;
     }
     final conflicts = await state.syncNow();
     if (!context.mounted) return;
     if (conflicts.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('同步完成，无冲突')));
+      showTopMessage(context, '同步完成，无冲突');
       return;
     }
     final resolved = await showDialog<bool>(
@@ -192,7 +192,7 @@ class SettingsPage extends StatelessWidget {
       builder: (_) => ConflictDialog(conflicts: conflicts),
     );
     if (resolved == true && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('冲突已解决并完成同步')));
+      showTopMessage(context, '冲突已解决并完成同步');
       await state.reloadTreePublic();
     }
   }
@@ -227,8 +227,7 @@ class SettingsPage extends StatelessWidget {
     final scanner = SensitiveWordScanner.parse(raw);
     await settings.setSensitiveDictVersion('导入词库 ${scanner.words.length} 词');
     if (context.mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('词库已更新（${scanner.words.length} 词）')));
+      showTopMessage(context, '词库已更新（${scanner.words.length} 词）');
     }
   }
 

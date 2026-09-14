@@ -8,6 +8,7 @@ import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../common/dialogs.dart';
 import '../widgets/app_icon.dart';
+import '../widgets/top_message.dart';
 
 /// 历史快照面板（FR-9 / 9.5）：快照列表、两版本对比、一键回滚（回滚前自动建快照）。
 class SnapshotPanel extends StatefulWidget {
@@ -138,16 +139,13 @@ class _SnapshotPanelState extends State<SnapshotPanel> {
     );
     if (ok != true) return;
     await state.durability.rollbackTo(chapter, snap);
-    state.editorController.document = RichTextCodec.documentFromContent(
-      chapter.content,
+    state.replaceDocument(
+      RichTextCodec.documentFromContent(chapter.content),
     );
-    state.onEditorChanged();
     await state.autosave.flush();
     await _refresh();
     if (context.mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('已回滚；当前版本已存为「回滚前」快照')));
+      showTopMessage(context, '已回滚；当前版本已存为「回滚前」快照');
     }
   }
 
