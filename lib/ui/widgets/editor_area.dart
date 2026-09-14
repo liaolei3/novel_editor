@@ -94,6 +94,16 @@ class _EditorAreaState extends State<EditorArea> {
     TextStyle? style,
     GestureRecognizer? recognizer,
   ) {
+    // 文字高亮主题映射：文档统一存亮色规范值，
+    // 暗色主题下渲染为对应深色变体（亮色 i ↔ 暗色 i）。
+    final bg = style?.backgroundColor;
+    if (bg != null) {
+      final mapped = _themeSwatchOf(bg, Theme.brightnessOf(context));
+      if (mapped != bg) {
+        style = (style ?? const TextStyle()).copyWith(backgroundColor: mapped);
+      }
+    }
+
     if (_searchQuery.isEmpty || _searchOffsets.isEmpty) {
       return TextSpan(text: text, style: style, recognizer: recognizer);
     }
@@ -102,7 +112,6 @@ class _EditorAreaState extends State<EditorArea> {
     final nodeEnd = nodeStart + text.length;
     final queryLen = _searchQuery.length;
 
-    // 收集与该文本节点重叠的匹配范围
     final ranges = <(int start, int end, bool isCurrent)>[];
     for (var i = 0; i < _searchOffsets.length; i++) {
       final ms = _searchOffsets[i];
@@ -241,12 +250,31 @@ class _EditorAreaState extends State<EditorArea> {
                 expands: true,
                 // Quill 自带 Ctrl+F 会打开其内置查找弹窗，这里在其按键处理链
                 // 最前端拦截，改为打开应用内搜索替换栏（与工具栏按钮一致）。
+                // Ctrl+U / Ctrl+Shift+X 同理在此拦截，切换下划线/删除线。
                 // ignore: experimental_member_use
                 onKeyPressed: (event, node) {
                   if (event is KeyDownEvent &&
                       event.logicalKey == LogicalKeyboardKey.keyF &&
                       HardwareKeyboard.instance.isControlPressed) {
                     _openSearch(withReplace: true);
+                    return KeyEventResult.handled;
+                  }
+                  final ctrl = HardwareKeyboard.instance.isControlPressed;
+                  final shift = HardwareKeyboard.instance.isShiftPressed;
+                  if (event is KeyDownEvent &&
+                      event.logicalKey == LogicalKeyboardKey.keyU &&
+                      ctrl &&
+                      !shift) {
+                    _toggleInlineAttr(
+                        state.editorController, Attribute.underline);
+                    return KeyEventResult.handled;
+                  }
+                  if (event is KeyDownEvent &&
+                      event.logicalKey == LogicalKeyboardKey.keyX &&
+                      ctrl &&
+                      shift) {
+                    _toggleInlineAttr(
+                        state.editorController, Attribute.strikeThrough);
                     return KeyEventResult.handled;
                   }
                   return null;
@@ -342,19 +370,40 @@ class _EditorAreaState extends State<EditorArea> {
         isUndo: false,
         baseOptions: base,
       ),
-      QuillToolbarCustomButton(
+      // Quill 原生搜索按钮，通过 customOnPressedCallback 保持打开应用内搜索替换栏。
+      QuillToolbarSearchButton(
         controller: state.editorController,
         baseOptions: base,
-        options: QuillToolbarCustomButtonOptions(
-          icon: const AppIcon(Icons.search, size: 18),
+        options: QuillToolbarSearchButtonOptions(
           tooltip: '搜索与替换 (Ctrl+F)',
-          onPressed: () => _openSearch(withReplace: false),
+          customOnPressedCallback: (_) async => _openSearch(withReplace: false),
         ),
       ),
-      _InlineStyleButtons(
+      QuillToolbarToggleStyleButton(
+        attribute: Attribute.bold,
         controller: state.editorController,
-        iconTheme: base.iconTheme!,
+        baseOptions: base,
+        options: const QuillToolbarToggleStyleButtonOptions(tooltip: '加粗'),
       ),
+      QuillToolbarToggleStyleButton(
+        attribute: Attribute.italic,
+        controller: state.editorController,
+        baseOptions: base,
+        options: const QuillToolbarToggleStyleButtonOptions(tooltip: '斜体'),
+      ),
+      QuillToolbarToggleStyleButton(
+        attribute: Attribute.underline,
+        controller: state.editorController,
+        baseOptions: base,
+        options: const QuillToolbarToggleStyleButtonOptions(tooltip: '下划线'),
+      ),
+      QuillToolbarToggleStyleButton(
+        attribute: Attribute.strikeThrough,
+        controller: state.editorController,
+        baseOptions: base,
+        options: const QuillToolbarToggleStyleButtonOptions(tooltip: '删除线'),
+      ),
+      _HighlightToolbarButton(controller: state.editorController),
       _HeaderStyleButtons(
         controller: state.editorController,
         iconTheme: headerTheme,
@@ -428,7 +477,6 @@ class _EditorAreaState extends State<EditorArea> {
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6),
-      // 强制占满整行并从左侧排布，避免被外层 Column 的居中对齐影响。
       child: SizedBox(
         width: double.infinity,
         child: Wrap(
@@ -450,7 +498,6 @@ class _EditorAreaState extends State<EditorArea> {
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          // 窄栏时隐藏口径说明，并允许统计文本省略，避免溢出分割线。
           final showNote = constraints.maxWidth >= 520;
           const style = TextStyle(fontSize: 11);
           return Row(children: [
@@ -479,6 +526,13 @@ class _EditorAreaState extends State<EditorArea> {
   }
 
   // ---- 一键排版（预览 → 应用，应用前自动快照可撤销） ----
+
+  /// 切换内联样式属性（有则移除，无则应用），供快捷键使用。
+  static void _toggleInlineAttr(QuillController controller, Attribute attr) {
+    final enabled =
+        controller.getSelectionStyle().attributes.containsKey(attr.key);
+    controller.formatSelection(enabled ? Attribute.clone(attr, null) : attr);
+  }
 
   Future<void> _runFormatter(BuildContext context, AppState state) async {
     final chapter = state.currentChapter;
@@ -722,112 +776,13 @@ class _HeaderStyleButtonsState extends State<_HeaderStyleButtons> {
           icon: Text(
             label,
             style: TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 14,
-                color: isSelected ? selectedColor : unselectedColor,
-              ),
-            ),
-          );
-      }).toList(),
-    );
-  }
-}
-
-/// 加粗/斜体按钮组：文字样式与 H1/H2/H3 保持一致（14px）；I 用 Zpix 渲染以呈现上下衬线横线。
-class _InlineStyleButtons extends StatefulWidget {
-  const _InlineStyleButtons({required this.controller, required this.iconTheme});
-
-  final QuillController controller;
-  final QuillIconTheme iconTheme;
-
-  @override
-  State<_InlineStyleButtons> createState() => _InlineStyleButtonsState();
-}
-
-class _InlineStyleButtonsState extends State<_InlineStyleButtons> {
-  bool _bold = false;
-  bool _italic = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _update();
-    widget.controller.addListener(_changed);
-  }
-
-  @override
-  void didUpdateWidget(covariant _InlineStyleButtons oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.controller != widget.controller) {
-      oldWidget.controller.removeListener(_changed);
-      widget.controller.addListener(_changed);
-      _update();
-    }
-  }
-
-  @override
-  void dispose() {
-    widget.controller.removeListener(_changed);
-    super.dispose();
-  }
-
-  void _update() {
-    final attrs = widget.controller.getSelectionStyle().attributes;
-    _bold = attrs.containsKey(Attribute.bold.key);
-    _italic = attrs.containsKey(Attribute.italic.key);
-  }
-
-  void _changed() {
-    if (!mounted) return;
-    setState(_update);
-  }
-
-  void _toggle(Attribute attr, bool current) {
-    widget.controller.formatSelection(
-      current ? Attribute.clone(attr, null) : attr,
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final unselectedColor = widget.iconTheme.iconButtonUnselectedData?.color;
-    final selectedColor = widget.iconTheme.iconButtonSelectedData?.color;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        QuillToolbarIconButton(
-          tooltip: '加粗',
-          iconTheme: widget.iconTheme,
-          isSelected: _bold,
-          onPressed: () => _toggle(Attribute.bold, _bold),
-          icon: Text(
-            'B',
-            style: TextStyle(
               fontWeight: FontWeight.w700,
               fontSize: 14,
-              color: _bold ? selectedColor : unselectedColor,
+              color: isSelected ? selectedColor : unselectedColor,
             ),
           ),
-        ),
-        QuillToolbarIconButton(
-          tooltip: '斜体',
-          iconTheme: widget.iconTheme,
-          isSelected: _italic,
-          onPressed: () => _toggle(Attribute.italic, _italic),
-          icon: Transform(
-            alignment: Alignment.center,
-            transform: Matrix4.skewX(-0.25),
-            child: Text(
-              'I',
-              style: TextStyle(
-                fontFamily: 'Zpix',
-                fontSize: 14,
-                color: _italic ? selectedColor : unselectedColor,
-              ),
-            ),
-          ),
-        ),
-      ],
+        );
+      }).toList(),
     );
   }
 }
@@ -848,4 +803,317 @@ class _EditorScrollController extends ScrollController {
     if (_suppressAnimateTo) return Future.value();
     return super.animateTo(offset, duration: duration, curve: curve);
   }
+}
+
+/// 高亮色板（亮色主题）：精选柔和底色，深色文字下均可读。
+const List<Color> _highlightLightSwatches = [
+  Color(0xFFFFEB3B), // 亮黄
+  Color(0xFFFFB74D), // 橙
+  Color(0xFFE57373), // 红
+  Color(0xFFF48FB1), // 粉
+  Color(0xFFBA68C8), // 紫
+  Color(0xFF64B5F6), // 蓝
+  Color(0xFF4DB6AC), // 青
+  Color(0xFF81C784), // 绿
+  Color(0xFFAED581), // 黄绿
+];
+
+/// 高亮色板（暗色主题）：同色相的深色变体，浅色文字下均可读。
+const List<Color> _highlightDarkSwatches = [
+  Color(0xFFF9A825), // 亮黄
+  Color(0xFFB26A00), // 橙
+  Color(0xFFC62828), // 红
+  Color(0xFFAD1457), // 粉
+  Color(0xFF6A1B9A), // 紫
+  Color(0xFF1565C0), // 蓝
+  Color(0xFF00695C), // 青
+  Color(0xFF2E7D32), // 绿
+  Color(0xFF558B2F), // 黄绿
+];
+
+/// 清除高亮占位格（色板末位）：与色块同尺寸的空心格，无高亮时置灰。
+class _ClearCell extends StatelessWidget {
+  const _ClearCell({required this.enabled, required this.onTap});
+
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return InkWell(
+      borderRadius: BorderRadius.circular(4),
+      onTap: enabled ? onTap : null,
+      child: Container(
+        width: 24,
+        height: 24,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(
+            color: onSurface.withValues(alpha: enabled ? 0.6 : 0.15),
+          ),
+        ),
+        child: Icon(
+          Icons.format_color_reset,
+          size: 16,
+          color: onSurface.withValues(alpha: enabled ? 0.8 : 0.2),
+        ),
+      ),
+    );
+  }
+}
+
+/// 高亮弹窗的色块：紧凑小方块，选中态为主题色描边加对号。
+class _SwatchCell extends StatelessWidget {
+  const _SwatchCell({
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(4),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        width: 24,
+        height: 24,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(4),
+          border: selected
+              ? Border.all(
+                  color: Theme.of(context).colorScheme.primary,
+                  width: 2,
+                )
+              : Border.all(color: Colors.black26, width: 0.5),
+        ),
+        child: selected
+            ? Icon(
+                Icons.check,
+                size: 12,
+                color:
+                    color.computeLuminance() > 0.5 ? Colors.black : Colors.white,
+              )
+            : null,
+      ),
+    );
+  }
+}
+
+/// 把颜色编码为 Quill 背景属性使用的 #rrggbb 十六进制字符串。
+String _highlightHex(Color c) {
+  String channel(double v) => (v * 255).round().toRadixString(16).padLeft(2, '0');
+  return '#${channel(c.r)}${channel(c.g)}${channel(c.b)}';
+}
+
+/// 解析选区上的背景色属性，无背景或格式不符时返回 null。
+Color? _selectionBackground(QuillController controller) {
+  final value =
+      controller.getSelectionStyle().attributes[Attribute.background.key]?.value;
+  if (value is String && value.length == 7 && value.startsWith('#')) {
+    return Color(int.parse('0xFF${value.substring(1)}'));
+  }
+  return null;
+}
+
+/// 文字高亮按钮（参考 Word/WPS 交互，无模态弹窗）：
+/// - 主体为油漆桶图标 + 当前颜色条；点击时选区有高亮则清除，否则应用当前颜色；
+/// - 右侧下拉箭头展开色板浮层，点选即应用并记住为当前颜色。
+class _HighlightToolbarButton extends StatefulWidget {
+  const _HighlightToolbarButton({required this.controller});
+
+  final QuillController controller;
+
+  @override
+  State<_HighlightToolbarButton> createState() =>
+      _HighlightToolbarButtonState();
+}
+
+class _HighlightToolbarButtonState extends State<_HighlightToolbarButton> {
+  /// 当前颜色（跨选区记忆，与 Word 行为一致）。
+  Color _current = _highlightLightSwatches.first;
+
+  final MenuController _menuController = MenuController();
+
+  Color? _selectionBg;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_syncFromSelection);
+    _syncFromSelection();
+  }
+
+  @override
+  void didUpdateWidget(covariant _HighlightToolbarButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_syncFromSelection);
+      widget.controller.addListener(_syncFromSelection);
+      _syncFromSelection();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_syncFromSelection);
+    super.dispose();
+  }
+
+  void _syncFromSelection() {
+    final bg = _selectionBackground(widget.controller);
+    if (bg != _selectionBg) {
+      setState(() => _selectionBg = bg);
+    }
+  }
+
+  void _apply(Color? color) {
+    widget.controller.formatSelection(
+      Attribute.clone(
+        Attribute.background,
+        color == null
+            ? null
+            : _highlightHex(_canonicalSwatchOf(color)),
+      ),
+    );
+  }
+
+  /// 主体点击：与当前颜色相同的高亮再点即清除，否则应用当前颜色。
+  void _toggleOnSelection() {
+    if (_selectionBg != null) {
+      _apply(null);
+    } else {
+      _apply(_current);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final primary = Theme.of(context).colorScheme.primary;
+    final active = _selectionBg != null;
+    final activeDisplay = _selectionBg == null
+        ? null
+        : _themeSwatchOf(_selectionBg!, Theme.of(context).brightness);
+
+    return MenuAnchor(
+      controller: _menuController,
+      menuChildren: [
+        Padding(
+          padding: const EdgeInsets.all(8),
+          child: SizedBox(
+            width: 152,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final swatch in _paletteFor(context))
+                  _SwatchCell(
+                    color: swatch,
+                    selected: activeDisplay == swatch,
+                    onTap: () {
+                      setState(() => _current = _canonicalSwatchOf(swatch));
+                      _apply(swatch);
+                      _menuController.close();
+                    },
+                  ),
+                _ClearCell(
+                  enabled: _selectionBg != null,
+                  onTap: () {
+                    _menuController.close();
+                    _apply(null);
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+      builder: (menuContext, menuController, _) => Tooltip(
+        message: '文字高亮',
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          InkWell(
+            borderRadius: const BorderRadius.horizontal(left: Radius.circular(6)),
+            onTap: _toggleOnSelection,
+            child: Container(
+              width: 34,
+              height: 32,
+              decoration: BoxDecoration(
+                color: active ? primary.withValues(alpha: 0.15) : null,
+                borderRadius:
+                    const BorderRadius.horizontal(left: Radius.circular(6)),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.format_color_fill,
+                    size: 17,
+                    color: active ? primary : onSurface,
+                  ),
+                  const SizedBox(height: 1),
+                  Container(
+                    width: 16,
+                    height: 3,
+                    decoration: BoxDecoration(
+                      color: _themeSwatchOf(
+                          _current, Theme.of(context).brightness),
+                      borderRadius: BorderRadius.circular(1.5),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          InkWell(
+            borderRadius:
+                const BorderRadius.horizontal(right: Radius.circular(6)),
+            onTap: () =>
+                menuController.isOpen ? menuController.close() : menuController.open(),
+            child: Container(
+              width: 14,
+              height: 32,
+              decoration: BoxDecoration(
+                color: active ? primary.withValues(alpha: 0.15) : null,
+                borderRadius:
+                    const BorderRadius.horizontal(right: Radius.circular(6)),
+              ),
+              child: Icon(Icons.arrow_drop_down, size: 14, color: onSurface),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// 暗色主题下换用深色变体色板，保证主题文字颜色在底色上可读。
+List<Color> _paletteFor(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark
+        ? _highlightDarkSwatches
+        : _highlightLightSwatches;
+
+/// 规范存储色 → 当前主题显示色（亮色 i ↔ 暗色 i 双向对应）。
+/// 文档统一存亮色值，暗色主题下渲染与按钮状态映射为对应深色变体。
+Color _themeSwatchOf(Color canonical, Brightness brightness) {
+  final i = _highlightLightSwatches.indexOf(canonical);
+  if (i < 0) return canonical;
+  return brightness == Brightness.dark
+      ? _highlightDarkSwatches[i]
+      : _highlightLightSwatches[i];
+}
+
+/// 显示色 → 亮色规范存储值（暗色色板色转对应亮色；非色板色原样返回）。
+Color _canonicalSwatchOf(Color display) {
+  if (_highlightLightSwatches.contains(display)) return display;
+  final i = _highlightDarkSwatches.indexOf(display);
+  if (i >= 0) return _highlightLightSwatches[i];
+  return display;
 }

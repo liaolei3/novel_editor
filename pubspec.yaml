@@ -33,8 +33,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-
-  fonts:
-    - family: Zpix
-      fonts:
-        - asset: assets/fonts/zpix.ttf

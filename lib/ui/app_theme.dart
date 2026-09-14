@@ -309,9 +309,7 @@ ThemeData _pixelTheme() {
     useMaterial3: true,
     colorScheme: scheme,
     brightness: brightness,
-    // 像素风全字体使用 Zpix（最像素），缺字时回退到系统 CJK 字体。
-    fontFamily: 'Zpix',
-    fontFamilyFallback: ['Zpix', ..._fontFallbacks],
+    fontFamilyFallback: _fontFallbacks,
   );
 
   ButtonStyle pixelButton({
