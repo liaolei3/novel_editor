@@ -1,0 +1,337 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_quill/flutter_quill.dart';
+
+
+import '../core/utils/rich_text_codec.dart';
+import '../data/models.dart';
+import '../data/repositories.dart';
+import '../services/autosave_service.dart';
+import '../services/durability_service.dart';
+import '../services/session_stats.dart';
+import '../services/sync/sync_engine.dart';
+import 'settings_controller.dart';
+
+/// 全局应用状态：书架、作品树、当前章节编辑、保存状态、同步入口。
+class AppState extends ChangeNotifier {
+  AppState({
+    required this.settings,
+    required this.books,
+    required this.volumes,
+    required this.chapters,
+    required this.snapshots,
+    required this.notes,
+    required this.stats,
+    required this.recycle,
+    required this.autosave,
+    required this.durability,
+    required this.crash,
+    required this.session,
+    required this.sync,
+  }) {
+    // 编辑器内容变化 → 防抖自动保存 + 实时字数（未绑定则手动输入不会落盘）。
+    editorController.addListener(onEditorChanged);
+  }
+
+  final SettingsController settings;
+  final BookRepository books;
+  final VolumeRepository volumes;
+  final ChapterRepository chapters;
+  final SnapshotRepository snapshots;
+  final NoteRepository notes;
+  final StatsRepository stats;
+  final RecycleRepository recycle;
+  final AutosaveService autosave;
+  final DurabilityService durability;
+  final CrashRecovery crash;
+  final SessionStats session;
+  final SyncEngine sync;
+
+  List<Book> bookList = [];
+  Book? currentBook;
+  List<Volume> volumeTree = [];
+  List<Chapter> chapterList = [];
+  Chapter? currentChapter;
+
+  QuillController editorController = QuillController.basic();
+  int bookCharTotal = 0;
+
+  StreamSubscription<SyncEvent>? _syncSub;
+
+  /// 程序化加载文档期间为 true，抑制 onEditorChanged 误触发。
+  bool _loadingDoc = false;
+
+
+  Future<void> loadShelf() async {
+    bookList = await books.listAll();
+    notifyListeners();
+  }
+
+  Future<Book> createBook(String title, String penName) async {
+    final book = await books.create(title, penName: penName);
+    final vol = await volumes.create(book.id, '第一卷');
+    await chapters.create(bookId: book.id, volumeId: vol.id, title: '第一章');
+    await loadShelf();
+    return book;
+  }
+
+  /// 打开作品：加载卷章树并恢复上次编辑位置（12.1）。
+  Future<void> openBook(Book book, {String? startChapterId}) async {
+    await autosave.flush();
+    currentBook = book;
+    _resetEditor();
+    currentChapter = null;
+    await _reloadTree();
+    bookCharTotal =
+        chapterList.fold(0, (sum, c) => sum + c.charCount);
+    await settings.setLastBookId(book.id);
+    final targetId = startChapterId ??
+        book.lastChapterId ??
+        (chapterList.isNotEmpty ? chapterList.first.id : null);
+    if (targetId != null) {
+      final ch = await chapters.get(targetId);
+      if (ch != null) await openChapter(ch);
+    }
+    notifyListeners();
+  }
+
+  Future<void> _reloadTree() async {
+    if (currentBook == null) return;
+    volumeTree = await volumes.listByBook(currentBook!.id);
+    chapterList = await chapters.listByBook(currentBook!.id);
+  }
+
+  /// 对外暴露的树刷新（大纲编辑等场景）。
+  Future<void> reloadTreePublic() async {
+    await _reloadTree();
+    bookCharTotal = chapterList.fold(0, (sum, c) => sum + c.charCount);
+    notifyListeners();
+  }
+
+  /// 打开章节（≤300ms 预算：单次查询 + 控制器赋值）。
+  Future<void> openChapter(Chapter chapter) async {
+    if (currentChapter?.id == chapter.id) return;
+    await autosave.flush();
+    currentChapter = chapter;
+    _loadingDoc = true;
+    try {
+      editorController.document =
+          RichTextCodec.documentFromContent(chapter.content);
+      final docLen = editorController.document.length;
+      editorController.updateSelection(
+          TextSelection.collapsed(offset: chapter.cursorOffset.clamp(0, docLen)),
+          ChangeSource.local);
+    } finally {
+      _loadingDoc = false;
+    }
+
+    await durability.autoSnapshotIfNeeded(chapter);
+    await autosave.flush();
+    notifyListeners();
+  }
+
+  /// 编辑器内容变化：防抖自动保存 + 实时字数。
+  void onEditorChanged() {
+    if (_loadingDoc) return;
+    final chapter = currentChapter;
+    if (chapter == null) return;
+    final content = jsonEncode(editorController.document.toDelta().toJson());
+    final plainText = editorController.document.toPlainText();
+    final nowChars = _countChars(plainText);
+    final delta = nowChars - chapter.charCount;
+    autosave.onContentChanged(chapter, content);
+    if (delta != 0) {
+      session.addChars(delta);
+      bookCharTotal += delta;
+      chapter.charCount = nowChars;
+    }
+    notifyListeners();
+  }
+
+  Future<void> saveCursor() async {
+    final chapter = currentChapter;
+    if (chapter == null) return;
+    await chapters.updateCursor(chapter.id, editorController.selection.baseOffset);
+    if (currentBook != null) {
+      await books.saveLocation(currentBook!.id, chapter.id,
+          editorController.selection.baseOffset);
+    }
+  }
+
+  Future<void> renameChapter(String id, String title) async {
+    await chapters.updateTitle(id, title);
+    await _reloadTree();
+    notifyListeners();
+  }
+
+  Future<void> renameVolume(String id, String name) async {
+    await volumes.rename(id, name);
+    await _reloadTree();
+    notifyListeners();
+  }
+
+  Future<Volume> addVolume(String name) async {
+    final vol = await volumes.create(currentBook!.id, name);
+    await _reloadTree();
+    notifyListeners();
+    return vol;
+  }
+
+  Future<Chapter> addChapter(String volumeId, {String? title, String? outline}) async {
+    final ch = await chapters.create(
+      bookId: currentBook!.id,
+      volumeId: volumeId,
+      title: title ?? '新章节',
+      outline: outline ?? '',
+    );
+    await _reloadTree();
+    bookCharTotal = chapterList.fold(0, (sum, c) => sum + c.charCount);
+    notifyListeners();
+    return ch;
+  }
+
+  Future<void> reorderChapters(String volumeId, List<String> orderedIds) async {
+    await chapters.reorder(volumeId, orderedIds);
+    await _reloadTree();
+    notifyListeners();
+  }
+
+  Future<void> togglePin(String chapterId) async {
+    final ch = chapterList.firstWhere((c) => c.id == chapterId);
+    await chapters.setPinned(chapterId, !ch.pinned);
+    await _reloadTree();
+    notifyListeners();
+  }
+
+  /// 删除章节 → 回收站（FR-6 / NFR-R5）。
+  Future<void> deleteChapter(String id) async {
+    final ch = await chapters.get(id);
+    if (ch == null) return;
+    await recycle.add(RecycleType.chapter, id, {
+      'book_id': ch.bookId,
+      'volume_id': ch.volumeId,
+      'title': ch.title,
+      'content': ch.content,
+      'outline': ch.outline,
+      'sort': ch.sort,
+    });
+    if (currentChapter?.id == id) {
+      currentChapter = null;
+      _resetEditor();
+
+    }
+    await chapters.hardDelete(id);
+    await _reloadTree();
+    notifyListeners();
+  }
+
+  /// 删除卷 → 回收站（卷内章节一并打包）。
+  Future<void> deleteVolume(String id) async {
+    final vol = volumeTree.firstWhere((v) => v.id == id);
+    final list = chapterList.where((c) => c.volumeId == id).toList();
+    await recycle.add(RecycleType.volume, id, {
+      'book_id': vol.bookId,
+      'name': vol.name,
+      'sort': vol.sort,
+      'chapters': list.map((c) => {
+            'id': c.id,
+            'title': c.title,
+            'content': c.content,
+            'outline': c.outline,
+            'sort': c.sort,
+          }).toList(),
+    });
+    for (final c in list) {
+      if (currentChapter?.id == c.id) {
+        currentChapter = null;
+        _resetEditor();
+
+      }
+      await chapters.hardDelete(c.id);
+    }
+    await _reloadTree();
+    notifyListeners();
+  }
+
+  /// 从回收站恢复章节。
+  Future<void> restoreRecycleItem(RecycleItem item) async {
+    if (item.type == RecycleType.chapter) {
+      final payload = Map<String, Object?>.from(_decode(item.payload));
+      await chapters.create(
+        bookId: payload['book_id'] as String,
+        volumeId: payload['volume_id'] as String,
+        title: payload['title'] as String? ?? '恢复章节',
+        content: payload['content'] as String? ?? '',
+        outline: payload['outline'] as String? ?? '',
+      );
+    } else if (item.type == RecycleType.volume) {
+      final payload = Map<String, Object?>.from(_decode(item.payload));
+      final vol = await volumes.create(
+          payload['book_id'] as String, payload['name'] as String? ?? '恢复卷');
+      final chs = (payload['chapters'] as List<Object?>?) ?? const [];
+      for (final raw in chs) {
+        final c = Map<String, Object?>.from(raw! as Map<String, Object?>);
+        await chapters.create(
+          bookId: vol.bookId,
+          volumeId: vol.id,
+          title: c['title'] as String? ?? '',
+          content: c['content'] as String? ?? '',
+          outline: c['outline'] as String? ?? '',
+        );
+      }
+    }
+    await recycle.remove(item.id);
+    if (currentBook != null) await _reloadTree();
+    notifyListeners();
+  }
+
+  static Map<String, Object?> _decode(String payload) =>
+      Map<String, Object?>.from(jsonDecode(payload) as Map);
+
+  void startSyncWatch() {
+    _syncSub ??= sync.events.listen((_) {});
+  }
+
+  /// 联网自动增量同步入口（FR-12）。
+  Future<List<SyncConflict>> syncNow() async {
+    if (!settings.syncEnabled || currentBook == null) return const [];
+    await autosave.flush();
+    return sync.syncAll(currentBook!.id);
+  }
+
+  /// 应用退出前：冲刷保存 + 记录写作时长 + 清除崩溃标记。
+  Future<void> shutdown() async {
+    await saveCursor();
+    await autosave.flush(withBackup: false);
+    session.end();
+    await crash.clear();
+    autosave.dispose();
+  }
+
+  /// 重置编辑器为空文档。
+  void _resetEditor() {
+    editorController.document =
+        RichTextCodec.documentFromContent('');
+    editorController.updateSelection(
+        const TextSelection.collapsed(offset: 0), ChangeSource.local);
+  }
+
+  @override
+  void dispose() {
+    _syncSub?.cancel();
+    editorController.dispose();
+    autosave.dispose();
+    super.dispose();
+  }
+
+  static int _countChars(String content) {
+    var n = 0;
+    for (final rune in content.runes) {
+      final ch = String.fromCharCode(rune);
+      if (ch.trim().isNotEmpty) n++;
+    }
+    return n;
+  }
+}
