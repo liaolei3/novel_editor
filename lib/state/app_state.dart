@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 
 
+import '../core/utils/global_search.dart';
 import '../core/utils/rich_text_codec.dart';
 import '../data/models.dart';
 import '../data/repositories.dart';
@@ -23,6 +24,7 @@ class AppState extends ChangeNotifier {
     required this.chapters,
     required this.snapshots,
     required this.notes,
+    required this.characters,
     required this.stats,
     required this.recycle,
     required this.autosave,
@@ -42,6 +44,7 @@ class AppState extends ChangeNotifier {
   final ChapterRepository chapters;
   final SnapshotRepository snapshots;
   final NoteRepository notes;
+  final CharacterRepository characters;
   final StatsRepository stats;
   final RecycleRepository recycle;
   final AutosaveService autosave;
@@ -58,6 +61,18 @@ class AppState extends ChangeNotifier {
 
   QuillController editorController = QuillController.basic();
   int bookCharTotal = 0;
+
+  /// 角色词典版本号：角色增删改后自增，编辑器据此重建名字高亮词典。
+  final ValueNotifier<int> characterDictVersion = ValueNotifier(0);
+
+  /// 角色编辑跳转请求：编辑器悬浮 tip 的「编辑」按钮触发。
+  String? pendingOpenCharacterId;
+  final ValueNotifier<int> openCharacterNonce = ValueNotifier(0);
+
+  void requestOpenCharacter(String id) {
+    pendingOpenCharacterId = id;
+    openCharacterNonce.value++;
+  }
 
   StreamSubscription<SyncEvent>? _syncSub;
 
@@ -115,6 +130,147 @@ class AppState extends ChangeNotifier {
     await _reloadTree();
     bookCharTotal = chapterList.fold(0, (sum, c) => sum + c.charCount);
     notifyListeners();
+  }
+
+  /// 全书搜索（正文 / 章纲 / 角色 / 标题）。
+  Future<List<GlobalSearchHit>> globalSearch(
+      String query, Set<SearchScope> scopes) async {
+    if (currentBook == null || query.isEmpty) return const [];
+    final chars = scopes.contains(SearchScope.character)
+        ? await characters.listByBook(currentBook!.id)
+        : const <Character>[];
+    return GlobalSearch.search(
+      query: query,
+      scopes: scopes,
+      chapters: chapterList,
+      volumes: volumeTree,
+      characters: chars,
+    );
+  }
+
+  /// 全书替换：命中处统一直接写回（不做撤销），
+  /// 正文替换保留富文本格式；执行前为每个被修改的章节自动创建快照。
+  Future<int> globalReplace({
+    required String query,
+    required String replacement,
+    required Set<SearchScope> scopes,
+  }) async {
+    if (currentBook == null || query.isEmpty) return 0;
+    await autosave.flush();
+    var total = 0;
+    var contentChanged = false;
+
+    for (final ch in List<Chapter>.of(chapterList)) {
+      if (scopes.contains(SearchScope.content) && ch.content.isNotEmpty) {
+        final (newJson, n) =
+            GlobalSearch.replaceInDeltaJson(ch.content, query, replacement);
+        if (n > 0) {
+          await durability.manualSnapshot(ch);
+          ch.content = newJson;
+          await chapters.updateContent(ch);
+          total += n;
+          if (currentChapter?.id == ch.id) contentChanged = true;
+        }
+      }
+      if (scopes.contains(SearchScope.outline) && ch.outline.contains(query)) {
+        final n = GlobalSearch.matchStarts(ch.outline, query).length;
+        ch.outline = ch.outline.replaceAll(query, replacement);
+        await chapters.updateOutline(ch.id, ch.outline);
+        total += n;
+      }
+      if (scopes.contains(SearchScope.title) && ch.title.contains(query)) {
+        final n = GlobalSearch.matchStarts(ch.title, query).length;
+        ch.title = ch.title.replaceAll(query, replacement);
+        await chapters.updateTitle(ch.id, ch.title);
+        total += n;
+      }
+    }
+
+    if (scopes.contains(SearchScope.title)) {
+      for (final v in volumeTree) {
+        if (v.name.contains(query)) {
+          final n = GlobalSearch.matchStarts(v.name, query).length;
+          v.name = v.name.replaceAll(query, replacement);
+          await volumes.rename(v.id, v.name);
+          total += n;
+        }
+      }
+    }
+
+    var characterChanged = false;
+    if (scopes.contains(SearchScope.character)) {
+      const fields = [
+        ('name', '名字'),
+        ('aliases', '别名'),
+        ('appearance', '外貌'),
+        ('personality', '性格'),
+        ('background', '背景'),
+        ('tags', '标签'),
+      ];
+      final list = await characters.listByBook(currentBook!.id);
+      for (final c in list) {
+        var changed = false;
+        for (final (key, _) in fields) {
+          final text = switch (key) {
+            'name' => c.name,
+            'aliases' => c.aliases,
+            'appearance' => c.appearance,
+            'personality' => c.personality,
+            'background' => c.background,
+            _ => c.tags,
+          };
+          if (!text.contains(query)) continue;
+          final n = GlobalSearch.matchStarts(text, query).length;
+          final replaced = text.replaceAll(query, replacement);
+          switch (key) {
+            case 'name':
+              c.name = replaced;
+            case 'aliases':
+              c.aliases = replaced;
+            case 'appearance':
+              c.appearance = replaced;
+            case 'personality':
+              c.personality = replaced;
+            case 'background':
+              c.background = replaced;
+            default:
+              c.tags = replaced;
+          }
+          total += n;
+          changed = true;
+        }
+        if (changed) {
+          await characters.update(c);
+          characterChanged = true;
+        }
+      }
+      if (characterChanged) characterDictVersion.value++;
+    }
+
+    if (total > 0) {
+      await _reloadTree();
+      bookCharTotal = chapterList.fold(0, (sum, c) => sum + c.charCount);
+      if (contentChanged && currentChapter != null) {
+        final fresh = chapterList
+            .where((c) => c.id == currentChapter!.id)
+            .firstOrNull;
+        if (fresh != null) {
+          currentChapter = fresh;
+          _loadingDoc = true;
+          try {
+            replaceDocument(
+                RichTextCodec.documentFromContent(fresh.content),
+                fireChange: false);
+          } finally {
+            _loadingDoc = false;
+            _lastDocJson =
+                jsonEncode(editorController.document.toDelta().toJson());
+          }
+        }
+      }
+      notifyListeners();
+    }
+    return total;
   }
 
   /// 打开章节（≤300ms 预算：单次查询 + 控制器赋值）。
@@ -300,6 +456,24 @@ class AppState extends ChangeNotifier {
           outline: c['outline'] as String? ?? '',
         );
       }
+    } else if (item.type == RecycleType.character) {
+      final payload = Map<String, Object?>.from(_decode(item.payload));
+      final char = await characters.create(
+        bookId: payload['book_id'] as String,
+        name: payload['name'] as String? ?? '恢复角色',
+      );
+      char.aliases = payload['aliases'] as String? ?? '';
+      char.type = CharacterType.values.firstWhere(
+        (t) => t.name == payload['type'], orElse: () => CharacterType.protagonist);
+      char.gender = Gender.values.firstWhere(
+        (g) => g.name == payload['gender'], orElse: () => Gender.male);
+      char.appearance = payload['appearance'] as String? ?? '';
+      char.personality = payload['personality'] as String? ?? '';
+      char.background = payload['background'] as String? ?? '';
+      char.color = payload['color'] as String? ?? '';
+      char.tags = payload['tags'] as String? ?? '';
+      await characters.update(char);
+      characterDictVersion.value++;
     }
     await recycle.remove(item.id);
     if (currentBook != null) await _reloadTree();

@@ -26,6 +26,7 @@ Future<void> main() async {
   final chapters = ChapterRepository();
   final snapshots = SnapshotRepository();
   final notes = NoteRepository();
+  final characters = CharacterRepository();
   final stats = StatsRepository();
   final recycle = RecycleRepository();
   await Db.instance();
@@ -50,6 +51,7 @@ Future<void> main() async {
     chapters: chapters,
     snapshots: snapshots,
     notes: notes,
+    characters: characters,
     stats: stats,
     recycle: recycle,
     autosave: autosave,

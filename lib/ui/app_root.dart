@@ -44,6 +44,7 @@ Future<bool> confirmDangerous(
 }) async {
   final result = await showDialog<bool>(
     context: context,
+    barrierDismissible: false,
     builder: (ctx) => AlertDialog(
       title: const Text('请确认'),
       content: Text(message),

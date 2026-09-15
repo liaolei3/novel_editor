@@ -74,7 +74,6 @@ class SyncEngine {
     }
 
     if (dirty) {
-      // 推送本地增量。
       final newRev = await _cloud.push(chapter.id, chapter.content, chapter.version);
       await _upsertSyncState(db, chapter.id, chapter.version, newRev, false);
       _events.add(SyncEvent(SyncStatus.pushed, chapterId: chapter.id));
@@ -82,7 +81,6 @@ class SyncEngine {
     }
 
     if (cloudRev > cloudVersion) {
-      // 拉取云端增量。
       chapter.content = cloudContent;
       await _chapters.updateContent(chapter);
       await _upsertSyncState(db, chapter.id, chapter.version, cloudRev, false);

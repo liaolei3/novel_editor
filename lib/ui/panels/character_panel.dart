@@ -1,0 +1,949 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../../data/models.dart';
+import '../../state/app_state.dart';
+import '../app_root.dart';
+import '../widgets/app_icon.dart';
+import '../widgets/toast.dart';
+
+/// 角色卡面板：收藏卡册风格，角色列表 + 内页详情编辑。
+class CharacterPanel extends StatefulWidget {
+  const CharacterPanel({super.key, required this.book, this.openCharacterId});
+
+  final Book book;
+
+  /// 外部请求打开的角色 id（编辑器悬浮 tip「编辑」跳转）。
+  final String? openCharacterId;
+
+  @override
+  State<CharacterPanel> createState() => _CharacterPanelState();
+}
+
+class _CharacterPanelState extends State<CharacterPanel> {
+  List<Character> _characters = [];
+  Character? _selected;
+  CharacterType? _filter;
+  String _keyword = '';
+  bool _searching = false;
+  bool _loading = true;
+
+  late Character _draft;
+  bool _isNew = false;
+
+  bool _appearanceExpanded = false;
+  bool _personalityExpanded = false;
+  bool _backgroundExpanded = false;
+
+  final _nameCtrl = TextEditingController();
+  final _searchCtrl = TextEditingController();
+  final _aliasesCtrl = TextEditingController();
+  final _appearanceCtrl = TextEditingController();
+  final _personalityCtrl = TextEditingController();
+  final _backgroundCtrl = TextEditingController();
+  final _tagsCtrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    final openId = widget.openCharacterId;
+    if (openId != null) _openById(openId);
+  }
+
+  @override
+  void didUpdateWidget(CharacterPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final openId = widget.openCharacterId;
+    if (openId != null && openId != oldWidget.openCharacterId) {
+      _openById(openId);
+    }
+  }
+
+  /// 打开指定角色详情；列表未加载完成时先加载。
+  Future<void> _openById(String id) async {
+    Character? find(List<Character> l) {
+      for (final c in l) {
+        if (c.id == id) return c;
+      }
+      return null;
+    }
+
+    var char = find(_characters);
+    if (char == null) {
+      final state = context.read<AppState>();
+      final list = await state.characters.listByBook(widget.book.id);
+      if (!mounted) return;
+      _characters = list;
+      _loading = false;
+      char = find(list);
+    }
+    if (char != null && mounted) _openDetail(char);
+  }
+
+  Future<void> _load() async {
+    final state = context.read<AppState>();
+    final list = await state.characters.listByBook(widget.book.id);
+    if (mounted) setState(() { _characters = list; _loading = false; });
+  }
+
+  List<Character> get _filtered {
+    var list = _characters;
+    if (_filter != null) list = list.where((c) => c.type == _filter).toList();
+    if (_keyword.isNotEmpty) {
+      final kw = _keyword.toLowerCase();
+      list = list.where((c) =>
+          c.name.toLowerCase().contains(kw) ||
+          c.aliases.toLowerCase().contains(kw) ||
+          c.tags.toLowerCase().contains(kw)).toList();
+    }
+    return list;
+  }
+
+  static const _typeLabels = <CharacterType, String>{
+    CharacterType.protagonist: '主角',
+    CharacterType.supporting: '配角',
+    CharacterType.antagonist: '反派',
+    CharacterType.minor: '龙套',
+  };
+
+  static const _filterTypes = <CharacterType?>[null, CharacterType.protagonist,
+      CharacterType.supporting, CharacterType.antagonist, CharacterType.minor];
+  static const _filterLabels = <String>['全部', '主角', '配角', '反派', '龙套'];
+
+  static const _colorPresets = [
+    Color(0xFF4A90D9),
+    Color(0xFF7CB342),
+    Color(0xFFE53935),
+    Color(0xFFFF8F00),
+    Color(0xFF8E24AA),
+    Color(0xFF00ACC1),
+    Color(0xFFD81B60),
+    Color(0xFF9E9E9E),
+  ];
+
+  static const _maleAvatar = 'assets/avatars/male.png';
+  static const _femaleAvatar = 'assets/avatars/female.png';
+
+  static String _avatarAsset(Gender g) =>
+      g == Gender.female ? _femaleAvatar : _maleAvatar;
+
+  String _colorToHex(Color c) => '#${c.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}';
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _searchCtrl.dispose();
+    _aliasesCtrl.dispose();
+    _appearanceCtrl.dispose();
+    _personalityCtrl.dispose();
+    _backgroundCtrl.dispose();
+    _tagsCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    if (_selected != null) return _buildDetail(scheme);
+    return _buildList(scheme);
+  }
+
+  Widget _buildList(ColorScheme scheme) {
+    return Column(children: [
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(children: [
+          Text('角色', style: TextStyle(
+            fontSize: 15, fontWeight: FontWeight.w600, color: scheme.onSurface,
+          )),
+          const Spacer(),
+          if (_searching)
+            SizedBox(
+              width: 180,
+              height: 28,
+              child: TextField(
+                controller: _searchCtrl,
+                autofocus: true,
+                style: TextStyle(fontSize: 12, color: scheme.onSurface),
+                decoration: InputDecoration(
+                  isDense: true,
+                  hintText: '姓名 / 别名 / 标签',
+                  hintStyle: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+                  prefixIcon: AppIcon(Icons.search, size: 14),
+                  prefixIconConstraints: const BoxConstraints(minWidth: 26, minHeight: 28),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                  filled: true,
+                  fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    borderSide: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.6)),
+                  ),
+                ),
+                onSubmitted: (v) {
+                  setState(() => _keyword = v.trim());
+                },
+              ),
+            )
+          else
+            SizedBox(
+              height: 28,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  mouseCursor: SystemMouseCursors.click,
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: () {
+                    _searchCtrl.text = _keyword;
+                    setState(() => _searching = true);
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: AppIcon(
+                      _keyword.isEmpty ? Icons.search : Icons.filter_alt,
+                      size: 18,
+                      color: _keyword.isEmpty ? null : scheme.primary,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          const SizedBox(width: 4),
+          SizedBox(
+            height: 28,
+            child: Material(
+              color: scheme.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(6),
+              child: InkWell(
+                mouseCursor: SystemMouseCursors.click,
+                borderRadius: BorderRadius.circular(6),
+                onTap: () => _create(),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Row(children: [
+                    AppIcon(Icons.add, size: 14, color: scheme.primary),
+                    const SizedBox(width: 4),
+                    Text('新建', style: TextStyle(fontSize: 12, color: scheme.primary)),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        ]),
+      ),
+      SizedBox(
+        height: 34,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          children: [
+            for (var i = 0; i < _filterTypes.length; i++)
+              _UnderlineTab(
+                label: _filterLabels[i],
+                selected: _filter == _filterTypes[i],
+                onTap: () => setState(() => _filter = _filterTypes[i]),
+              ),
+          ],
+        ),
+      ),
+      const Divider(height: 1),
+      Expanded(
+        child: _loading
+            ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+            : _filtered.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AppIcon(Icons.person_outline, size: 48,
+                            color: scheme.onSurfaceVariant.withValues(alpha: 0.3)),
+                        const SizedBox(height: 8),
+                        Text('暂无角色', style: TextStyle(
+                          fontSize: 13, color: scheme.onSurfaceVariant,
+                        )),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
+                    itemCount: _filtered.length,
+                    itemBuilder: (ctx, i) => _buildCard(_filtered[i], scheme),
+                  ),
+      ),
+    ]);
+  }
+
+  Widget _buildCard(Character char, ColorScheme scheme) {
+    return _CharacterCard(
+      char: char,
+      avatarAsset: _avatarAsset(char.gender),
+      typeLabel: _typeLabels[char.type] ?? '',
+      onTap: () => _openDetail(char),
+      onDelete: () => _deleteFromList(char),
+    );
+  }
+
+  Future<void> _deleteFromList(Character char) async {
+    final ok = await confirmDangerous(context, '删除角色「${char.name}」？将进入回收站保留 30 天。');
+    if (ok != true) return;
+    if (!mounted) return;
+    final state = context.read<AppState>();
+    await state.recycle.add(RecycleType.character, char.id, {
+      'book_id': char.bookId,
+      'name': char.name,
+      'aliases': char.aliases,
+      'type': char.type.name,
+      'gender': char.gender.name,
+      'appearance': char.appearance,
+      'personality': char.personality,
+      'background': char.background,
+      'avatar': char.avatar,
+      'color': char.color,
+      'tags': char.tags,
+      'sort': char.sort,
+    });
+    await state.characters.hardDelete(char.id);
+    state.characterDictVersion.value++;
+    _characters.removeWhere((c) => c.id == char.id);
+    if (mounted) setState(() {});
+  }
+
+  Widget _buildDetail(ColorScheme scheme) {
+    return Column(children: [
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        child: Row(children: [
+          SizedBox(
+            height: 28,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                mouseCursor: SystemMouseCursors.click,
+                borderRadius: BorderRadius.circular(6),
+                onTap: () => setState(() {
+                  _selected = null;
+                  _appearanceExpanded = false;
+                  _personalityExpanded = false;
+                  _backgroundExpanded = false;
+                }),
+                child: const Padding(
+                  padding: EdgeInsets.all(4),
+                  child: AppIcon(Icons.arrow_back, size: 18),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(_isNew ? '新建角色' : '角色 · ${_draft.name.isEmpty ? '未命名' : _draft.name}',
+                maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: scheme.onSurface)),
+          ),
+          if (!_isNew)
+            SizedBox(
+              height: 28,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  mouseCursor: SystemMouseCursors.click,
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: () => _delete(),
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: AppIcon(Icons.delete_outline, size: 18),
+                  ),
+                ),
+              ),
+            ),
+          ]),
+      ),
+      const Divider(height: 1),
+      Expanded(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          children: [
+            Center(
+              child: Column(children: [
+                CircleAvatar(
+                  radius: 30,
+                  backgroundImage: AssetImage(_avatarAsset(_draft.gender)),
+                ),
+                const SizedBox(height: 6),
+                Text(_draft.name.isEmpty ? '未命名' : _draft.name,
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: scheme.onSurface)),
+                if (_draft.aliases.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(_draft.aliases.split(',').first.trim(),
+                      style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+                ],
+              ]),
+            ),
+            const SizedBox(height: 20),
+            _sectionLabel('性别', scheme),
+            const SizedBox(height: 6),
+            _genderSegmented(scheme),
+            const SizedBox(height: 14),
+            _sectionLabel('类型', scheme),
+            const SizedBox(height: 6),
+            _typeSegmented(scheme),
+            const SizedBox(height: 14),
+            _sectionLabel('标记色', scheme),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                for (final c in _colorPresets)
+                  _ColorSwatch(
+                    color: c,
+                    selected: _draft.color == _colorToHex(c),
+                    onTap: () => setState(() => _draft.color = _colorToHex(c)),
+                  ),
+                GestureDetector(
+                  onTap: () => setState(() => _draft.color = ''),
+                  child: Container(
+                    width: 24, height: 24,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: scheme.outlineVariant, width: 1.5),
+                    ),
+                    child: Center(child: AppIcon(Icons.close, size: 12, color: scheme.onSurfaceVariant)),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _sectionLabel('姓名', scheme),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _nameCtrl,
+              decoration: const InputDecoration(hintText: '角色姓名', isDense: true),
+              style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 14),
+            _sectionLabel('别名 / 称号', scheme),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _aliasesCtrl,
+              decoration: const InputDecoration(hintText: '多个别名用逗号分隔', isDense: true),
+              style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            _buildCollapsible(
+              title: '外貌',
+              expanded: _appearanceExpanded,
+              controller: _appearanceCtrl,
+              scheme: scheme,
+              onToggle: () => setState(() => _appearanceExpanded = !_appearanceExpanded),
+            ),
+            const SizedBox(height: 8),
+            _buildCollapsible(
+              title: '性格',
+              expanded: _personalityExpanded,
+              controller: _personalityCtrl,
+              scheme: scheme,
+              onToggle: () => setState(() => _personalityExpanded = !_personalityExpanded),
+            ),
+            const SizedBox(height: 8),
+            _buildCollapsible(
+              title: '背景',
+              expanded: _backgroundExpanded,
+              controller: _backgroundCtrl,
+              scheme: scheme,
+              onToggle: () => setState(() => _backgroundExpanded = !_backgroundExpanded),
+            ),
+            const SizedBox(height: 16),
+            _sectionLabel('标签', scheme),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _tagsCtrl,
+              decoration: const InputDecoration(hintText: '多个标签用逗号分隔', isDense: true),
+              style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _save,
+                icon: const AppIcon(Icons.check, size: 16),
+                label: const Text('保存修改'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ]);
+  }
+
+  Widget _sectionLabel(String text, ColorScheme scheme) {
+    return Text(text, style: TextStyle(
+      fontSize: 12, fontWeight: FontWeight.w500, color: scheme.onSurfaceVariant,
+    ));
+  }
+
+  Widget _genderSegmented(ColorScheme scheme) {
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      child: Row(children: [
+        for (final g in Gender.values) ...[
+          if (g != Gender.male)
+            Container(width: 1, height: 26, color: scheme.outlineVariant.withValues(alpha: 0.6)),
+          Expanded(
+            child: Material(
+              color: _draft.gender == g ? scheme.primary.withValues(alpha: 0.12) : Colors.transparent,
+              child: InkWell(
+                mouseCursor: SystemMouseCursors.click,
+                onTap: () => setState(() => _draft.gender = g),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  alignment: Alignment.center,
+                  child: Text(g == Gender.female ? '女' : '男', style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: _draft.gender == g ? FontWeight.w600 : FontWeight.w400,
+                    color: _draft.gender == g ? scheme.primary : scheme.onSurfaceVariant,
+                  )),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ]),
+    );
+  }
+
+  Widget _typeSegmented(ColorScheme scheme) {
+    final types = CharacterType.values;
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      child: Row(children: [
+        for (var i = 0; i < types.length; i++) ...[
+          if (i > 0) Container(width: 1, height: 26, color: scheme.outlineVariant.withValues(alpha: 0.6)),
+          Expanded(
+            child: _typeSegment(types[i], scheme),
+          ),
+        ],
+      ]),
+    );
+  }
+
+  Widget _typeSegment(CharacterType type, ColorScheme scheme) {
+    final selected = _draft.type == type;
+    final color = _typeColor(type, scheme);
+    return Material(
+      color: selected ? color.withValues(alpha: 0.12) : Colors.transparent,
+      child: InkWell(
+        mouseCursor: SystemMouseCursors.click,
+        onTap: () => setState(() {
+          _draft.type = type;
+          _draft.color = _colorToHex(color);
+        }),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          alignment: Alignment.center,
+          child: Text(_typeLabels[type] ?? type.name, style: TextStyle(
+            fontSize: 12,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+            color: selected ? color : scheme.onSurfaceVariant,
+          )),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCollapsible({
+    required String title,
+    required bool expanded,
+    required TextEditingController controller,
+    required ColorScheme scheme,
+    required VoidCallback onToggle,
+  }) {
+    return Material(
+      color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+      borderRadius: BorderRadius.circular(8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            mouseCursor: SystemMouseCursors.click,
+            borderRadius: BorderRadius.circular(8),
+            onTap: onToggle,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+              child: Row(children: [
+                Text(title, style: TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w500, color: scheme.onSurface,
+                )),
+                const Spacer(),
+                AnimatedRotation(
+                  turns: expanded ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 150),
+                  child: AppIcon(Icons.expand_more, size: 18, color: scheme.onSurfaceVariant),
+                ),
+              ]),
+            ),
+          ),
+          AnimatedCrossFade(
+            firstChild: const SizedBox.shrink(),
+            secondChild: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+              child: TextField(
+                controller: controller,
+                maxLines: 4,
+                decoration: InputDecoration(hintText: '描述$title…', isDense: true),
+                style: const TextStyle(fontSize: 13),
+              ),
+            ),
+            crossFadeState: expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            duration: const Duration(milliseconds: 150),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openDetail(Character char, {bool isNew = false}) {
+    _draft = Character(
+      id: char.id,
+      bookId: char.bookId,
+      name: char.name,
+      aliases: char.aliases,
+      type: char.type,
+      gender: char.gender,
+      appearance: char.appearance,
+      personality: char.personality,
+      background: char.background,
+      avatar: char.avatar,
+      color: char.color,
+      tags: char.tags,
+      sort: char.sort,
+      createdAt: char.createdAt,
+      updatedAt: char.updatedAt,
+    );
+    _isNew = isNew;
+    _nameCtrl.text = _draft.name;
+    _aliasesCtrl.text = _draft.aliases;
+    _appearanceCtrl.text = _draft.appearance;
+    _personalityCtrl.text = _draft.personality;
+    _backgroundCtrl.text = _draft.background;
+    _tagsCtrl.text = _draft.tags;
+    // 外貌/性格/背景始终以收起状态打开，需要时手动展开。
+    _appearanceExpanded = false;
+    _personalityExpanded = false;
+    _backgroundExpanded = false;
+    setState(() => _selected = char);
+  }
+
+  void _create() {
+    final now = DateTime.now();
+    _openDetail(
+      Character(id: '', bookId: widget.book.id, name: '', createdAt: now, updatedAt: now),
+      isNew: true,
+    );
+    _nameCtrl.clear();
+    _aliasesCtrl.clear();
+    _appearanceCtrl.clear();
+    _personalityCtrl.clear();
+    _backgroundCtrl.clear();
+    _tagsCtrl.clear();
+  }
+
+  Future<void> _save() async {
+    final name = _nameCtrl.text.trim();
+    if (name.isEmpty) {
+      showToast(context, '请填写角色姓名');
+      return;
+    }
+    final state = context.read<AppState>();
+    if (_isNew) {
+      final char = await state.characters.create(bookId: widget.book.id, name: name);
+      char.aliases = _aliasesCtrl.text.trim();
+      char.type = _draft.type;
+      char.gender = _draft.gender;
+      char.appearance = _appearanceCtrl.text;
+      char.personality = _personalityCtrl.text;
+      char.background = _backgroundCtrl.text;
+      char.color = _draft.color;
+      char.tags = _tagsCtrl.text.trim();
+      await state.characters.update(char);
+      state.characterDictVersion.value++;
+      _characters.insert(0, char);
+    } else {
+      _draft.name = name;
+      _draft.aliases = _aliasesCtrl.text.trim();
+      _draft.appearance = _appearanceCtrl.text;
+      _draft.personality = _personalityCtrl.text;
+      _draft.background = _backgroundCtrl.text;
+      _draft.tags = _tagsCtrl.text.trim();
+      await state.characters.update(_draft);
+      state.characterDictVersion.value++;
+      final idx = _characters.indexWhere((c) => c.id == _draft.id);
+      if (idx >= 0) _characters[idx] = _draft;
+      if (mounted) setState(() {});
+    }
+    if (mounted) {
+      setState(() => _selected = null);
+      showToast(context, '角色已保存');
+    }
+  }
+
+  Future<void> _delete() async {
+    final ok = await confirmDangerous(context, '删除角色「${_draft.name}」？将进入回收站保留 30 天。');
+    if (ok != true) return;
+    if (!mounted) return;
+    final state = context.read<AppState>();
+    await state.recycle.add(RecycleType.character, _draft.id, {
+      'book_id': _draft.bookId,
+      'name': _draft.name,
+      'aliases': _draft.aliases,
+      'type': _draft.type.name,
+      'gender': _draft.gender.name,
+      'appearance': _draft.appearance,
+      'personality': _draft.personality,
+      'background': _draft.background,
+      'avatar': _draft.avatar,
+      'color': _draft.color,
+      'tags': _draft.tags,
+      'sort': _draft.sort,
+    });
+    await state.characters.hardDelete(_draft.id);
+    state.characterDictVersion.value++;
+    _characters.removeWhere((c) => c.id == _draft.id);
+    if (mounted) setState(() => _selected = null);
+  }
+
+  Color _typeColor(CharacterType type, ColorScheme scheme) => switch (type) {
+    CharacterType.protagonist => const Color(0xFF4A90D9),
+    CharacterType.supporting => const Color(0xFF7CB342),
+    CharacterType.antagonist => const Color(0xFFE53935),
+    CharacterType.minor => const Color(0xFF9E9E9E),
+  };
+}
+
+/// 下划线式文字 Tab。
+class _UnderlineTab extends StatelessWidget {
+  const _UnderlineTab({required this.label, required this.selected, required this.onTap});
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(
+      mouseCursor: SystemMouseCursors.click,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: selected ? scheme.primary : Colors.transparent,
+              width: 2,
+            ),
+          ),
+        ),
+        alignment: Alignment.center,
+        child: Text(label, style: TextStyle(
+          fontSize: 13,
+          fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+          color: selected ? scheme.onSurface : scheme.onSurfaceVariant,
+        )),
+      ),
+    );
+  }
+}
+
+/// 标记色色块：选中态为同色环 + 白色间隙 + 轻微放大（业界标准样式）。
+class _ColorSwatch extends StatelessWidget {
+  const _ColorSwatch({required this.color, required this.selected, required this.onTap});
+
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedScale(
+        scale: selected ? 1.12 : 1.0,
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          width: 26,
+          height: 26,
+          padding: EdgeInsets.all(selected ? 2 : 0),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: selected ? color : Colors.transparent,
+              width: 2,
+            ),
+          ),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: color,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 角色列表卡片：头像 + 姓名 + 类型 + 修改时间，悬浮显示删除。
+class _CharacterCard extends StatefulWidget {
+  const _CharacterCard({
+    required this.char,
+    required this.avatarAsset,
+    required this.typeLabel,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  final Character char;
+  final String avatarAsset;
+  final String typeLabel;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  @override
+  State<_CharacterCard> createState() => _CharacterCardState();
+}
+
+class _CharacterCardState extends State<_CharacterCard> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final char = widget.char;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: Material(
+          color: _hover ? scheme.surfaceContainerHighest.withValues(alpha: 0.4) : scheme.surface,
+          borderRadius: BorderRadius.circular(10),
+          child: InkWell(
+            mouseCursor: SystemMouseCursors.click,
+            borderRadius: BorderRadius.circular(10),
+            onTap: widget.onTap,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 120),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: _hover ? scheme.outlineVariant : scheme.outlineVariant.withValues(alpha: 0.6),
+                ),
+              ),
+              child: Row(children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundImage: AssetImage(widget.avatarAsset),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Flexible(
+                          child: Text(char.name, maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: scheme.onSurface,
+                              )),
+                        ),
+                        const SizedBox(width: 6),
+                        _TypeBadge(label: widget.typeLabel, type: char.type),
+                      ]),
+                      const SizedBox(height: 3),
+                      Text(_formatUpdated(char.updatedAt), style: TextStyle(
+                        fontSize: 10, color: scheme.onSurfaceVariant.withValues(alpha: 0.7),
+                      )),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: 26,
+                  height: 26,
+                  child: _hover
+                      ? Material(
+                          color: Colors.transparent,
+                          borderRadius: BorderRadius.circular(6),
+                          child: InkWell(
+                            mouseCursor: SystemMouseCursors.click,
+                            borderRadius: BorderRadius.circular(6),
+                            onTap: widget.onDelete,
+                            child: Center(
+                              child: AppIcon(Icons.delete_outline, size: 16,
+                                  color: scheme.error),
+                            ),
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatUpdated(DateTime t) {
+    final now = DateTime.now();
+    String two(int n) => n.toString().padLeft(2, '0');
+    if (t.year == now.year) return '${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}';
+    return '${t.year}-${two(t.month)}-${two(t.day)}';
+  }
+}
+
+/// 角色类型标签徽章。
+class _TypeBadge extends StatelessWidget {
+  const _TypeBadge({required this.label, required this.type});
+
+  final String label;
+  final CharacterType type;
+
+  Color _colorOf(ColorScheme scheme) => switch (type) {
+    CharacterType.protagonist => const Color(0xFF4A90D9),
+    CharacterType.supporting => const Color(0xFF7CB342),
+    CharacterType.antagonist => const Color(0xFFE53935),
+    CharacterType.minor => const Color(0xFF9E9E9E),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = _colorOf(scheme);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(label, style: TextStyle(
+        fontSize: 10,
+        fontWeight: FontWeight.w500,
+        color: color,
+      )),
+    );
+  }
+}

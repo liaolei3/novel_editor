@@ -310,4 +310,86 @@ class RecycleItem {
       );
 }
 
-enum RecycleType { volume, chapter, note }
+enum CharacterType { protagonist, supporting, antagonist, minor }
+
+enum Gender { male, female }
+
+class Character {
+  Character({
+    required this.id,
+    required this.bookId,
+    required this.name,
+    this.aliases = '',
+    this.type = CharacterType.protagonist,
+    this.gender = Gender.male,
+    this.appearance = '',
+    this.personality = '',
+    this.background = '',
+    this.avatar = '',
+    this.color = '',
+    this.tags = '',
+    this.sort = 0,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String bookId;
+  String name;
+  String aliases;
+  CharacterType type;
+  Gender gender;
+  String appearance;
+  String personality;
+  String background;
+  String avatar;
+  String color;
+  String tags;
+  int sort;
+  DateTime createdAt;
+  DateTime updatedAt;
+
+  Map<String, Object?> toMap() => {
+        'id': id,
+        'book_id': bookId,
+        'name': name,
+        'aliases': aliases,
+        'type': type.name,
+        'gender': gender.name,
+        'appearance': appearance,
+        'personality': personality,
+        'background': background,
+        'avatar': avatar,
+        'color': color,
+        'tags': tags,
+        'sort': sort,
+        'created_at': createdAt.millisecondsSinceEpoch,
+        'updated_at': updatedAt.millisecondsSinceEpoch,
+      };
+
+  static Character fromMap(Map<String, Object?> map) => Character(
+        id: map['id'] as String,
+        bookId: map['book_id'] as String,
+        name: (map['name'] as String?) ?? '',
+        aliases: (map['aliases'] as String?) ?? '',
+        type: CharacterType.values.firstWhere(
+          (t) => t.name == map['type'],
+          orElse: () => CharacterType.protagonist,
+        ),
+        gender: Gender.values.firstWhere(
+          (g) => g.name == map['gender'],
+          orElse: () => Gender.male,
+        ),
+        appearance: (map['appearance'] as String?) ?? '',
+        personality: (map['personality'] as String?) ?? '',
+        background: (map['background'] as String?) ?? '',
+        avatar: (map['avatar'] as String?) ?? '',
+        color: (map['color'] as String?) ?? '',
+        tags: (map['tags'] as String?) ?? '',
+        sort: (map['sort'] as int?) ?? 0,
+        createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
+        updatedAt: DateTime.fromMillisecondsSinceEpoch(map['updated_at'] as int),
+      );
+}
+
+enum RecycleType { volume, chapter, note, character }

@@ -8,6 +8,7 @@ Future<String?> inputDialog(BuildContext context,
   final controller = TextEditingController(text: initial);
   return showDialog<String>(
     context: context,
+    barrierDismissible: false,
     builder: (ctx) => AlertDialog(
       title: Text(title),
       content: TextField(
@@ -31,6 +32,7 @@ Future<(String, String)?> createBookDialog(BuildContext context) async {
   final penCtrl = TextEditingController();
   return showDialog<(String, String)>(
     context: context,
+    barrierDismissible: false,
     builder: (ctx) => AlertDialog(
       title: const Text('新建作品'),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -61,6 +63,7 @@ Future<(String, String)?> editBookDialog(BuildContext context,
   final penCtrl = TextEditingController(text: initialPenName);
   return showDialog<(String, String)>(
     context: context,
+    barrierDismissible: false,
     builder: (ctx) => AlertDialog(
       title: const Text('编辑作品'),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -96,6 +99,7 @@ Future<void> showCompareDialog(
 }) {
   return showDialog(
     context: context,
+    barrierDismissible: false,
     builder: (ctx) => Dialog(
       insetPadding: const EdgeInsets.all(24),
       child: ConstrainedBox(

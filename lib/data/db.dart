@@ -23,8 +23,9 @@ class Db {
     _db = await databaseFactory.openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 1,
+        version: 3,
         onCreate: _onCreate,
+        onUpgrade: _onUpgrade,
       ),
     );
     return _db!;
@@ -132,6 +133,34 @@ class Db {
         dirty INTEGER NOT NULL DEFAULT 0
       )
     ''');
+  }
+
+  static Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('''
+        CREATE TABLE characters (
+          id TEXT PRIMARY KEY,
+          book_id TEXT NOT NULL,
+          name TEXT NOT NULL DEFAULT '',
+          aliases TEXT NOT NULL DEFAULT '',
+          type TEXT NOT NULL DEFAULT 'other',
+          gender TEXT NOT NULL DEFAULT 'male',
+          appearance TEXT NOT NULL DEFAULT '',
+          personality TEXT NOT NULL DEFAULT '',
+          background TEXT NOT NULL DEFAULT '',
+          avatar TEXT NOT NULL DEFAULT '',
+          color TEXT NOT NULL DEFAULT '',
+          tags TEXT NOT NULL DEFAULT '',
+          sort INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )
+      ''');
+      await db.execute('CREATE INDEX idx_characters_book ON characters(book_id)');
+    }
+    if (oldVersion < 3) {
+      await db.execute("ALTER TABLE characters ADD COLUMN gender TEXT NOT NULL DEFAULT 'male'");
+    }
   }
 
   /// 数据存储根目录（数据库 / 备份 / 配置 / 崩溃标记）。

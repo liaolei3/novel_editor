@@ -6,7 +6,9 @@ import 'package:provider/provider.dart';
 import '../data/models.dart';
 import '../state/app_state.dart';
 import 'app_root.dart';
+import 'global_search_dialog.dart';
 import 'panels/ai_panel.dart';
+import 'panels/character_panel.dart';
 import 'panels/notes_panel.dart';
 import 'panels/outline_panel.dart';
 import 'panels/sensitive_panel.dart';
@@ -35,12 +37,44 @@ class _WorkspacePageState extends State<WorkspacePage> {
   int _panelIndex = 0;
   bool _panelOpen = true;
   bool _immersive = false;
+  String? _openCharacterId;
 
-  static const _panels = ['大纲视图', 'AI 助手', '历史快照', '素材库', '敏感词', '码字统计', '回收站'];
+  @override
+  void initState() {
+    super.initState();
+    context.read<AppState>().openCharacterNonce.addListener(_onOpenCharacter);
+  }
+
+  @override
+  void dispose() {
+    context.read<AppState>().openCharacterNonce.removeListener(_onOpenCharacter);
+    super.dispose();
+  }
+
+  /// 编辑器悬浮 tip 的「编辑」请求：切到角色面板并打开对应角色详情。
+  void _onOpenCharacter() {
+    final state = context.read<AppState>();
+    final id = state.pendingOpenCharacterId;
+    if (id == null) return;
+    state.pendingOpenCharacterId = null;
+    setState(() {
+      _openCharacterId = id;
+      _panelIndex = 3;
+      _panelOpen = true;
+      _immersive = false;
+      _mobileTab = 2;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _openCharacterId = null);
+    });
+  }
+
+  static const _panels = ['大纲视图', 'AI 助手', '历史快照', '角色', '素材库', '敏感词', '码字统计', '回收站'];
   static const _panelIcons = [
     Icons.account_tree_outlined,
     Icons.auto_awesome,
     Icons.history,
+    Icons.people_outlined,
     Icons.sticky_note_2_outlined,
     Icons.shield_outlined,
     Icons.query_stats_outlined,
@@ -74,6 +108,11 @@ class _WorkspacePageState extends State<WorkspacePage> {
             : AppTopBar(
                 title: Text(widget.book.title),
                 actions: [
+                  IconButton(
+                    tooltip: '全局搜索替换',
+                    icon: const AppIcon(Icons.search, size: 26),
+                    onPressed: () => showGlobalSearchDialog(context),
+                  ),
                   IconButton(
                     tooltip: _immersive ? '退出沉浸' : '沉浸模式',
                     icon: AppIcon(
@@ -260,10 +299,12 @@ class _WorkspacePageState extends State<WorkspacePage> {
       case 2:
         return const SnapshotPanel();
       case 3:
-        return NotesPanel(book: book);
+        return CharacterPanel(book: book, openCharacterId: _openCharacterId);
       case 4:
-        return const SensitivePanel();
+        return NotesPanel(book: book);
       case 5:
+        return const SensitivePanel();
+      case 6:
         return const StatsPanel();
       default:
         return const RecycleView();

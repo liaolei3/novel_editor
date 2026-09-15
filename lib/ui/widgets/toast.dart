@@ -3,13 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 /// Element Plus 风格的顶部弹出提示：从屏幕上方滑入，宽度受限，自动消失。
-void showTopMessage(BuildContext context, String message) {
+void showToast(BuildContext context, String message) {
   final overlay = Overlay.maybeOf(context, rootOverlay: true);
   if (overlay == null) return;
-  _TopMessageCoordinator.show(overlay, message);
+  _ToastCoordinator.show(overlay, message);
 }
 
-class _TopMessageCoordinator {
+class _ToastCoordinator {
   static OverlayEntry? _entry;
 
   static void show(OverlayState overlay, String message) {
@@ -17,7 +17,7 @@ class _TopMessageCoordinator {
     _entry = null;
     late final OverlayEntry entry;
     entry = OverlayEntry(
-      builder: (_) => _TopMessageView(
+      builder: (_) => _ToastView(
         message: message,
         onDismissed: () {
           if (_entry == entry) _entry = null;
@@ -29,17 +29,17 @@ class _TopMessageCoordinator {
   }
 }
 
-class _TopMessageView extends StatefulWidget {
-  const _TopMessageView({required this.message, required this.onDismissed});
+class _ToastView extends StatefulWidget {
+  const _ToastView({required this.message, required this.onDismissed});
 
   final String message;
   final VoidCallback onDismissed;
 
   @override
-  State<_TopMessageView> createState() => _TopMessageViewState();
+  State<_ToastView> createState() => _ToastViewState();
 }
 
-class _TopMessageViewState extends State<_TopMessageView>
+class _ToastViewState extends State<_ToastView>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,

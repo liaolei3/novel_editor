@@ -24,6 +24,7 @@ class SettingsController extends ChangeNotifier {
 
   double get fontSize => _cfg.getDouble('fontSize') ?? 17;
   double get lineHeight => _cfg.getDouble('lineHeight') ?? 1.8;
+  double get paragraphSpacing => _cfg.getDouble('paragraphSpacing') ?? 0.5;
   int get autosaveSeconds => _cfg.getInt('autosaveSeconds') ?? 2;
   int get dailyGoal => _cfg.getInt('dailyGoal') ?? 2000;
   bool get syncEnabled => _cfg.getBool('syncEnabled') ?? false;
@@ -42,6 +43,9 @@ class SettingsController extends ChangeNotifier {
 
   Future<void> setLineHeight(double v) =>
       _set('lineHeight', v, () => notifyListeners());
+
+  Future<void> setParagraphSpacing(double v) =>
+      _set('paragraphSpacing', v, () => notifyListeners());
 
   Future<void> setAutosaveSeconds(int v) =>
       _set('autosaveSeconds', v, () => notifyListeners());

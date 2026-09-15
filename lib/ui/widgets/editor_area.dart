@@ -14,11 +14,13 @@ import '../../core/utils/txt_importer.dart';
 import '../../data/models.dart';
 import '../../services/autosave_service.dart';
 import '../../state/app_state.dart';
+import '../../state/settings_controller.dart';
 
 import '../common/file_io.dart';
 import 'app_icon.dart';
+import 'character_tip.dart';
 import 'search_replace_bar.dart';
-import 'top_message.dart';
+import 'toast.dart';
 
 /// 编辑器区域：富文本工具栏 + 正文输入；沉浸/夜间/字体行距由全局设置控制。
 /// Stateful：持有稳定的 FocusNode/ScrollController——QuillEditor.basic 每次
@@ -40,13 +42,49 @@ class _EditorAreaState extends State<EditorArea> {
   bool _showReplace = false;
   String _searchSeed = '';
 
-  /// 搜索全量高亮状态
   List<int> _searchOffsets = const [];
   int _searchIndex = 0;
   String _searchQuery = '';
 
-  /// 上一次渲染的章节 id，用于检测章节切换并复位滚动位置
   String? _lastChapterId;
+
+  /// 搜索栏重挂载计数：全局搜索跳转等场景需要重置栏内状态并重新定位。
+  int _searchNonce = 0;
+
+  /// 角色名高亮词典：name/alias → 角色；按长度降序正则实现最长匹配。
+  Map<String, Character> _nameToChar = const {};
+  RegExp? _nameRegExp;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshCharacterDict();
+    context.read<AppState>().characterDictVersion.addListener(_refreshCharacterDict);
+  }
+
+  Future<void> _refreshCharacterDict() async {
+    final state = context.read<AppState>();
+    final list = await state.characters.listByBook(widget.book.id);
+    if (!mounted) return;
+    final map = <String, Character>{};
+    void addName(String raw, Character c) {
+      final n = raw.trim();
+      if (n.isNotEmpty && !map.containsKey(n)) map[n] = c;
+    }
+
+    for (final c in list) {
+      addName(c.name, c);
+      for (final a in c.aliases.split(',')) {
+        addName(a, c);
+      }
+    }
+    final names = map.keys.toList()
+      ..sort((a, b) => b.length.compareTo(a.length));
+    setState(() {
+      _nameToChar = map;
+      _nameRegExp = names.isEmpty ? null : RegExp(names.map(RegExp.escape).join('|'));
+    });
+  }
 
   void _onSearchChanged(List<int> offsets, int index, String query) {
     setState(() {
@@ -56,8 +94,7 @@ class _EditorAreaState extends State<EditorArea> {
     });
   }
 
-  /// 打开搜索栏并展开替换行（Ctrl+F / 工具栏按钮）；
-  /// 首次打开时若编辑器有选区，则用选中文本预填查找词。
+  /// 打开搜索栏并展开替换行（Ctrl+F / 工具栏按钮）。
   void _openSearch({required bool withReplace}) {
     if (!_showSearch) {
       final ctrl = context.read<AppState>().editorController;
@@ -73,19 +110,75 @@ class _EditorAreaState extends State<EditorArea> {
     setState(() {
       _showSearch = true;
       _showReplace = withReplace;
+      _searchNonce++;
     });
   }
 
   @override
   void dispose() {
+    context.read<AppState>().characterDictVersion.removeListener(_refreshCharacterDict);
     _focusNode.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
-  /// 自定义 textSpanBuilder：搜索时对匹配文本做背景高亮。
-  /// 非当前匹配与普通选中文本背景一致；
-  /// 当前匹配用同色但更高不透明度（更浓），保持色相一致且更突出。
+  /// 自定义 textSpanBuilder：角色名高亮 + 搜索背景高亮复合。
+  InlineSpan _textSpanBuilder(
+    BuildContext context,
+    Node node,
+    int nodeOffset,
+    String text,
+    TextStyle? style,
+    GestureRecognizer? recognizer,
+  ) {
+    final regex = _nameRegExp;
+    if (regex == null) {
+      return _searchHighlightSpanBuilder(
+          context, node, nodeOffset, text, style, recognizer);
+    }
+    final matches = regex.allMatches(text).toList();
+    if (matches.isEmpty) {
+      return _searchHighlightSpanBuilder(
+          context, node, nodeOffset, text, style, recognizer);
+    }
+
+    final scheme = Theme.of(context).colorScheme;
+    InlineSpan plain(int from, int to) {
+      return _searchHighlightSpanBuilder(context, node, nodeOffset + from,
+          text.substring(from, to), style, recognizer);
+    }
+
+    final children = <InlineSpan>[];
+    int pos = 0;
+    for (final m in matches) {
+      if (m.start > pos) children.add(plain(pos, m.start));
+      final char = _nameToChar[text.substring(m.start, m.end)];
+      if (char != null) {
+        // 文字颜色与下划线用角色标记色；hover 展示信息卡。
+        final color = parseCharacterColor(char.color) ?? scheme.primary;
+        children.add(TextSpan(
+          text: text.substring(m.start, m.end),
+          style: (style ?? const TextStyle()).copyWith(
+            color: color,
+            decoration: TextDecoration.underline,
+            decorationColor: color,
+          ),
+          onEnter: (e) =>
+              scheduleCharacterTip(context, e.position, char, () {
+                context.read<AppState>().requestOpenCharacter(char.id);
+              }),
+          onExit: (_) => cancelCharacterTip(),
+        ));
+      } else {
+        children.add(plain(m.start, m.end));
+      }
+      pos = m.end;
+    }
+    if (pos < text.length) children.add(plain(pos, text.length));
+    return TextSpan(children: children, style: style);
+  }
+
+  /// 搜索匹配背景高亮分段。
   InlineSpan _searchHighlightSpanBuilder(
     BuildContext context,
     Node node,
@@ -108,7 +201,7 @@ class _EditorAreaState extends State<EditorArea> {
       return TextSpan(text: text, style: style, recognizer: recognizer);
     }
 
-    final nodeStart = node.documentOffset;
+    final nodeStart = nodeOffset;
     final nodeEnd = nodeStart + text.length;
     final queryLen = _searchQuery.length;
 
@@ -172,6 +265,7 @@ class _EditorAreaState extends State<EditorArea> {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
+    final settings = context.watch<SettingsController>();
     final chapter = state.currentChapter;
 
     if (chapter == null) {
@@ -211,6 +305,7 @@ class _EditorAreaState extends State<EditorArea> {
         const Divider(height: 1),
         if (_showSearch)
           SearchReplaceBar(
+            key: ValueKey('search-$_searchNonce'),
             controller: state.editorController,
             editorFocusNode: _focusNode,
             initialText: _searchSeed,
@@ -245,12 +340,12 @@ class _EditorAreaState extends State<EditorArea> {
               scrollController: _scrollController,
               config: QuillEditorConfig(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                textSpanBuilder: _searchHighlightSpanBuilder,
+                textSpanBuilder: _textSpanBuilder,
+                customStyles: _editorStyles(context, settings),
                 autoFocus: false,
                 expands: true,
                 // Quill 自带 Ctrl+F 会打开其内置查找弹窗，这里在其按键处理链
                 // 最前端拦截，改为打开应用内搜索替换栏（与工具栏按钮一致）。
-                // Ctrl+U / Ctrl+Shift+X 同理在此拦截，切换下划线/删除线。
                 // ignore: experimental_member_use
                 onKeyPressed: (event, node) {
                   if (event is KeyDownEvent &&
@@ -288,6 +383,46 @@ class _EditorAreaState extends State<EditorArea> {
     );
   }
 
+  /// 编辑器自定义样式：把全局设置的字号/行距/段间距应用到正文相关块。
+  DefaultStyles _editorStyles(BuildContext context, SettingsController settings) {
+    final defaults = DefaultStyles.getInstance(context);
+    final fs = settings.fontSize;
+    final base = DefaultTextStyle.of(context).style.copyWith(
+          fontSize: fs,
+          height: settings.lineHeight,
+          decoration: TextDecoration.none,
+        );
+    final vs =
+        VerticalSpacing(0, (fs * settings.paragraphSpacing).toDouble());
+
+    DefaultTextBlockStyle? bodyBlock(DefaultTextBlockStyle? d) =>
+        d?.copyWith(style: base, verticalSpacing: vs);
+
+    DefaultTextBlockStyle? scaledHeading(DefaultTextBlockStyle? d) {
+      if (d == null) return null;
+      final size = d.style.fontSize;
+      return size == null
+          ? d
+          : d.copyWith(style: d.style.copyWith(fontSize: size * fs / 17));
+    }
+
+    return DefaultStyles(
+      paragraph: bodyBlock(defaults.paragraph),
+      indent: bodyBlock(defaults.indent),
+      align: bodyBlock(defaults.align),
+      lists: defaults.lists?.copyWith(style: base, verticalSpacing: vs),
+      quote: defaults.quote?.copyWith(
+        style: base.copyWith(color: base.color?.withValues(alpha: 0.6)),
+      ),
+      h1: scaledHeading(defaults.h1),
+      h2: scaledHeading(defaults.h2),
+      h3: scaledHeading(defaults.h3),
+      h4: scaledHeading(defaults.h4),
+      h5: scaledHeading(defaults.h5),
+      h6: scaledHeading(defaults.h6),
+    );
+  }
+
   Widget _saveIndicator(BuildContext context) {
     final autosave = context.read<AppState>().autosave;
     return ValueListenableBuilder<SaveState>(
@@ -301,7 +436,7 @@ class _EditorAreaState extends State<EditorArea> {
         };
         if (s == SaveState.failed) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            showTopMessage(ctx, '自动保存失败，请检查磁盘空间；正文仍在内存中，请勿关闭应用。');
+            showToast(ctx, '自动保存失败，请检查磁盘空间；正文仍在内存中，请勿关闭应用。');
           });
         }
         return Tooltip(
@@ -316,7 +451,6 @@ class _EditorAreaState extends State<EditorArea> {
     );
   }
 
-  /// 顶部条：保存状态。
   Widget _topBar(BuildContext context, Widget savingHint) {
     return SizedBox(
       height: 44,
@@ -450,7 +584,7 @@ class _EditorAreaState extends State<EditorArea> {
           onPressed: () async {
             await state.durability.manualSnapshot(state.currentChapter!);
             if (context.mounted) {
-              showTopMessage(context, '已创建手动快照');
+              showToast(context, '已创建手动快照');
             }
           },
         ),
@@ -525,8 +659,6 @@ class _EditorAreaState extends State<EditorArea> {
     );
   }
 
-  // ---- 一键排版（预览 → 应用，应用前自动快照可撤销） ----
-
   /// 切换内联样式属性（有则移除，无则应用），供快捷键使用。
   static void _toggleInlineAttr(QuillController controller, Attribute attr) {
     final enabled =
@@ -541,14 +673,22 @@ class _EditorAreaState extends State<EditorArea> {
     final after = TextFormatter.format(before);
     if (after == before) {
       if (context.mounted) {
-        showTopMessage(context, '排版完成：无需修改');
+        showToast(context, '排版完成：无需修改');
       }
       return;
     }
     final apply = await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        title: const Text('一键排版预览'),
+        title: Row(children: [
+          const Text('一键排版预览'),
+          const Spacer(),
+          IconButton(
+            icon: const AppIcon(Icons.close),
+            onPressed: () => Navigator.pop(ctx, false),
+          ),
+        ]),
         content: SizedBox(
           width: 640,
           height: 420,
@@ -572,13 +712,17 @@ class _EditorAreaState extends State<EditorArea> {
                 ),
               ]),
             ),
-            const Text('提示：排版作用于纯文本，应用后富文本格式将被重置。',
-                style: TextStyle(fontSize: 11, color: Colors.orange)),
           ]),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('应用（应用前自动快照）')),
+          Row(children: [
+            const Expanded(
+              child: Text('提示：排版作用于纯文本，应用后富文本格式将被重置。',
+                  style: TextStyle(fontSize: 11, color: Colors.orange)),
+            ),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('应用')),
+          ]),
         ],
       ),
     );
@@ -587,15 +731,14 @@ class _EditorAreaState extends State<EditorArea> {
     state.replaceDocument(RichTextCodec.documentFromContent(after));
     await state.autosave.flush();
     if (context.mounted) {
-      showTopMessage(context, '排版已应用；如需撤销请前往「历史快照」回滚');
+      showToast(context, '排版已应用；如需撤销请前往「历史快照」回滚');
     }
   }
-
-  // ---- 导入导出 ----
 
   Future<void> _import(BuildContext context, AppState state) async {
     final choice = await showDialog<String>(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => SimpleDialog(
         title: const Text('导入'),
         children: [
@@ -618,13 +761,13 @@ class _EditorAreaState extends State<EditorArea> {
         await state.chapters.updateContent(ch);
       }
       if (context.mounted) {
-        showTopMessage(context, '已导入 ${parts.length} 个章节');
+        showToast(context, '已导入 ${parts.length} 个章节');
       }
     } else {
       final raw = await FileIO.pickReadText(ext: ['docx']);
       if (raw == null) return;
       if (context.mounted) {
-        showTopMessage(
+        showToast(
             context, 'docx 导入请在导出对话框中使用 TXT 版本；MVP 暂不解析二进制 docx');
       }
     }
@@ -633,6 +776,7 @@ class _EditorAreaState extends State<EditorArea> {
   Future<void> _export(BuildContext context, AppState state) async {
     final choice = await showDialog<String>(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => SimpleDialog(
         title: const Text('导出'),
         children: [
@@ -681,6 +825,7 @@ class _EditorAreaState extends State<EditorArea> {
   Future<bool?> _askIncludeTitle(BuildContext context) {
     return showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: const Text('是否包含章节名？'),
         actions: [
@@ -693,7 +838,7 @@ class _EditorAreaState extends State<EditorArea> {
 
   void _toast(BuildContext context, String? path) {
     if (!context.mounted) return;
-    showTopMessage(context, path == null ? '已取消导出' : '导出成功：$path');
+    showToast(context, path == null ? '已取消导出' : '导出成功：$path');
   }
 }
 
@@ -923,9 +1068,7 @@ Color? _selectionBackground(QuillController controller) {
   return null;
 }
 
-/// 文字高亮按钮（参考 Word/WPS 交互，无模态弹窗）：
-/// - 主体为油漆桶图标 + 当前颜色条；点击时选区有高亮则清除，否则应用当前颜色；
-/// - 右侧下拉箭头展开色板浮层，点选即应用并记住为当前颜色。
+/// 文字高亮按钮（参考 Word/WPS 交互，无模态弹窗）。
 class _HighlightToolbarButton extends StatefulWidget {
   const _HighlightToolbarButton({required this.controller});
 
@@ -985,7 +1128,6 @@ class _HighlightToolbarButtonState extends State<_HighlightToolbarButton> {
     );
   }
 
-  /// 主体点击：与当前颜色相同的高亮再点即清除，否则应用当前颜色。
   void _toggleOnSelection() {
     if (_selectionBg != null) {
       _apply(null);
@@ -1101,7 +1243,6 @@ List<Color> _paletteFor(BuildContext context) =>
         : _highlightLightSwatches;
 
 /// 规范存储色 → 当前主题显示色（亮色 i ↔ 暗色 i 双向对应）。
-/// 文档统一存亮色值，暗色主题下渲染与按钮状态映射为对应深色变体。
 Color _themeSwatchOf(Color canonical, Brightness brightness) {
   final i = _highlightLightSwatches.indexOf(canonical);
   if (i < 0) return canonical;

@@ -5,27 +5,14 @@
 class TextFormatter {
   TextFormatter._();
 
-  /// 清除多余空行与行尾空格：连续空行压缩为一个空行。
+  /// 删除空行与所有空格：移除全部空行、半角/全角空格与制表符。
   static String collapseBlankLines(String text) {
-    final lines = text.split('\n').map((l) => l.replaceAll('\r', '').trimRight()).toList();
-    final out = <String>[];
-    var blankRun = 0;
-    for (final line in lines) {
-      if (line.trim().isEmpty) {
-        blankRun++;
-        if (blankRun <= 1) out.add('');
-      } else {
-        blankRun = 0;
-        out.add(line);
-      }
-    }
-    while (out.isNotEmpty && out.first.trim().isEmpty) {
-      out.removeAt(0);
-    }
-    while (out.isNotEmpty && out.last.trim().isEmpty) {
-      out.removeLast();
-    }
-    return out.join('\n');
+    final lines = text
+        .split('\n')
+        .map((l) => l.replaceAll('\r', '').replaceAll(RegExp(r'[\t \u3000]+'), '').trim())
+        .where((l) => l.isNotEmpty)
+        .toList();
+    return lines.join('\n');
   }
 
   /// 统一中文标点：半角标点转全角（数字间的小数点除外）。

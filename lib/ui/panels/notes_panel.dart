@@ -133,6 +133,7 @@ class _NotesPanelState extends State<NotesPanel> {
     final bodyCtrl = TextEditingController(text: note.content);
     final saved = await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: Text('编辑${_labelOf(note.type)}'),
         content: SizedBox(

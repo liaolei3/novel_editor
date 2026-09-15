@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// 应用主题（三选一）：
-/// - light：浅色（极简风，白画布 + 苹果蓝）
-/// - dark：暗色（极简风暗色变体）
-/// - pixel：像素风（星露谷物语配色，羊皮纸 + 木质边框 + 农场绿）
+/// 应用主题（三选一）。
 enum AppTheme { light, dark, pixel }
 
 /// 统一的主题构建入口：主题 x 字号缩放。
@@ -50,9 +47,6 @@ const _fontFallbacks = [
 
 const _clickCursor = WidgetStatePropertyAll(SystemMouseCursors.click);
 
-// ---------------------------------------------------------------------------
-// 极简风：白画布、#F5F5F7 表面、苹果蓝、近黑文字、发丝分割线。
-// ---------------------------------------------------------------------------
 ThemeData _minimalTheme(Brightness brightness) {
   final isLight = brightness == Brightness.light;
   final scheme = ColorScheme.fromSeed(
@@ -76,7 +70,6 @@ ThemeData _minimalTheme(Brightness brightness) {
   );
 
   return base.copyWith(
-    // 全局小号图标（24 → 18）。
     iconTheme: base.iconTheme.copyWith(size: 18),
     scaffoldBackgroundColor: scheme.surface,
     dialogTheme: const DialogThemeData(
@@ -226,12 +219,6 @@ ThemeData _minimalTheme(Brightness brightness) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// 像素风（星露谷物语配色）：
-//   羊皮纸奶油底 #F6E5B8、木框棕 #8A5A2A / #5B2E0E、农场绿 #2C8A43、
-//   麦穗黄 #FFB03B、夜色深棕 #241A10 + 暖褐面板。
-//   特征：粗描边、平面硬边、无柔和投影；圆角与极简风一致。
-// ---------------------------------------------------------------------------
 class _PixelPalette {
   const _PixelPalette({
     required this.background,

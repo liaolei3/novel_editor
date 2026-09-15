@@ -8,7 +8,7 @@ import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../common/dialogs.dart';
 import '../widgets/app_icon.dart';
-import '../widgets/top_message.dart';
+import '../widgets/toast.dart';
 
 /// 历史快照面板（FR-9 / 9.5）：快照列表、两版本对比、一键回滚（回滚前自动建快照）。
 class SnapshotPanel extends StatefulWidget {
@@ -122,6 +122,7 @@ class _SnapshotPanelState extends State<SnapshotPanel> {
     final chapter = state.currentChapter!;
     final ok = await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: const Text('回滚确认'),
         content: const Text('将回滚到所选快照版本。当前版本会先自动保存为「回滚前」快照，操作本身可逆。'),
@@ -145,7 +146,7 @@ class _SnapshotPanelState extends State<SnapshotPanel> {
     await state.autosave.flush();
     await _refresh();
     if (context.mounted) {
-      showTopMessage(context, '已回滚；当前版本已存为「回滚前」快照');
+      showToast(context, '已回滚；当前版本已存为「回滚前」快照');
     }
   }
 

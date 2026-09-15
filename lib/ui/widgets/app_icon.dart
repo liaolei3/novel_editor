@@ -30,13 +30,14 @@ final Map<IconData, IconData> _pixelMap = {
   Icons.description: Pixel.filealt,
   Icons.sticky_note_2_outlined: Pixel.note,
   Icons.person_outline: Pixel.user,
+  Icons.people_outlined: Pixel.user,
   Icons.lock_outline: Pixel.lock,
   Icons.search: Pixel.search,
   Icons.refresh: Pixel.reload,
   Icons.folder_open: Pixel.folder,
-  Icons.light_mode: Pixel.sun,
-  Icons.dark_mode: Pixel.moonstars,
-  Icons.sports_esports: Pixel.gamepad,
+  Icons.palette_outlined: Pixel.sliders,
+  Icons.sync: Pixel.reload,
+  Icons.message_outlined: Pixel.message,
 };
 
 /// 主题感知图标：像素风主题下自动换用 Pixelarticons，其余主题保持 Material 图标。

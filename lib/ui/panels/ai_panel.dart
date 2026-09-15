@@ -9,7 +9,7 @@ import '../../state/app_state.dart';
 import '../../state/settings_controller.dart';
 import '../common/dialogs.dart';
 import '../widgets/app_icon.dart';
-import '../widgets/top_message.dart';
+import '../widgets/toast.dart';
 
 /// AI 面板（FR-16 ~ FR-20 / 9.4）：
 /// 四类能力；候选卡片、加载态、失败重试；结果不自动写入正文，需用户确认。
@@ -347,7 +347,7 @@ class _AiPanelState extends State<AiPanel> {
               state.onEditorChanged();
               await state.autosave.flush();
               if (context.mounted) {
-                showTopMessage(context, '已插入；插入前已自动快照，可从「历史快照」撤销');
+                showToast(context, '已插入；插入前已自动快照，可从「历史快照」撤销');
               }
             },
           ),
@@ -372,7 +372,7 @@ class _AiPanelState extends State<AiPanel> {
               state.onEditorChanged();
               await state.autosave.flush();
               if (context.mounted) {
-                showTopMessage(context, '已采纳写入正文');
+                showToast(context, '已采纳写入正文');
               }
             },
           ),
@@ -391,7 +391,7 @@ class _AiPanelState extends State<AiPanel> {
                 content: text,
               );
               if (context.mounted) {
-                showTopMessage(context, '已存入灵感便签（素材库）');
+                showToast(context, '已存入灵感便签（素材库）');
               }
             },
           ),
@@ -423,7 +423,7 @@ class _AiPanelState extends State<AiPanel> {
                 content: content,
               );
               if (context.mounted) {
-                showTopMessage(context, '已保存至素材库·角色卡');
+                showToast(context, '已保存至素材库·角色卡');
               }
             },
           ),

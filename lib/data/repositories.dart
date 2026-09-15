@@ -282,6 +282,50 @@ class NoteRepository {
   }
 }
 
+class CharacterRepository {
+  Future<List<Character>> listByBook(String bookId) async {
+    final db = await Db.instance();
+    final rows = await db.query('characters',
+        where: 'book_id = ?',
+        whereArgs: [bookId],
+        orderBy: 'created_at DESC');
+    return rows.map(Character.fromMap).toList();
+  }
+
+  Future<Character> create({
+    required String bookId,
+    required String name,
+  }) async {
+    final now = DateTime.now();
+    final char = Character(
+        id: newId(), bookId: bookId, name: name,
+        createdAt: now, updatedAt: now);
+    final db = await Db.instance();
+    await db.insert('characters', char.toMap());
+    return char;
+  }
+
+  Future<void> update(Character char) async {
+    char.updatedAt = DateTime.now();
+    final db = await Db.instance();
+    await db.update('characters', char.toMap(),
+        where: 'id = ?', whereArgs: [char.id]);
+  }
+
+  Future<Character?> get(String id) async {
+    final db = await Db.instance();
+    final rows = await db.query('characters',
+        where: 'id = ?', whereArgs: [id]);
+    if (rows.isEmpty) return null;
+    return Character.fromMap(rows.first);
+  }
+
+  Future<void> hardDelete(String id) async {
+    final db = await Db.instance();
+    await db.delete('characters', where: 'id = ?', whereArgs: [id]);
+  }
+}
+
 class StatsRepository {
   Future<WriteRecord> today() async {
     final key = WriteRecord.dateKeyOf(DateTime.now());
