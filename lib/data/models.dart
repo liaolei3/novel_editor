@@ -12,6 +12,7 @@ class Book {
     this.deleted = false,
     this.lastChapterId,
     this.lastCursor,
+    this.coverPath = '',
   });
 
   final String id;
@@ -24,6 +25,9 @@ class Book {
   String? lastChapterId;
   int? lastCursor;
 
+  /// 封面图片相对数据目录的路径（如 'covers/xxx.png'），空 = 未设置。
+  String coverPath;
+
   Map<String, Object?> toMap() => {
         'id': id,
         'title': title,
@@ -34,6 +38,7 @@ class Book {
         'deleted': deleted ? 1 : 0,
         'last_chapter_id': lastChapterId,
         'last_cursor': lastCursor,
+        'cover_path': coverPath,
       };
 
   static Book fromMap(Map<String, Object?> map) => Book(
@@ -46,6 +51,7 @@ class Book {
         deleted: (map['deleted'] as int? ?? 0) == 1,
         lastChapterId: map['last_chapter_id'] as String?,
         lastCursor: map['last_cursor'] as int?,
+        coverPath: (map['cover_path'] as String?) ?? '',
       );
 }
 

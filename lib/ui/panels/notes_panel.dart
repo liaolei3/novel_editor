@@ -134,30 +134,32 @@ class _NotesPanelState extends State<NotesPanel> {
     final saved = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: Text('编辑${_labelOf(note.type)}'),
-        content: SizedBox(
-          width: 420,
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: '标题')),
-            const SizedBox(height: 12),
-            TextField(
-              controller: bodyCtrl,
-              maxLines: 8,
-              decoration: InputDecoration(
-                labelText: switch (note.type) {
-                  NoteType.role => '外貌 / 性格 / 背景 / 口头禅 / 人物关系',
-                  NoteType.world => '世界观设定',
-                  NoteType.idea => '灵感内容',
-                },
+      builder: (ctx) => DraggableDialog(
+        child: AlertDialog(
+          title: Text('编辑${_labelOf(note.type)}'),
+          content: SizedBox(
+            width: 420,
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: '标题')),
+              const SizedBox(height: 12),
+              TextField(
+                controller: bodyCtrl,
+                maxLines: 8,
+                decoration: InputDecoration(
+                  labelText: switch (note.type) {
+                    NoteType.role => '外貌 / 性格 / 背景 / 口头禅 / 人物关系',
+                    NoteType.world => '世界观设定',
+                    NoteType.idea => '灵感内容',
+                  },
+                ),
               ),
-            ),
-          ]),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('保存')),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('保存')),
-        ],
       ),
     );
     if (saved == true) {

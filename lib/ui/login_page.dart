@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../state/settings_controller.dart';
+import 'common/dialogs.dart';
 import 'widgets/app_icon.dart';
 import 'widgets/toast.dart';
 
@@ -13,7 +14,7 @@ Future<void> showLoginDialog(BuildContext context) {
   return showDialog<void>(
     context: context,
     barrierDismissible: false,
-    builder: (_) => const LoginDialog(),
+    builder: (_) => const DraggableDialog(child: LoginDialog()),
   );
 }
 

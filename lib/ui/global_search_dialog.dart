@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../core/utils/global_search.dart';
 import '../state/app_state.dart';
+import 'common/dialogs.dart';
 import 'widgets/app_icon.dart';
 import 'widgets/toast.dart';
 
@@ -13,7 +14,7 @@ Future<void> showGlobalSearchDialog(BuildContext context) {
   return showDialog(
     context: context,
     barrierDismissible: false,
-    builder: (_) => const _GlobalSearchDialog(),
+    builder: (_) => const DraggableDialog(child: _GlobalSearchDialog()),
   );
 }
 
@@ -66,22 +67,24 @@ class _GlobalSearchDialogState extends State<_GlobalSearchDialog> {
     final confirmed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text('全部替换'),
-        content: Text(
-          '将在 ${_hits.length} 个位置替换共 $total 处。\n\n'
-          '${replaceEmpty ? "替换词为空，命中的内容将被删除。\n\n" : ""}'
-          '执行前会为受影响章节自动创建快照，'
-          '如需撤销请前往「历史快照」回滚。确定执行？',
+      builder: (ctx) => DraggableDialog(
+        child: AlertDialog(
+          title: const Text('全部替换'),
+          content: Text(
+            '将在 ${_hits.length} 个位置替换共 $total 处。\n\n'
+            '${replaceEmpty ? "替换词为空，命中的内容将被删除。\n\n" : ""}'
+            '执行前会为受影响章节自动创建快照，'
+            '如需撤销请前往「历史快照」回滚。确定执行？',
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('替换')),
+          ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('替换')),
-        ],
       ),
     );
     if (confirmed != true) return;

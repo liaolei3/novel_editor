@@ -23,7 +23,7 @@ class Db {
     _db = await databaseFactory.openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 3,
+        version: 4,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
       ),
@@ -47,7 +47,8 @@ class Db {
         updated_at INTEGER NOT NULL,
         deleted INTEGER NOT NULL DEFAULT 0,
         last_chapter_id TEXT,
-        last_cursor INTEGER
+        last_cursor INTEGER,
+        cover_path TEXT NOT NULL DEFAULT ''
       )
     ''');
     await db.execute('''
@@ -133,33 +134,36 @@ class Db {
         dirty INTEGER NOT NULL DEFAULT 0
       )
     ''');
+    await db.execute('''
+      CREATE TABLE characters (
+        id TEXT PRIMARY KEY,
+        book_id TEXT NOT NULL,
+        name TEXT NOT NULL DEFAULT '',
+        aliases TEXT NOT NULL DEFAULT '',
+        type TEXT NOT NULL DEFAULT 'other',
+        gender TEXT NOT NULL DEFAULT 'male',
+        appearance TEXT NOT NULL DEFAULT '',
+        personality TEXT NOT NULL DEFAULT '',
+        background TEXT NOT NULL DEFAULT '',
+        avatar TEXT NOT NULL DEFAULT '',
+        color TEXT NOT NULL DEFAULT '',
+        tags TEXT NOT NULL DEFAULT '',
+        sort INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('CREATE INDEX idx_characters_book ON characters(book_id)');
   }
 
+  /// 增量迁移：v3 → v4 给 books 增加 cover_path 列。
   static Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 2) {
-      await db.execute('''
-        CREATE TABLE characters (
-          id TEXT PRIMARY KEY,
-          book_id TEXT NOT NULL,
-          name TEXT NOT NULL DEFAULT '',
-          aliases TEXT NOT NULL DEFAULT '',
-          type TEXT NOT NULL DEFAULT 'other',
-          gender TEXT NOT NULL DEFAULT 'male',
-          appearance TEXT NOT NULL DEFAULT '',
-          personality TEXT NOT NULL DEFAULT '',
-          background TEXT NOT NULL DEFAULT '',
-          avatar TEXT NOT NULL DEFAULT '',
-          color TEXT NOT NULL DEFAULT '',
-          tags TEXT NOT NULL DEFAULT '',
-          sort INTEGER NOT NULL DEFAULT 0,
-          created_at INTEGER NOT NULL,
-          updated_at INTEGER NOT NULL
-        )
-      ''');
-      await db.execute('CREATE INDEX idx_characters_book ON characters(book_id)');
-    }
-    if (oldVersion < 3) {
-      await db.execute("ALTER TABLE characters ADD COLUMN gender TEXT NOT NULL DEFAULT 'male'");
+    if (oldVersion < 4) {
+      final cols = await db.rawQuery('PRAGMA table_info(books)');
+      final hasCol = cols.any((c) => c['name'] == 'cover_path');
+      if (!hasCol) {
+        await db.execute("ALTER TABLE books ADD COLUMN cover_path TEXT NOT NULL DEFAULT ''");
+      }
     }
   }
 

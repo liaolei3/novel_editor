@@ -123,19 +123,21 @@ class _SnapshotPanelState extends State<SnapshotPanel> {
     final ok = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text('回滚确认'),
-        content: const Text('将回滚到所选快照版本。当前版本会先自动保存为「回滚前」快照，操作本身可逆。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('回滚'),
-          ),
-        ],
+      builder: (ctx) => DraggableDialog(
+        child: AlertDialog(
+          title: const Text('回滚确认'),
+          content: const Text('将回滚到所选快照版本。当前版本会先自动保存为「回滚前」快照，操作本身可逆。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('回滚'),
+            ),
+          ],
+        ),
       ),
     );
     if (ok != true) return;

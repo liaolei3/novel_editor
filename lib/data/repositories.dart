@@ -38,6 +38,10 @@ class BookRepository {
   Future<void> updateMeta(String id, String penName, String summary) =>
       _update(id, {'pen_name': penName, 'summary': summary});
 
+  /// 更新封面路径；传 null/'' 表示清除。
+  Future<void> updateCover(String id, String? coverPath) =>
+      _update(id, {'cover_path': coverPath ?? ''});
+
   Future<void> saveLocation(String id, String? chapterId, int? cursor) =>
       _update(id, {'last_chapter_id': chapterId, 'last_cursor': cursor});
 

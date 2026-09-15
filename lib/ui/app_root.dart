@@ -7,6 +7,7 @@ import '../services/durability_service.dart';
 import '../state/app_state.dart';
 import '../state/settings_controller.dart';
 import 'app_theme.dart';
+import 'common/dialogs.dart';
 import 'shelf_page.dart';
 
 class AppRoot extends StatelessWidget {
@@ -45,22 +46,24 @@ Future<bool> confirmDangerous(
   final result = await showDialog<bool>(
     context: context,
     barrierDismissible: false,
-    builder: (ctx) => AlertDialog(
-      title: const Text('请确认'),
-      content: Text(message),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, false),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          style: FilledButton.styleFrom(
-            backgroundColor: Theme.of(ctx).colorScheme.error,
+    builder: (ctx) => DraggableDialog(
+      child: AlertDialog(
+        title: const Text('请确认'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
           ),
-          onPressed: () => Navigator.pop(ctx, true),
-          child: Text(confirmLabel),
-        ),
-      ],
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(confirmLabel),
+          ),
+        ],
+      ),
     ),
   );
   return result == true;

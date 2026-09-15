@@ -16,6 +16,7 @@ import '../../services/autosave_service.dart';
 import '../../state/app_state.dart';
 import '../../state/settings_controller.dart';
 
+import '../common/dialogs.dart';
 import '../common/file_io.dart';
 import 'app_icon.dart';
 import 'character_tip.dart';
@@ -55,11 +56,15 @@ class _EditorAreaState extends State<EditorArea> {
   Map<String, Character> _nameToChar = const {};
   RegExp? _nameRegExp;
 
+  /// 缓存 AppState：dispose 期间禁止通过 context 查找祖先节点。
+  late final AppState _appState;
+
   @override
   void initState() {
     super.initState();
+    _appState = context.read<AppState>();
     _refreshCharacterDict();
-    context.read<AppState>().characterDictVersion.addListener(_refreshCharacterDict);
+    _appState.characterDictVersion.addListener(_refreshCharacterDict);
   }
 
   Future<void> _refreshCharacterDict() async {
@@ -116,10 +121,51 @@ class _EditorAreaState extends State<EditorArea> {
 
   @override
   void dispose() {
-    context.read<AppState>().characterDictVersion.removeListener(_refreshCharacterDict);
+    _appState.characterDictVersion.removeListener(_refreshCharacterDict);
     _focusNode.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  /// 中文段落首行缩进：两个全角空格。
+  static const String _cnIndent = '\u3000\u3000';
+
+  /// 光标所在行是否为普通段落（无列表/引用/代码块/标题/对齐等块级属性）。
+  bool _isPlainLine(QuillController controller, int offset) {
+    final node = controller.document.queryChild(offset).node;
+    if (node == null) return true;
+    return node.style.attributes.values
+        .every((attr) => attr.scope != AttributeScope.block);
+  }
+
+  /// 回车：换行 + 普通段落行首自动缩进两个全角空格。
+  /// 单次 replaceText 同时写入换行与缩进，撤销时一并回退。
+  /// 块级行（列表/引用/代码块/标题）保持 Quill 默认换行行为。
+  void _handleEnterWithIndent(QuillController controller) {
+    final sel = controller.selection;
+    final start = sel.start;
+    final indent = _isPlainLine(controller, start) ? _cnIndent : '';
+    controller.replaceText(
+      start,
+      sel.end - start,
+      '\n$indent',
+      TextSelection.collapsed(offset: start + 1 + indent.length),
+    );
+  }
+
+  /// Tab：普通段落插入两个全角空格；
+  /// 有选区或块级行（列表等需要缩进层级）交给 Quill 默认处理。
+  KeyEventResult? _handleTabIndent(QuillController controller) {
+    final sel = controller.selection;
+    if (sel.baseOffset != sel.extentOffset) return null;
+    if (!_isPlainLine(controller, sel.baseOffset)) return null;
+    controller.replaceText(
+      sel.baseOffset,
+      0,
+      _cnIndent,
+      TextSelection.collapsed(offset: sel.baseOffset + _cnIndent.length),
+    );
+    return KeyEventResult.handled;
   }
 
   /// 自定义 textSpanBuilder：角色名高亮 + 搜索背景高亮复合。
@@ -353,6 +399,25 @@ class _EditorAreaState extends State<EditorArea> {
                       HardwareKeyboard.instance.isControlPressed) {
                     _openSearch(withReplace: true);
                     return KeyEventResult.handled;
+                  }
+                  // 回车：换行 + 普通段落自动缩进两个全角空格。
+                  if (event is KeyDownEvent &&
+                      (event.logicalKey == LogicalKeyboardKey.enter ||
+                          event.logicalKey ==
+                              LogicalKeyboardKey.numpadEnter)) {
+                    final mods = HardwareKeyboard.instance;
+                    if (!mods.isControlPressed &&
+                        !mods.isMetaPressed &&
+                        !mods.isAltPressed) {
+                      _handleEnterWithIndent(state.editorController);
+                      return KeyEventResult.handled;
+                    }
+                    return null;
+                  }
+                  // Tab：普通段落插入两个全角空格。
+                  if (event is KeyDownEvent &&
+                      event.logicalKey == LogicalKeyboardKey.tab) {
+                    return _handleTabIndent(state.editorController);
                   }
                   final ctrl = HardwareKeyboard.instance.isControlPressed;
                   final shift = HardwareKeyboard.instance.isShiftPressed;
@@ -680,50 +745,52 @@ class _EditorAreaState extends State<EditorArea> {
     final apply = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: Row(children: [
-          const Text('一键排版预览'),
-          const Spacer(),
-          IconButton(
-            icon: const AppIcon(Icons.close),
-            onPressed: () => Navigator.pop(ctx, false),
+      builder: (ctx) => DraggableDialog(
+        child: AlertDialog(
+          title: Row(children: [
+            const Text('一键排版预览'),
+            const Spacer(),
+            IconButton(
+              icon: const AppIcon(Icons.close),
+              onPressed: () => Navigator.pop(ctx, false),
+            ),
+          ]),
+          content: SizedBox(
+            width: 640,
+            height: 420,
+            child: Column(children: [
+              Expanded(
+                child: Row(children: [
+                  Expanded(
+                    child: Column(children: [
+                      const Text('排版前'),
+                      Expanded(child: SingleChildScrollView(child: SelectableText(before,
+                          style: const TextStyle(fontSize: 12, height: 1.5)))),
+                    ]),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(children: [
+                      const Text('排版后'),
+                      Expanded(child: SingleChildScrollView(child: SelectableText(after,
+                          style: const TextStyle(fontSize: 12, height: 1.5)))),
+                    ]),
+                  ),
+                ]),
+              ),
+            ]),
           ),
-        ]),
-        content: SizedBox(
-          width: 640,
-          height: 420,
-          child: Column(children: [
-            Expanded(
-              child: Row(children: [
-                Expanded(
-                  child: Column(children: [
-                    const Text('排版前'),
-                    Expanded(child: SingleChildScrollView(child: SelectableText(before,
-                        style: const TextStyle(fontSize: 12, height: 1.5)))),
-                  ]),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(children: [
-                    const Text('排版后'),
-                    Expanded(child: SingleChildScrollView(child: SelectableText(after,
-                        style: const TextStyle(fontSize: 12, height: 1.5)))),
-                  ]),
-                ),
-              ]),
-            ),
-          ]),
+          actions: [
+            Row(children: [
+              const Expanded(
+                child: Text('提示：排版作用于纯文本，应用后富文本格式将被重置。',
+                    style: TextStyle(fontSize: 11, color: Colors.orange)),
+              ),
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('应用')),
+            ]),
+          ],
         ),
-        actions: [
-          Row(children: [
-            const Expanded(
-              child: Text('提示：排版作用于纯文本，应用后富文本格式将被重置。',
-                  style: TextStyle(fontSize: 11, color: Colors.orange)),
-            ),
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('应用')),
-          ]),
-        ],
       ),
     );
     if (apply != true) return;
@@ -739,12 +806,14 @@ class _EditorAreaState extends State<EditorArea> {
     final choice = await showDialog<String>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => SimpleDialog(
-        title: const Text('导入'),
-        children: [
-          SimpleDialogOption(onPressed: () => Navigator.pop(ctx, 'txt'), child: const Text('批量导入 TXT（按“第X章”自动切分）')),
-          SimpleDialogOption(onPressed: () => Navigator.pop(ctx, 'docx'), child: const Text('导入 docx（单文件 = 单章节）')),
-        ],
+      builder: (ctx) => DraggableDialog(
+        child: SimpleDialog(
+          title: const Text('导入'),
+          children: [
+            SimpleDialogOption(onPressed: () => Navigator.pop(ctx, 'txt'), child: const Text('批量导入 TXT（按“第X章”自动切分）')),
+            SimpleDialogOption(onPressed: () => Navigator.pop(ctx, 'docx'), child: const Text('导入 docx（单文件 = 单章节）')),
+          ],
+        ),
       ),
     );
     if (choice == null) return;
@@ -777,13 +846,15 @@ class _EditorAreaState extends State<EditorArea> {
     final choice = await showDialog<String>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => SimpleDialog(
-        title: const Text('导出'),
-        children: [
-          SimpleDialogOption(onPressed: () => Navigator.pop(ctx, 'chapter'), child: const Text('导出本章 TXT')),
-          SimpleDialogOption(onPressed: () => Navigator.pop(ctx, 'book_txt'), child: const Text('导出全书 TXT')),
-          SimpleDialogOption(onPressed: () => Navigator.pop(ctx, 'book_docx'), child: const Text('导出全书 Word (.docx)')),
-        ],
+      builder: (ctx) => DraggableDialog(
+        child: SimpleDialog(
+          title: const Text('导出'),
+          children: [
+            SimpleDialogOption(onPressed: () => Navigator.pop(ctx, 'chapter'), child: const Text('导出本章 TXT')),
+            SimpleDialogOption(onPressed: () => Navigator.pop(ctx, 'book_txt'), child: const Text('导出全书 TXT')),
+            SimpleDialogOption(onPressed: () => Navigator.pop(ctx, 'book_docx'), child: const Text('导出全书 Word (.docx)')),
+          ],
+        ),
       ),
     );
     if (choice == null || state.currentBook == null) return;
@@ -826,12 +897,14 @@ class _EditorAreaState extends State<EditorArea> {
     return showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text('是否包含章节名？'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('不含')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('包含')),
-        ],
+      builder: (ctx) => DraggableDialog(
+        child: AlertDialog(
+          title: const Text('是否包含章节名？'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('不含')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('包含')),
+          ],
+        ),
       ),
     );
   }

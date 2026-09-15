@@ -12,6 +12,7 @@ import '../../state/app_config.dart';
 import '../../state/app_state.dart';
 import '../../state/settings_controller.dart';
 import 'app_theme.dart';
+import 'common/dialogs.dart';
 import 'common/file_io.dart';
 import 'conflict_page.dart';
 import 'recycle_page.dart';
@@ -23,7 +24,7 @@ Future<void> showSettingsDialog(BuildContext context) {
   return showDialog<void>(
     context: context,
     barrierDismissible: false,
-    builder: (_) => const SettingsDialog(),
+    builder: (_) => const DraggableDialog(child: SettingsDialog()),
   );
 }
 
@@ -485,19 +486,21 @@ class _SettingsDialogState extends State<SettingsDialog> {
     final confirmed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text('切换数据存储目录'),
-        content: Text(hasExisting
-            ? '目标目录已包含数据文件，切换后将直接使用该目录中的数据（当前数据保留不动）：\n\n$target'
-            : '将把当前全部数据（数据库与备份）迁移到：\n\n$target\n\n迁移后需重启应用生效，当前目录数据不会被删除。'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('确认切换')),
-        ],
+      builder: (ctx) => DraggableDialog(
+        child: AlertDialog(
+          title: const Text('切换数据存储目录'),
+          content: Text(hasExisting
+              ? '目标目录已包含数据文件，切换后将直接使用该目录中的数据（当前数据保留不动）：\n\n$target'
+              : '将把当前全部数据（数据库与备份）迁移到：\n\n$target\n\n迁移后需重启应用生效，当前目录数据不会被删除。'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('确认切换')),
+          ],
+        ),
       ),
     );
     if (confirmed != true) return;
@@ -511,14 +514,16 @@ class _SettingsDialogState extends State<SettingsDialog> {
       await showDialog<void>(
         context: context,
         barrierDismissible: false,
-        builder: (ctx) => AlertDialog(
-          title: const Text('已切换'),
-          content: const Text('数据存储目录已更新，重启应用后生效。'),
-          actions: [
-            FilledButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('知道了')),
-          ],
+        builder: (ctx) => DraggableDialog(
+          child: AlertDialog(
+            title: const Text('已切换'),
+            content: const Text('数据存储目录已更新，重启应用后生效。'),
+            actions: [
+              FilledButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('知道了')),
+            ],
+          ),
         ),
       );
     } catch (e) {
@@ -558,17 +563,19 @@ class _SettingsDialogState extends State<SettingsDialog> {
     final ok = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text('AI 网关（OpenAI 兼容）'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: urlCtrl, decoration: const InputDecoration(labelText: 'Base URL（如 https://api.xxx.com/v1）')),
-          TextField(controller: keyCtrl, obscureText: true, decoration: const InputDecoration(labelText: 'API Key')),
-          TextField(controller: modelCtrl, decoration: const InputDecoration(labelText: '模型名')),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('保存')),
-        ],
+      builder: (ctx) => DraggableDialog(
+        child: AlertDialog(
+          title: const Text('AI 网关（OpenAI 兼容）'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextField(controller: urlCtrl, decoration: const InputDecoration(labelText: 'Base URL（如 https://api.xxx.com/v1）')),
+            TextField(controller: keyCtrl, obscureText: true, decoration: const InputDecoration(labelText: 'API Key')),
+            TextField(controller: modelCtrl, decoration: const InputDecoration(labelText: '模型名')),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('保存')),
+          ],
+        ),
       ),
     );
     if (ok == true) {

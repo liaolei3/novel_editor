@@ -91,8 +91,12 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<Book> createBook(String title, String penName) async {
+  Future<Book> createBook(String title, String penName,
+      {String? coverPath}) async {
     final book = await books.create(title, penName: penName);
+    if (coverPath != null && coverPath.isNotEmpty) {
+      await books.updateCover(book.id, coverPath);
+    }
     final vol = await volumes.create(book.id, '第一卷');
     await chapters.create(bookId: book.id, volumeId: vol.id, title: '第一章');
     await loadShelf();

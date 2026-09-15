@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/utils/rich_text_codec.dart';
 import '../../services/sync/sync_engine.dart';
 import '../../state/app_state.dart';
+import 'common/dialogs.dart';
 
 
 /// 冲突解决界面（FR-13 / 12.2）：
@@ -23,10 +24,13 @@ class _ConflictDialogState extends State<ConflictDialog> {
   @override
   Widget build(BuildContext context) {
     if (_index >= widget.conflicts.length) {
-      return const AlertDialog(title: Text('冲突已全部解决'));
+      return const DraggableDialog(
+        child: AlertDialog(title: Text('冲突已全部解决')),
+      );
     }
     final conflict = widget.conflicts[_index];
-    return Dialog(
+    return DraggableDialog(
+      child: Dialog(
       insetPadding: const EdgeInsets.all(24),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 900, maxHeight: 720),
@@ -65,6 +69,7 @@ class _ConflictDialogState extends State<ConflictDialog> {
             ]),
           ]),
         ),
+      ),
       ),
     );
   }

@@ -39,15 +39,19 @@ class _WorkspacePageState extends State<WorkspacePage> {
   bool _immersive = false;
   String? _openCharacterId;
 
+  /// 缓存 AppState：dispose 期间禁止通过 context 查找祖先节点。
+  late final AppState _appState;
+
   @override
   void initState() {
     super.initState();
-    context.read<AppState>().openCharacterNonce.addListener(_onOpenCharacter);
+    _appState = context.read<AppState>();
+    _appState.openCharacterNonce.addListener(_onOpenCharacter);
   }
 
   @override
   void dispose() {
-    context.read<AppState>().openCharacterNonce.removeListener(_onOpenCharacter);
+    _appState.openCharacterNonce.removeListener(_onOpenCharacter);
     super.dispose();
   }
 
