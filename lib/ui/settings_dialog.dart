@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/utils/sensitive_words.dart';
 import '../../data/db.dart';
+import '../../services/logger.dart';
 import '../../state/app_config.dart';
 import '../../state/app_state.dart';
 import '../../state/settings_controller.dart';
@@ -342,6 +343,13 @@ class _SettingsDialogState extends State<SettingsDialog> {
       ]),
       const SizedBox(height: 12),
       _group(hairline, [
+        ListTile(
+          title: const Text('运行日志'),
+          subtitle: const Text('程序出错会自动记录在此，可打包发给支持人员'),
+          trailing: const AppIcon(Icons.description),
+          onTap: _openLogs,
+        ),
+        _divider(hairline),
         const ListTile(
           title: Text('关于'),
           subtitle: Text('NovelEditor MVP 0.1.0 · 本地数据双副本 + 快照 + 崩溃恢复'),
@@ -350,9 +358,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
     ];
   }
 
-  /// 卡片与导航选中项的共享底色：选中即「提亮」——
-  /// 像素风：羊皮纸底 #FFE9C6 上的亮奶油面板；极简风：surfaceContainerHighest，
-  /// 暗色下换更亮的灰色保证与弹窗底的对比。
+  /// 卡片与导航选中项的共享底色：选中即「提亮」
   Color _panelColor(bool isPixel) {
     if (isPixel) return const Color(0xFFFFF6E0);
     final isLight = Theme.of(context).brightness == Brightness.light;
@@ -591,6 +597,19 @@ class _SettingsDialogState extends State<SettingsDialog> {
         .setSensitiveDictVersion('导入词库 ${scanner.words.length} 词');
     if (mounted) {
       showToast(context, '词库已更新（${scanner.words.length} 词）');
+    }
+  }
+
+  /// 用系统资源管理器打开日志文件夹（Windows），便于用户打包日志发回排查。
+  Future<void> _openLogs() async {
+    final dirPath = await Logger.logsDir();
+    try {
+      if (!Directory(dirPath).existsSync()) {
+        await Directory(dirPath).create(recursive: true);
+      }
+      await Process.run('explorer.exe', [dirPath]);
+    } catch (e) {
+      if (mounted) showToast(context, '打开失败：$e\n目录：$dirPath');
     }
   }
 

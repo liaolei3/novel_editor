@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../core/constants.dart';
+import '../logger.dart';
 
 /// AI 网关（FR-16 ~ FR-20 / NFR-P4）。
 ///
@@ -91,8 +92,10 @@ class OpenAiCompatibleGateway implements AiGateway {
       if (texts.isEmpty) return AiResult(const [], error: 'AI 返回为空，可重试。');
       return AiResult(texts);
     } on TimeoutException {
+      Logger.warn('AI 请求超时', tag: 'AI');
       return AiResult(const [], error: 'AI 请求超时（30s），可重试。');
-    } catch (e) {
+    } catch (e, s) {
+      Logger.error('AI 请求失败', error: e, stackTrace: s, tag: 'AI');
       return AiResult(const [], error: 'AI 请求失败：$e');
     }
   }

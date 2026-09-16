@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:dart_quill_delta/dart_quill_delta.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 
+import '../../services/logger.dart';
+
 /// 富文本编解码工具。
 ///
 /// 项目持久化层（SQLite `chapters.content` / `snapshots.content`）以字符串存储
@@ -36,7 +38,9 @@ class RichTextCodec {
       if (json is! List) return s;
       final doc = Document.fromJson(json);
       return doc.toPlainText();
-    } catch (_) {
+    } catch (e) {
+      Logger.warn('章节内容解码为纯文本失败（长度 ${s.length}）',
+          error: e, tag: 'RichText');
       return s;
     }
   }
@@ -50,7 +54,9 @@ class RichTextCodec {
       final json = jsonDecode(content);
       if (json is! List) throw const FormatException('not delta json');
       return Document.fromJson(json);
-    } catch (_) {
+    } catch (e) {
+      Logger.warn('章节内容构造文档失败，降级为纯文本（长度 ${content.length}）',
+          error: e, tag: 'RichText');
       var p = content;
       if (!p.endsWith('\n')) p = '$p\n';
       return Document.fromDelta(Delta()..insert(p));

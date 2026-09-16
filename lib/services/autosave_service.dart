@@ -6,6 +6,7 @@ import '../core/constants.dart';
 import '../data/models.dart';
 import '../data/repositories.dart';
 import 'durability_service.dart';
+import 'logger.dart';
 
 /// 自动保存（FR-2 / NFR-R2）：
 /// - 输入停顿 ≤2 秒防抖落盘；
@@ -65,8 +66,9 @@ class AutosaveService {
       _pending = null;
       state.value = SaveState.saved;
       return true;
-    } catch (e) {
-      debugPrint('autosave failed: $e');
+    } catch (e, s) {
+      Logger.error('自动保存失败: ${chapter.id}',
+          error: e, stackTrace: s, tag: 'Autosave');
       state.value = SaveState.failed;
       return false;
     } finally {

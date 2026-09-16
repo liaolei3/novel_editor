@@ -32,6 +32,8 @@ dev_dependencies:
   flutter_lints: ^6.0.0
 
 dependency_overrides:
+  flutter_quill:
+    path: third_party/flutter_quill
   # objective_c 9.6.1 的 build hook 引用了 code_assets 2.0.0 中不存在的
   # Architecture.arm64e，导致 Windows 构建失败，回退到 9.6.0 待上游修复
   objective_c: 9.6.0

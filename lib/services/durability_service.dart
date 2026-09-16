@@ -1,12 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
 import '../data/db.dart';
 import '../data/models.dart';
 import '../data/repositories.dart';
+import 'logger.dart';
 
 /// 防丢稿三重保障（FR-9 / FR-10 / FR-11）：
 /// - 快照：手动 / 每日自动，保留最近 50 个；
@@ -66,8 +66,9 @@ class DurabilityService {
       await tmp.writeAsString(chapter.content, flush: true);
       await tmp.rename(file.path);
       await _cleanOldBackups(bookDir);
-    } catch (e) {
-      debugPrint('backup failed: $e');
+    } catch (e, s) {
+      Logger.error('章节备份失败: ${chapter.id}',
+          error: e, stackTrace: s, tag: 'Durability');
     }
   }
 

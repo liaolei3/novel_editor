@@ -5,6 +5,7 @@ import 'package:sqflite/sqflite.dart';
 import '../../data/db.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
+import '../logger.dart';
 
 /// 云同步引擎（FR-12 / FR-13 / 12.2）。
 ///
@@ -35,7 +36,8 @@ class SyncEngine {
         if (conflict != null) conflicts.add(conflict);
       }
       _events.add(SyncEvent(SyncStatus.completed, chapterCount: chapters.length));
-    } catch (e) {
+    } catch (e, s) {
+      Logger.error('云同步失败', error: e, stackTrace: s, tag: 'Sync');
       _events.add(SyncEvent(SyncStatus.failed, error: e.toString()));
     } finally {
       _syncing = false;
