@@ -58,7 +58,8 @@ Future<void> _bootstrap() async {
 
   final books = BookRepository();
   final volumes = VolumeRepository();
-  final chapters = ChapterRepository();
+  final chapters = ChapterRepository(
+      standardResolver: () => settings.countStandard);
   final snapshots = SnapshotRepository();
   final notes = NoteRepository();
   final characters = CharacterRepository();
@@ -76,7 +77,7 @@ Future<void> _bootstrap() async {
   session.begin();
   await recycle.purgeExpired();
 
-  final crashReport = await crash.detect();
+  await crash.detect();
   await crash.markAlive();
 
   final appState = AppState(
@@ -112,6 +113,6 @@ Future<void> _bootstrap() async {
       ChangeNotifierProvider<SettingsController>.value(value: settings),
       ChangeNotifierProvider<AppState>.value(value: appState),
     ],
-    child: AppRoot(crashReport: crashReport),
+    child: AppRoot(),
   ));
 }

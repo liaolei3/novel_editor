@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 
 import '../../state/settings_controller.dart';
 import 'common/dialogs.dart';
-import 'widgets/app_icon.dart';
 import 'widgets/toast.dart';
 
 /// 登录弹窗（FR-12）：手机号/邮箱注册登录。
@@ -45,7 +44,7 @@ class _LoginDialogState extends State<LoginDialog> {
         const Text('账号登录'),
         const Spacer(),
         IconButton(
-          icon: const AppIcon(Icons.close),
+          icon: const Icon(Icons.close),
           onPressed: () => Navigator.pop(context),
         ),
       ]),
@@ -65,7 +64,7 @@ class _LoginDialogState extends State<LoginDialog> {
           controller: _idCtrl,
           decoration: const InputDecoration(
               labelText: '手机号 / 邮箱',
-              prefixIcon: AppIcon(Icons.person_outline)),
+              prefixIcon: Icon(Icons.person_outline)),
         ),
         const SizedBox(height: 12),
         TextField(
@@ -73,7 +72,7 @@ class _LoginDialogState extends State<LoginDialog> {
           obscureText: true,
           decoration: const InputDecoration(
               labelText: '密码 / 验证码',
-              prefixIcon: AppIcon(Icons.lock_outline)),
+              prefixIcon: Icon(Icons.lock_outline)),
         ),
         if (_error != null) ...[
           const SizedBox(height: 8),

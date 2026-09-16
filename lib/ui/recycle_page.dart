@@ -6,7 +6,6 @@ import 'package:provider/provider.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
 import 'app_root.dart';
-import 'widgets/app_icon.dart';
 import 'widgets/toast.dart';
 import 'widgets/window_controls.dart';
 
@@ -58,7 +57,7 @@ class _RecycleViewState extends State<RecycleView> {
           ),
           trailing: IconButton(
             tooltip: '清空回收站',
-            icon: const AppIcon(Icons.delete_forever),
+            icon: const Icon(Icons.delete_forever),
             onPressed: _items.isEmpty ? null : _clearAll,
           ),
         ),
@@ -75,7 +74,7 @@ class _RecycleViewState extends State<RecycleView> {
                         .inDays
                         .clamp(0, 30);
                     return ListTile(
-                      leading: AppIcon(_iconOf(item.type)),
+                      leading: Icon(_iconOf(item.type)),
                       title: Text(title),
                       subtitle: Text('$daysLeft 天后自动清除（保留 30 天）'),
                       trailing: Row(mainAxisSize: MainAxisSize.min, children: [

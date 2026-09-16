@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../app_root.dart';
-import '../widgets/app_icon.dart';
+import '../common/dialogs.dart' show DraggableDialog;
 import '../widgets/toast.dart';
 
 /// 角色卡面板：收藏卡册风格，角色列表 + 内页详情编辑。
@@ -31,16 +31,12 @@ class _CharacterPanelState extends State<CharacterPanel> {
   late Character _draft;
   bool _isNew = false;
 
-  bool _appearanceExpanded = false;
-  bool _personalityExpanded = false;
-  bool _backgroundExpanded = false;
+  /// 自定义属性行：属性名添加后固定，仅值可编辑。
+  final List<(String, TextEditingController)> _attrRows = [];
 
   final _nameCtrl = TextEditingController();
   final _searchCtrl = TextEditingController();
   final _aliasesCtrl = TextEditingController();
-  final _appearanceCtrl = TextEditingController();
-  final _personalityCtrl = TextEditingController();
-  final _backgroundCtrl = TextEditingController();
   final _tagsCtrl = TextEditingController();
 
   @override
@@ -135,11 +131,88 @@ class _CharacterPanelState extends State<CharacterPanel> {
     _nameCtrl.dispose();
     _searchCtrl.dispose();
     _aliasesCtrl.dispose();
-    _appearanceCtrl.dispose();
-    _personalityCtrl.dispose();
-    _backgroundCtrl.dispose();
     _tagsCtrl.dispose();
+    _disposeAttrRows();
     super.dispose();
+  }
+
+  void _disposeAttrRows() {
+    for (final (_, v) in _attrRows) {
+      v.dispose();
+    }
+    _attrRows.clear();
+  }
+
+  void _loadAttrRows(List<CharacterAttribute> attrs) {
+    _disposeAttrRows();
+    for (final a in attrs) {
+      _attrRows.add((a.name, TextEditingController(text: a.value)));
+    }
+  }
+
+  /// 弹窗同时输入属性名与属性值后新增属性行；属性名添加后不可修改。
+  Future<void> _addAttrRow() async {
+    final nameCtrl = TextEditingController();
+    final valueCtrl = TextEditingController();
+    final result = await showDialog<(String, String)>(
+      context: context,
+      builder: (ctx) => DraggableDialog(
+        child: AlertDialog(
+          title: const Text('添加属性'),
+          content: SizedBox(
+            width: 260,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: nameCtrl,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                      hintText: '属性名，如：外貌、年龄', isDense: true),
+                  style: const TextStyle(fontSize: 13),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: valueCtrl,
+                  minLines: 3,
+                  maxLines: 5,
+                  decoration:
+                      const InputDecoration(hintText: '属性值', isDense: true),
+                  style: const TextStyle(fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+            FilledButton.tonal(
+              onPressed: () {
+                final n = nameCtrl.text.trim();
+                if (n.isEmpty) return; // 属性名必填
+                Navigator.pop(ctx, (n, valueCtrl.text));
+              },
+              child: const Text('确定'),
+            ),
+          ],
+        ),
+      ),
+    );
+    nameCtrl.dispose();
+    valueCtrl.dispose();
+    if (result == null || !mounted) return;
+    setState(() {
+      _attrRows.add((result.$1, TextEditingController(text: result.$2)));
+    });
+  }
+
+  List<CharacterAttribute> _collectAttrRows() {
+    return [
+      for (final (n, v) in _attrRows) CharacterAttribute(name: n, value: v.text),
+    ];
   }
 
   @override
@@ -170,7 +243,7 @@ class _CharacterPanelState extends State<CharacterPanel> {
                   isDense: true,
                   hintText: '姓名 / 别名 / 标签',
                   hintStyle: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
-                  prefixIcon: AppIcon(Icons.search, size: 14),
+                  prefixIcon: Icon(Icons.search, size: 14),
                   prefixIconConstraints: const BoxConstraints(minWidth: 26, minHeight: 28),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
                   filled: true,
@@ -199,7 +272,7 @@ class _CharacterPanelState extends State<CharacterPanel> {
                   },
                   child: Padding(
                     padding: const EdgeInsets.all(4),
-                    child: AppIcon(
+                    child: Icon(
                       _keyword.isEmpty ? Icons.search : Icons.filter_alt,
                       size: 18,
                       color: _keyword.isEmpty ? null : scheme.primary,
@@ -221,7 +294,7 @@ class _CharacterPanelState extends State<CharacterPanel> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   child: Row(children: [
-                    AppIcon(Icons.add, size: 14, color: scheme.primary),
+                    Icon(Icons.add, size: 14, color: scheme.primary),
                     const SizedBox(width: 4),
                     Text('新建', style: TextStyle(fontSize: 12, color: scheme.primary)),
                   ]),
@@ -255,7 +328,7 @@ class _CharacterPanelState extends State<CharacterPanel> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        AppIcon(Icons.person_outline, size: 48,
+                        Icon(Icons.person_outline, size: 48,
                             color: scheme.onSurfaceVariant.withValues(alpha: 0.3)),
                         const SizedBox(height: 8),
                         Text('暂无角色', style: TextStyle(
@@ -294,9 +367,7 @@ class _CharacterPanelState extends State<CharacterPanel> {
       'aliases': char.aliases,
       'type': char.type.name,
       'gender': char.gender.name,
-      'appearance': char.appearance,
-      'personality': char.personality,
-      'background': char.background,
+      'attributes': char.attributes,
       'avatar': char.avatar,
       'color': char.color,
       'tags': char.tags,
@@ -322,13 +393,10 @@ class _CharacterPanelState extends State<CharacterPanel> {
                 borderRadius: BorderRadius.circular(6),
                 onTap: () => setState(() {
                   _selected = null;
-                  _appearanceExpanded = false;
-                  _personalityExpanded = false;
-                  _backgroundExpanded = false;
                 }),
                 child: const Padding(
                   padding: EdgeInsets.all(4),
-                  child: AppIcon(Icons.arrow_back, size: 18),
+                  child: Icon(Icons.arrow_back, size: 18),
                 ),
               ),
             ),
@@ -350,7 +418,7 @@ class _CharacterPanelState extends State<CharacterPanel> {
                   onTap: () => _delete(),
                   child: const Padding(
                     padding: EdgeInsets.all(4),
-                    child: AppIcon(Icons.delete_outline, size: 18),
+                    child: Icon(Icons.delete_outline, size: 18),
                   ),
                 ),
               ),
@@ -407,7 +475,7 @@ class _CharacterPanelState extends State<CharacterPanel> {
                       shape: BoxShape.circle,
                       border: Border.all(color: scheme.outlineVariant, width: 1.5),
                     ),
-                    child: Center(child: AppIcon(Icons.close, size: 12, color: scheme.onSurfaceVariant)),
+                    child: Center(child: Icon(Icons.close, size: 12, color: scheme.onSurfaceVariant)),
                   ),
                 ),
               ],
@@ -429,30 +497,6 @@ class _CharacterPanelState extends State<CharacterPanel> {
               style: const TextStyle(fontSize: 13),
             ),
             const SizedBox(height: 16),
-            _buildCollapsible(
-              title: '外貌',
-              expanded: _appearanceExpanded,
-              controller: _appearanceCtrl,
-              scheme: scheme,
-              onToggle: () => setState(() => _appearanceExpanded = !_appearanceExpanded),
-            ),
-            const SizedBox(height: 8),
-            _buildCollapsible(
-              title: '性格',
-              expanded: _personalityExpanded,
-              controller: _personalityCtrl,
-              scheme: scheme,
-              onToggle: () => setState(() => _personalityExpanded = !_personalityExpanded),
-            ),
-            const SizedBox(height: 8),
-            _buildCollapsible(
-              title: '背景',
-              expanded: _backgroundExpanded,
-              controller: _backgroundCtrl,
-              scheme: scheme,
-              onToggle: () => setState(() => _backgroundExpanded = !_backgroundExpanded),
-            ),
-            const SizedBox(height: 16),
             _sectionLabel('标签', scheme),
             const SizedBox(height: 6),
             TextField(
@@ -460,12 +504,30 @@ class _CharacterPanelState extends State<CharacterPanel> {
               decoration: const InputDecoration(hintText: '多个标签用逗号分隔', isDense: true),
               style: const TextStyle(fontSize: 13),
             ),
+            const SizedBox(height: 16),
+            for (var i = 0; i < _attrRows.length; i++) ...[
+              if (i > 0) const SizedBox(height: 14),
+              _buildAttrRow(i, scheme),
+            ],
+            const SizedBox(height: 6),
+            Center(
+              child: TextButton.icon(
+                onPressed: _addAttrRow,
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                ),
+                icon: Icon(Icons.add, size: 14, color: scheme.primary),
+                label: Text('添加属性', style: TextStyle(
+                    fontSize: 11, color: scheme.primary)),
+              ),
+            ),
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
                 onPressed: _save,
-                icon: const AppIcon(Icons.check, size: 16),
+                icon: const Icon(Icons.check, size: 16),
                 label: const Text('保存修改'),
               ),
             ),
@@ -558,54 +620,41 @@ class _CharacterPanelState extends State<CharacterPanel> {
     );
   }
 
-  Widget _buildCollapsible({
-    required String title,
-    required bool expanded,
-    required TextEditingController controller,
-    required ColorScheme scheme,
-    required VoidCallback onToggle,
-  }) {
-    return Material(
-      color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
-      borderRadius: BorderRadius.circular(8),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          InkWell(
-            mouseCursor: SystemMouseCursors.click,
-            borderRadius: BorderRadius.circular(8),
-            onTap: onToggle,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-              child: Row(children: [
-                Text(title, style: TextStyle(
-                  fontSize: 13, fontWeight: FontWeight.w500, color: scheme.onSurface,
-                )),
-                const Spacer(),
-                AnimatedRotation(
-                  turns: expanded ? 0.5 : 0,
-                  duration: const Duration(milliseconds: 150),
-                  child: AppIcon(Icons.expand_more, size: 18, color: scheme.onSurfaceVariant),
-                ),
-              ]),
+  /// 单个属性块：属性名（只读小标签 + 删除按钮）+ 全宽属性值输入框，
+  /// 布局与其他字段（标签 + 输入框）一致。
+  Widget _buildAttrRow(int index, ColorScheme scheme) {
+    final (name, valueCtrl) = _attrRows[index];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(children: [
+          _sectionLabel(name, scheme),
+          const Spacer(),
+          SizedBox(
+            width: 22,
+            height: 22,
+            child: IconButton(
+              padding: EdgeInsets.zero,
+              iconSize: 14,
+              tooltip: '删除属性',
+              onPressed: () => setState(() {
+                _attrRows[index].$2.dispose();
+                _attrRows.removeAt(index);
+              }),
+              icon: Icon(Icons.close, size: 14, color: scheme.onSurfaceVariant),
             ),
           ),
-          AnimatedCrossFade(
-            firstChild: const SizedBox.shrink(),
-            secondChild: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-              child: TextField(
-                controller: controller,
-                maxLines: 4,
-                decoration: InputDecoration(hintText: '描述$title…', isDense: true),
-                style: const TextStyle(fontSize: 13),
-              ),
-            ),
-            crossFadeState: expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
-            duration: const Duration(milliseconds: 150),
-          ),
-        ],
-      ),
+        ]),
+        const SizedBox(height: 6),
+        TextField(
+          controller: valueCtrl,
+          minLines: 1,
+          maxLines: 5,
+          decoration: const InputDecoration(hintText: '属性值', isDense: true),
+          style: const TextStyle(fontSize: 13),
+        ),
+      ],
     );
   }
 
@@ -617,9 +666,7 @@ class _CharacterPanelState extends State<CharacterPanel> {
       aliases: char.aliases,
       type: char.type,
       gender: char.gender,
-      appearance: char.appearance,
-      personality: char.personality,
-      background: char.background,
+      attributes: char.attributes,
       avatar: char.avatar,
       color: char.color,
       tags: char.tags,
@@ -630,14 +677,8 @@ class _CharacterPanelState extends State<CharacterPanel> {
     _isNew = isNew;
     _nameCtrl.text = _draft.name;
     _aliasesCtrl.text = _draft.aliases;
-    _appearanceCtrl.text = _draft.appearance;
-    _personalityCtrl.text = _draft.personality;
-    _backgroundCtrl.text = _draft.background;
+    _loadAttrRows(_draft.attrList);
     _tagsCtrl.text = _draft.tags;
-    // 外貌/性格/背景始终以收起状态打开，需要时手动展开。
-    _appearanceExpanded = false;
-    _personalityExpanded = false;
-    _backgroundExpanded = false;
     setState(() => _selected = char);
   }
 
@@ -649,10 +690,9 @@ class _CharacterPanelState extends State<CharacterPanel> {
     );
     _nameCtrl.clear();
     _aliasesCtrl.clear();
-    _appearanceCtrl.clear();
-    _personalityCtrl.clear();
-    _backgroundCtrl.clear();
+    _disposeAttrRows();
     _tagsCtrl.clear();
+    setState(() {});
   }
 
   Future<void> _save() async {
@@ -667,9 +707,7 @@ class _CharacterPanelState extends State<CharacterPanel> {
       char.aliases = _aliasesCtrl.text.trim();
       char.type = _draft.type;
       char.gender = _draft.gender;
-      char.appearance = _appearanceCtrl.text;
-      char.personality = _personalityCtrl.text;
-      char.background = _backgroundCtrl.text;
+      char.attrList = _collectAttrRows();
       char.color = _draft.color;
       char.tags = _tagsCtrl.text.trim();
       await state.characters.update(char);
@@ -678,9 +716,7 @@ class _CharacterPanelState extends State<CharacterPanel> {
     } else {
       _draft.name = name;
       _draft.aliases = _aliasesCtrl.text.trim();
-      _draft.appearance = _appearanceCtrl.text;
-      _draft.personality = _personalityCtrl.text;
-      _draft.background = _backgroundCtrl.text;
+      _draft.attrList = _collectAttrRows();
       _draft.tags = _tagsCtrl.text.trim();
       await state.characters.update(_draft);
       state.characterDictVersion.value++;
@@ -705,9 +741,7 @@ class _CharacterPanelState extends State<CharacterPanel> {
       'aliases': _draft.aliases,
       'type': _draft.type.name,
       'gender': _draft.gender.name,
-      'appearance': _draft.appearance,
-      'personality': _draft.personality,
-      'background': _draft.background,
+      'attributes': _draft.attributes,
       'avatar': _draft.avatar,
       'color': _draft.color,
       'tags': _draft.tags,
@@ -892,7 +926,7 @@ class _CharacterCardState extends State<_CharacterCard> {
                             borderRadius: BorderRadius.circular(6),
                             onTap: widget.onDelete,
                             child: Center(
-                              child: AppIcon(Icons.delete_outline, size: 16,
+                              child: Icon(Icons.delete_outline, size: 16,
                                   color: scheme.error),
                             ),
                           ),

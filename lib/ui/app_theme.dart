@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 
 /// 应用主题（三选一）。
-enum AppTheme { light, dark, pixel }
+enum AppTheme { light, dark, eggPie }
 
 /// 统一的主题构建入口：主题 x 字号缩放。
 ThemeData buildAppTheme(AppTheme theme, double fontScale) {
   final data = switch (theme) {
     AppTheme.light => _minimalTheme(Brightness.light),
     AppTheme.dark => _minimalTheme(Brightness.dark),
-    AppTheme.pixel => _pixelTheme(),
+    AppTheme.eggPie => _eggPieTheme(),
   };
   return data.copyWith(textTheme: _scaleTextTheme(data.textTheme, fontScale));
 }
@@ -72,9 +72,13 @@ ThemeData _minimalTheme(Brightness brightness) {
   return base.copyWith(
     iconTheme: base.iconTheme.copyWith(size: 18),
     scaffoldBackgroundColor: scheme.surface,
-    dialogTheme: const DialogThemeData(
+    dialogTheme: DialogThemeData(
+      backgroundColor: isLight ? Colors.white : const Color(0xFF2C2C2E),
+      elevation: 6,
+      shadowColor: isLight ? const Color(0x28000000) : const Color(0x59000000),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.all(Radius.circular(12)),
+        borderRadius: const BorderRadius.all(Radius.circular(8)),
+        side: BorderSide(color: hairline),
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(
@@ -181,20 +185,30 @@ ThemeData _minimalTheme(Brightness brightness) {
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: isLight ? const Color(0xFFF5F5F7) : const Color(0xFF2C2C2E),
+      hoverColor: Colors.transparent,
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: BorderSide.none,
+        borderSide: BorderSide(color: hairline),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: hairline),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
         borderSide: BorderSide(color: scheme.primary, width: 1.5),
       ),
     ),
-    popupMenuTheme: const PopupMenuThemeData(
-      elevation: 4,
+    popupMenuTheme: PopupMenuThemeData(
+      mouseCursor: const WidgetStatePropertyAll(SystemMouseCursors.click),
+      color: isLight ? Colors.white : const Color(0xFF2C2C2E),
+      elevation: 6,
+      shadowColor: isLight ? const Color(0x28000000) : const Color(0x59000000),
+      menuPadding: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.all(Radius.circular(12)),
+        borderRadius: const BorderRadius.all(Radius.circular(8)),
+        side: BorderSide(color: hairline),
       ),
     ),
     tooltipTheme: TooltipThemeData(
@@ -219,8 +233,8 @@ ThemeData _minimalTheme(Brightness brightness) {
   );
 }
 
-class _PixelPalette {
-  const _PixelPalette({
+class _EggPiePalette {
+  const _EggPiePalette({
     required this.background,
     required this.panel,
     required this.panelAlt,
@@ -247,7 +261,7 @@ class _PixelPalette {
   final Color error;
 }
 
-const _pixelLight = _PixelPalette(
+const _eggPieLight = _EggPiePalette(
   background: Color(0xFFF6E5B8), // 羊皮纸
   panel: Color(0xFFFFE9C6), // 面板奶油
   panelAlt: Color(0xFFF0D79E), // 次级面板
@@ -261,8 +275,8 @@ const _pixelLight = _PixelPalette(
   error: Color(0xFFC0392B),
 );
 
-ThemeData _pixelTheme() {
-  const p = _pixelLight;
+ThemeData _eggPieTheme() {
+  const p = _eggPieLight;
   const brightness = Brightness.light;
   final scheme = ColorScheme(
     brightness: brightness,
@@ -287,7 +301,7 @@ ThemeData _pixelTheme() {
   );
 
   final frameBorder = BorderSide(color: p.borderDark, width: 2);
-  OutlineInputBorder pixelField(BorderSide side) => OutlineInputBorder(
+  OutlineInputBorder eggPieField(BorderSide side) => OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
         borderSide: side,
       );
@@ -299,7 +313,7 @@ ThemeData _pixelTheme() {
     fontFamilyFallback: _fontFallbacks,
   );
 
-  ButtonStyle pixelButton({
+  ButtonStyle eggPieButton({
     required Color fill,
     required Color fg,
   }) =>
@@ -326,11 +340,13 @@ ThemeData _pixelTheme() {
     splashFactory: NoSplash.splashFactory,
     dialogTheme: DialogThemeData(
       backgroundColor: p.panel,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(12)))
+      elevation: 6,
+      shadowColor: p.borderDark.withValues(alpha: 0.35),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(8)))
           .copyWith(side: frameBorder),
     ),
     filledButtonTheme: FilledButtonThemeData(
-      style: pixelButton(fill: p.primary, fg: p.onPrimary),
+      style: eggPieButton(fill: p.primary, fg: p.onPrimary),
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
@@ -350,7 +366,7 @@ ThemeData _pixelTheme() {
       ).copyWith(mouseCursor: _clickCursor),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
-      style: pixelButton(fill: p.panelAlt, fg: p.text),
+      style: eggPieButton(fill: p.panelAlt, fg: p.text),
     ),
     iconButtonTheme: IconButtonThemeData(
       style: IconButton.styleFrom(
@@ -442,15 +458,17 @@ ThemeData _pixelTheme() {
       filled: true,
       fillColor: p.panelAlt,
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      border: pixelField(BorderSide(color: p.borderDark, width: 2)),
-      enabledBorder: pixelField(BorderSide(color: p.borderDark, width: 2)),
-      focusedBorder: pixelField(BorderSide(color: p.primary, width: 2)),
+      border: eggPieField(BorderSide(color: p.borderDark, width: 2)),
+      enabledBorder: eggPieField(BorderSide(color: p.borderDark, width: 2)),
+      focusedBorder: eggPieField(BorderSide(color: p.primary, width: 2)),
     ),
     popupMenuTheme: PopupMenuThemeData(
       mouseCursor: const WidgetStatePropertyAll(SystemMouseCursors.click),
       color: p.panel,
-      elevation: 0,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(12)))
+      elevation: 6,
+      shadowColor: p.borderDark.withValues(alpha: 0.35),
+      menuPadding: EdgeInsets.zero,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(8)))
           .copyWith(side: frameBorder),
     ),
     tooltipTheme: TooltipThemeData(

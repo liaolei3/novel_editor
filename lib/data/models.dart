@@ -1,6 +1,8 @@
 /// 核心数据模型（对齐 PRD 第 8 节）。
 library;
 
+import 'dart:convert';
+
 class Book {
   Book({
     required this.id,
@@ -320,6 +322,45 @@ enum CharacterType { protagonist, supporting, antagonist, minor }
 
 enum Gender { male, female }
 
+/// 角色自定义属性：用户自行指定属性名与值。
+class CharacterAttribute {
+  CharacterAttribute({required this.name, this.value = ''});
+
+  String name;
+  String value;
+
+  Map<String, Object?> toJson() => {'name': name, 'value': value};
+
+  static CharacterAttribute fromJson(Map<String, Object?> json) =>
+      CharacterAttribute(
+        name: (json['name'] as String?) ?? '',
+        value: (json['value'] as String?) ?? '',
+      );
+}
+
+/// 解析 characters.attributes JSON 文本；非法内容容错返回空列表。
+List<CharacterAttribute> parseCharacterAttributes(String raw) {
+  if (raw.isEmpty) return [];
+  try {
+    final list = jsonDecode(raw) as List<Object?>;
+    return [
+      for (final item in list)
+        if (item is Map<String, Object?>)
+          CharacterAttribute.fromJson(item)
+        else if (item is Map)
+          CharacterAttribute.fromJson(Map<String, Object?>.from(item)),
+    ];
+  } catch (_) {
+    return [];
+  }
+}
+
+/// 将属性列表编码为 JSON 文本（空列表编码为空字符串）。
+String encodeCharacterAttributes(List<CharacterAttribute> list) {
+  if (list.isEmpty) return '';
+  return jsonEncode([for (final a in list) a.toJson()]);
+}
+
 class Character {
   Character({
     required this.id,
@@ -328,9 +369,7 @@ class Character {
     this.aliases = '',
     this.type = CharacterType.protagonist,
     this.gender = Gender.male,
-    this.appearance = '',
-    this.personality = '',
-    this.background = '',
+    this.attributes = '',
     this.avatar = '',
     this.color = '',
     this.tags = '',
@@ -345,15 +384,19 @@ class Character {
   String aliases;
   CharacterType type;
   Gender gender;
-  String appearance;
-  String personality;
-  String background;
+
+  /// 自定义属性列表的 JSON 文本，格式 [{"name":"...","value":"..."}]。
+  String attributes;
   String avatar;
   String color;
   String tags;
   int sort;
   DateTime createdAt;
   DateTime updatedAt;
+
+  List<CharacterAttribute> get attrList => parseCharacterAttributes(attributes);
+  set attrList(List<CharacterAttribute> list) =>
+      attributes = encodeCharacterAttributes(list);
 
   Map<String, Object?> toMap() => {
         'id': id,
@@ -362,9 +405,7 @@ class Character {
         'aliases': aliases,
         'type': type.name,
         'gender': gender.name,
-        'appearance': appearance,
-        'personality': personality,
-        'background': background,
+        'attributes': attributes,
         'avatar': avatar,
         'color': color,
         'tags': tags,
@@ -386,9 +427,7 @@ class Character {
           (g) => g.name == map['gender'],
           orElse: () => Gender.male,
         ),
-        appearance: (map['appearance'] as String?) ?? '',
-        personality: (map['personality'] as String?) ?? '',
-        background: (map['background'] as String?) ?? '',
+        attributes: (map['attributes'] as String?) ?? '',
         avatar: (map['avatar'] as String?) ?? '',
         color: (map['color'] as String?) ?? '',
         tags: (map['tags'] as String?) ?? '',

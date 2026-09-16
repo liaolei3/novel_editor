@@ -1,28 +1,26 @@
 import 'package:flutter/material.dart';
-import 'package:pixelarticons/pixelarticons.dart';
 import 'package:provider/provider.dart';
 
 import '../../state/settings_controller.dart';
 import '../app_theme.dart';
 import '../login_page.dart';
 import '../settings_dialog.dart';
-import 'app_icon.dart';
 
 /// 顶栏导航按钮组：账号登录 / 主题切换 / 设置（书架页与工作区共用）。
 class AppBarNavActions extends StatelessWidget {
   const AppBarNavActions({super.key});
 
-  /// 像素主题固定用 Pixel.gamepad，其余走 AppIcon 主题映射。
-  Widget _themeIcon(AppTheme theme) => theme == AppTheme.pixel
-      ? const Icon(Pixel.gamepad, size: 26)
-      : AppIcon(theme == AppTheme.light
+  /// 蛋黄派主题用 Icons.pie_chart（实心圆盘，光学重量与浅/暗色图标一致）。
+  Widget _themeIcon(AppTheme theme) => Icon(theme == AppTheme.eggPie
+      ? Icons.pie_chart
+      : theme == AppTheme.light
           ? Icons.light_mode
           : Icons.dark_mode);
 
   String _themeLabel(AppTheme theme) => switch (theme) {
         AppTheme.light => '浅色',
         AppTheme.dark => '暗色',
-        AppTheme.pixel => '像素',
+        AppTheme.eggPie => '蛋黄派',
       };
 
   @override
@@ -31,7 +29,7 @@ class AppBarNavActions extends StatelessWidget {
     return Row(mainAxisSize: MainAxisSize.min, children: [
       IconButton(
         tooltip: '账号登录',
-        icon: const AppIcon(Icons.person_outline),
+        icon: const Icon(Icons.person_outline, size: 24),
         onPressed: () => showLoginDialog(context),
       ),
       IconButton(
@@ -45,7 +43,7 @@ class AppBarNavActions extends StatelessWidget {
       ),
       IconButton(
         tooltip: '设置',
-        icon: const AppIcon(Icons.settings_outlined),
+        icon: const Icon(Icons.settings_outlined),
         onPressed: () => showSettingsDialog(context),
       ),
     ]);

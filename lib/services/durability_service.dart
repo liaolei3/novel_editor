@@ -9,7 +9,7 @@ import '../data/repositories.dart';
 import 'logger.dart';
 
 /// 防丢稿三重保障（FR-9 / FR-10 / FR-11）：
-/// - 快照：手动 / 每日自动，保留最近 50 个；
+/// - 快照：手动 / 每日自动，保留最近 30 个；
 /// - 本地多副本备份：主存（SQLite）+ 备份目录文件，保留 7 天；
 /// - 崩溃恢复：异常退出标记检测 + 恢复至最后保存点。
 class DurabilityService {

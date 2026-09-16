@@ -3,8 +3,8 @@ import 'package:novel_editor/core/utils/text_formatter.dart';
 
 void main() {
   group('collapseBlankLines', () {
-    test('压缩连续空行', () {
-      expect(TextFormatter.collapseBlankLines('a\n\n\n\nb'), 'a\n\nb');
+    test('移除全部空行（段间空行由 joinParagraphsWithBlankLine 统一插入）', () {
+      expect(TextFormatter.collapseBlankLines('a\n\n\n\nb'), 'a\nb');
     });
     test('去除首尾空白行', () {
       expect(TextFormatter.collapseBlankLines('\n\na\n\n'), 'a');
@@ -34,10 +34,16 @@ void main() {
     });
   });
 
+  group('joinParagraphsWithBlankLine', () {
+    test('段间统一一个空行，文首文尾不留空行', () {
+      expect(TextFormatter.joinParagraphsWithBlankLine('a\n\n\n\nb\n\n'),
+          'a\n\nb');
+      expect(TextFormatter.joinParagraphsWithBlankLine('\n\na\nb'), 'a\n\nb');
+    });
+  });
+
   test('format 组合', () {
     final out = TextFormatter.format('hello.\n\n\nworld');
-    expect(out, contains('　　hello。'));
-    expect(out, contains('　　world'));
-    expect(out.contains('\n\n\n'), isFalse);
+    expect(out, '　　hello。\n\n　　world');
   });
 }

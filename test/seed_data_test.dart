@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:novel_editor/core/utils/rich_text_codec.dart';
 import 'package:novel_editor/data/models.dart';
@@ -10,14 +8,52 @@ void main() {
   test('seed sample data', () async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
-    final appData = Platform.environment['APPDATA']!;
-    final dbPath = '$appData\\com.example\\novel_editor\\novel_editor.db';
-    final db = await databaseFactory.openDatabase(dbPath);
+    // 内存数据库：绝不触碰真实数据文件。
+    final db = await databaseFactory.openDatabase(inMemoryDatabasePath);
+    await db.execute('''
+      CREATE TABLE books (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        pen_name TEXT NOT NULL DEFAULT '',
+        summary TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0,
+        last_chapter_id TEXT,
+        last_cursor INTEGER,
+        cover_path TEXT NOT NULL DEFAULT ''
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE volumes (
+        id TEXT PRIMARY KEY,
+        book_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        sort INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE chapters (
+        id TEXT PRIMARY KEY,
+        book_id TEXT NOT NULL,
+        volume_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL DEFAULT '',
+        outline TEXT NOT NULL DEFAULT '',
+        sort INTEGER NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1,
+        char_count INTEGER NOT NULL DEFAULT 0,
+        last_edited_at INTEGER NOT NULL,
+        cursor_offset INTEGER NOT NULL DEFAULT 0,
+        pinned INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
 
     await db.delete('chapters');
     await db.delete('volumes');
     await db.delete('books');
-    await db.delete('snapshots');
 
     Future<String> createBook(String title, String penName) async {
       final now = DateTime.now();

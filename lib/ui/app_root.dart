@@ -3,7 +3,6 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:provider/provider.dart';
 
-import '../services/durability_service.dart';
 import '../state/app_state.dart';
 import '../state/settings_controller.dart';
 import 'app_theme.dart';
@@ -11,9 +10,7 @@ import 'common/dialogs.dart';
 import 'shelf_page.dart';
 
 class AppRoot extends StatelessWidget {
-  const AppRoot({super.key, this.crashReport});
-
-  final CrashReport? crashReport;
+  const AppRoot({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -31,7 +28,7 @@ class AppRoot extends StatelessWidget {
         FlutterQuillLocalizations.delegate,
       ],
       supportedLocales: const [Locale('zh', 'CN'), Locale('en', 'US')],
-      home: ShelfPage(crashReport: crashReport),
+      home: const ShelfPage(),
     );
   }
 }

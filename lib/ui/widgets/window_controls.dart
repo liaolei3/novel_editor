@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../../state/app_state.dart';
-import 'app_icon.dart';
 
 bool get _isWindowsDesktop => !kIsWeb && Platform.isWindows;
 
@@ -85,15 +84,15 @@ class _WindowControlsState extends State<WindowControls> with WindowListener {
     if (!_isWindowsDesktop) return const SizedBox.shrink();
     return Row(mainAxisSize: MainAxisSize.min, children: [
       IconButton(
-        icon: const AppIcon(Icons.horizontal_rule),
+        icon: const Icon(Icons.horizontal_rule),
         onPressed: windowManager.minimize,
       ),
       IconButton(
-        icon: AppIcon(_maximized ? Icons.filter_none : Icons.crop_square),
+        icon: Icon(_maximized ? Icons.filter_none : Icons.crop_square),
         onPressed: _toggleMaximize,
       ),
       IconButton(
-        icon: const AppIcon(Icons.close),
+        icon: const Icon(Icons.close),
         onPressed: windowManager.close,
       ),
     ]);

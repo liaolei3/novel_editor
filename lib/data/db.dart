@@ -23,7 +23,7 @@ class Db {
     _db = await databaseFactory.openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 4,
+        version: 5,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
       ),
@@ -142,9 +142,7 @@ class Db {
         aliases TEXT NOT NULL DEFAULT '',
         type TEXT NOT NULL DEFAULT 'other',
         gender TEXT NOT NULL DEFAULT 'male',
-        appearance TEXT NOT NULL DEFAULT '',
-        personality TEXT NOT NULL DEFAULT '',
-        background TEXT NOT NULL DEFAULT '',
+        attributes TEXT NOT NULL DEFAULT '',
         avatar TEXT NOT NULL DEFAULT '',
         color TEXT NOT NULL DEFAULT '',
         tags TEXT NOT NULL DEFAULT '',
@@ -156,13 +154,21 @@ class Db {
     await db.execute('CREATE INDEX idx_characters_book ON characters(book_id)');
   }
 
-  /// 增量迁移：v3 → v4 给 books 增加 cover_path 列。
+  /// 增量迁移。
   static Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 4) {
       final cols = await db.rawQuery('PRAGMA table_info(books)');
       final hasCol = cols.any((c) => c['name'] == 'cover_path');
       if (!hasCol) {
         await db.execute("ALTER TABLE books ADD COLUMN cover_path TEXT NOT NULL DEFAULT ''");
+      }
+    }
+    if (oldVersion < 5) {
+      final cols = await db.rawQuery('PRAGMA table_info(characters)');
+      final hasCol = cols.any((c) => c['name'] == 'attributes');
+      if (!hasCol) {
+        await db.execute(
+            "ALTER TABLE characters ADD COLUMN attributes TEXT NOT NULL DEFAULT ''");
       }
     }
   }

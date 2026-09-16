@@ -8,7 +8,7 @@
 - **状态管理**：provider
 - **富文本编辑器**：flutter_quill（Delta 格式存储）
 - **本地数据库**：sqflite + sqflite_common_ffi（桌面 FFI / 移动原生）
-- **其他**：path_provider、window_manager（桌面端窗口控制）、pixelarticons（像素风图标）、intl、archive、xml、http、crypto、file_picker
+- **其他**：path_provider、window_manager（桌面端窗口控制）、intl、archive、xml、http、crypto、file_picker
 
 ## 目录结构
 
@@ -34,7 +34,7 @@ lib\
 │   └── settings_controller.dart # 主题/字体/同步开关
 └── ui\                         # 表现层
     ├── app_root.dart           # MaterialApp 根 + 主题
-    ├── app_theme.dart          # 三主题配置（亮色/暗色/像素风）
+    ├── app_theme.dart          # 三主题配置（亮色/暗色/蛋黄派）
     ├── shelf_page.dart         # 书架页（首页）
     ├── workspace_page.dart     # 工作区（左树+中大纲+右编辑器）
     ├── login_page.dart         # 登录/注册
@@ -95,7 +95,7 @@ flutter test                 # 运行全部单元测试
 - **应用配置**：不使用 shared_preferences，配置统一存为数据目录内的 `config.json`（`lib/state/app_config.dart`），首次运行自动从旧版 `shared_preferences.json` 导入。
 - **数据目录可切换**：目录解析优先级为 exe 旁指针文件 `novel_editor.data_dir` > 默认目录 `config.json` 的 `dataDir` > 应用默认目录；切换时通过 `VACUUM INTO` 迁移数据库并拷贝备份，重启后生效。
 - **数据库跨平台**：桌面端（Windows/Linux/macOS）使用 `sqflite_common_ffi`，移动端使用 `sqflite`，数据库文件位于数据目录下 `novel_editor.db`。
-- **主题**：Material 3 + 种子色 `0xFF7C4DFF`，三种主题（亮色/暗色/像素风）；像素风使用 Pixelarticons 图标。
+- **主题**：Material 3 + 种子色 `0xFF7C4DFF`，三种主题（亮色/暗色/蛋黄派）。
 - **中文字体回退**：Microsoft YaHei / PingFang SC / Noto Sans CJK SC，三端显示一致。
 - **代码规范**：强制单引号、禁止 `print`（见 `analysis_options.yaml`）。
 

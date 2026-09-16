@@ -1,6 +1,6 @@
 /// 一键排版（FR-25）。
 ///
-/// 提供三项可独立开关的处理：清除多余空行/空格、统一中文标点、段首缩进。
+/// 提供四项可独立开关的处理：清除多余空行/空格、统一中文标点、段首缩进、段间插空行。
 /// 调用方需先展示预览，应用前自动创建快照以保证可撤销。
 class TextFormatter {
   TextFormatter._();
@@ -60,17 +60,32 @@ class TextFormatter {
     }).join('\n');
   }
 
+  /// 段间插空行：相邻段落之间统一保留恰好一个空行，文首文尾不留空行。
+  static String joinParagraphsWithBlankLine(String text) {
+    final sb = StringBuffer();
+    var prevBlank = true;
+    for (final line in text.split('\n')) {
+      if (line.replaceAll('\r', '').trim().isEmpty) continue;
+      if (!prevBlank) sb.write('\n\n');
+      sb.write(line);
+      prevBlank = false;
+    }
+    return sb.toString();
+  }
+
   /// 组合排版。
   static String format(
     String text, {
     bool collapseBlank = true,
     bool normalizePunct = true,
     bool indent = true,
+    bool joinBlank = true,
   }) {
     var result = text;
     if (normalizePunct) result = normalizePunctuation(result);
     if (collapseBlank) result = collapseBlankLines(result);
     if (indent) result = indentParagraphs(result);
+    if (joinBlank) result = joinParagraphsWithBlankLine(result);
     return result;
   }
 

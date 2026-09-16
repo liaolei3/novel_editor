@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 import '../../core/utils/rich_text_codec.dart';
 import '../../core/utils/sensitive_words.dart';
 import '../../state/app_state.dart';
-import '../widgets/app_icon.dart';
 import '../widgets/toast.dart';
 
 /// 敏感词检测面板（FR-26）：内置词库 + 命中列表 + 替换建议，不做强制屏蔽。
@@ -37,7 +36,7 @@ class _SensitivePanelState extends State<SensitivePanel> {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           FilledButton.icon(
-            icon: const AppIcon(Icons.search),
+            icon: const Icon(Icons.search),
             label: const Text('检测本章'),
             onPressed: chapter == null
                 ? null
@@ -45,7 +44,7 @@ class _SensitivePanelState extends State<SensitivePanel> {
                     scanner.scan(RichTextCodec.plainTextFromDeltaJson(chapter.content))),
           ),
           OutlinedButton.icon(
-            icon: const AppIcon(Icons.build),
+            icon: const Icon(Icons.build),
             label: const Text('全部替换'),
             onPressed: (_hits == null || _hits!.isEmpty || chapter == null)
                 ? null
@@ -81,7 +80,7 @@ class _SensitivePanelState extends State<SensitivePanel> {
         ..._hits!.entries.map((e) => Card(
               child: ListTile(
                 dense: true,
-                leading: AppIcon(Icons.warning_amber_rounded,
+                leading: Icon(Icons.warning_amber_rounded,
                     color: Theme.of(context).colorScheme.error),
                 title: Text(e.key),
                 subtitle: Text('命中 ${e.value.length} 处'),

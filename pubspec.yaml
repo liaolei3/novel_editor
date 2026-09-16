@@ -24,7 +24,7 @@ dependencies:
   flutter_quill: ^11.5.1
   dart_quill_delta: ^10.8.3
   window_manager: ^0.5.2
-  pixelarticons: ^0.4.0
+  diff_match_patch: ^0.4.1
 
 dev_dependencies:
   flutter_test:

@@ -7,6 +7,7 @@ import 'package:flutter_quill/flutter_quill.dart';
 
 import '../core/utils/global_search.dart';
 import '../core/utils/rich_text_codec.dart';
+import '../core/utils/text_stats.dart';
 import '../data/models.dart';
 import '../data/repositories.dart';
 import '../services/autosave_service.dart';
@@ -203,47 +204,32 @@ class AppState extends ChangeNotifier {
 
     var characterChanged = false;
     if (scopes.contains(SearchScope.character)) {
-      const fields = [
-        ('name', '名字'),
-        ('aliases', '别名'),
-        ('appearance', '外貌'),
-        ('personality', '性格'),
-        ('background', '背景'),
-        ('tags', '标签'),
-      ];
       final list = await characters.listByBook(currentBook!.id);
       for (final c in list) {
         var changed = false;
-        for (final (key, _) in fields) {
-          final text = switch (key) {
-            'name' => c.name,
-            'aliases' => c.aliases,
-            'appearance' => c.appearance,
-            'personality' => c.personality,
-            'background' => c.background,
-            _ => c.tags,
-          };
+        // 固定字段替换（属性名不参与替换）。
+        final fixed = <(String Function(), void Function(String))>[
+          (() => c.name, (v) => c.name = v),
+          (() => c.aliases, (v) => c.aliases = v),
+          (() => c.tags, (v) => c.tags = v),
+        ];
+        for (final (getter, setter) in fixed) {
+          final text = getter();
           if (!text.contains(query)) continue;
-          final n = GlobalSearch.matchStarts(text, query).length;
-          final replaced = text.replaceAll(query, replacement);
-          switch (key) {
-            case 'name':
-              c.name = replaced;
-            case 'aliases':
-              c.aliases = replaced;
-            case 'appearance':
-              c.appearance = replaced;
-            case 'personality':
-              c.personality = replaced;
-            case 'background':
-              c.background = replaced;
-            default:
-              c.tags = replaced;
-          }
-          total += n;
+          total += GlobalSearch.matchStarts(text, query).length;
+          setter(text.replaceAll(query, replacement));
+          changed = true;
+        }
+        // 自定义属性：只替换属性值。
+        final attrs = c.attrList;
+        for (final a in attrs) {
+          if (!a.value.contains(query)) continue;
+          total += GlobalSearch.matchStarts(a.value, query).length;
+          a.value = a.value.replaceAll(query, replacement);
           changed = true;
         }
         if (changed) {
+          c.attrList = attrs;
           await characters.update(c);
           characterChanged = true;
         }
@@ -318,7 +304,7 @@ class AppState extends ChangeNotifier {
     if (content == _lastDocJson) return;
     _lastDocJson = content;
     final plainText = editorController.document.toPlainText();
-    final nowChars = _countChars(plainText);
+    final nowChars = TextStats.count(plainText, settings.countStandard);
     final delta = nowChars - chapter.charCount;
     autosave.onContentChanged(chapter, content);
     if (delta != 0) {
@@ -471,9 +457,7 @@ class AppState extends ChangeNotifier {
         (t) => t.name == payload['type'], orElse: () => CharacterType.protagonist);
       char.gender = Gender.values.firstWhere(
         (g) => g.name == payload['gender'], orElse: () => Gender.male);
-      char.appearance = payload['appearance'] as String? ?? '';
-      char.personality = payload['personality'] as String? ?? '';
-      char.background = payload['background'] as String? ?? '';
+      char.attributes = payload['attributes'] as String? ?? '';
       char.color = payload['color'] as String? ?? '';
       char.tags = payload['tags'] as String? ?? '';
       await characters.update(char);
@@ -523,12 +507,17 @@ class AppState extends ChangeNotifier {
     super.dispose();
   }
 
-  static int _countChars(String content) {
-    var n = 0;
-    for (final rune in content.runes) {
-      final ch = String.fromCharCode(rune);
-      if (ch.trim().isNotEmpty) n++;
+  /// 切换字数口径后：全库重算 char_count，并刷新当前书的内存数据。
+  Future<void> recountAll() async {
+    await autosave.flush();
+    await chapters.recountAll(settings.countStandard);
+    await _reloadTree();
+    bookCharTotal = chapterList.fold(0, (sum, c) => sum + c.charCount);
+    final id = currentChapter?.id;
+    if (id != null) {
+      currentChapter =
+          chapterList.where((c) => c.id == id).firstOrNull ?? currentChapter;
     }
-    return n;
+    notifyListeners();
   }
 }

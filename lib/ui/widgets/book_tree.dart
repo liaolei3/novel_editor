@@ -5,10 +5,11 @@ import '../../core/utils/rich_text_codec.dart';
 import '../../core/utils/text_stats.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
+import '../../state/settings_controller.dart';
 import '../app_root.dart';
 import '../common/dialogs.dart';
+import '../common/context_menu.dart';
 import '../common/long_press_drag_listener.dart';
-import 'app_icon.dart';
 
 /// 作品树（9.2 左栏）：卷 → 章，支持新建/重命名/删除/拖拽排序/置顶（FR-6/7）。
 /// 卷/章操作入口为右键菜单；章节排序通过行尾拖动手柄长按拖动完成。
@@ -21,19 +22,20 @@ class BookTree extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final chapters = state.chapterList;
+    final std = context.watch<SettingsController>().countStandard;
     return Scaffold(
       backgroundColor: Colors.transparent,
       floatingActionButton: FloatingActionButton.small(
         heroTag: 'tree-add',
         tooltip: '新建卷',
         mouseCursor: SystemMouseCursors.click,
-        child: const AppIcon(Icons.post_add),
+        child: const Icon(Icons.post_add),
         onPressed: () => _addVolume(context, state),
       ),
       body: state.volumeTree.isEmpty
           ? Center(
               child: TextButton.icon(
-                icon: const AppIcon(Icons.add),
+                icon: const Icon(Icons.add),
                 label: const Text('新建卷'),
                 onPressed: () => _addVolume(context, state),
               ),
@@ -48,8 +50,9 @@ class BookTree extends StatelessWidget {
                     .toList();
                 final volumeChars = inVolume.fold<int>(
                   0,
-                  (sum, c) => sum + TextStats.charCount(
+                  (sum, c) => sum + TextStats.count(
                     RichTextCodec.plainTextFromDeltaJson(c.content),
+                    std,
                   ),
                 );
                 return GestureDetector(
@@ -71,34 +74,16 @@ class BookTree extends StatelessWidget {
     );
   }
 
-  static Future<String?> _showMenuAt(
-    BuildContext context,
-    Offset position,
-    List<PopupMenuEntry<String>> items,
-  ) {
-    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
-    return showMenu<String>(
-      context: context,
-      position: RelativeRect.fromLTRB(
-        position.dx,
-        position.dy,
-        overlay.size.width - position.dx,
-        overlay.size.height - position.dy,
-      ),
-      items: items,
-    );
-  }
-
   Future<void> _showVolumeMenu(
     BuildContext context,
     Volume volume,
     Offset position,
   ) async {
     final state = context.read<AppState>();
-    final action = await _showMenuAt(context, position, const [
-      PopupMenuItem(value: 'add', child: Text('新建章节')),
-      PopupMenuItem(value: 'rename', child: Text('重命名')),
-      PopupMenuItem(value: 'delete', child: Text('删除（进回收站）')),
+    final action = await showAppContextMenu<String>(context, position, const [
+      AppMenuItem('add', '新建章节', icon: Icons.post_add_outlined),
+      AppMenuItem('rename', '重命名', icon: Icons.edit_outlined),
+      AppMenuItem('delete', '删除', icon: Icons.delete_outline, destructive: true),
     ]);
     if (action == null || !context.mounted) return;
     switch (action) {
@@ -131,10 +116,14 @@ class BookTree extends StatelessWidget {
     Offset position,
   ) async {
     final state = context.read<AppState>();
-    final action = await _showMenuAt(context, position, [
-      const PopupMenuItem(value: 'rename', child: Text('重命名')),
-      PopupMenuItem(value: 'pin', child: Text(chapter.pinned ? '取消置顶' : '置顶')),
-      const PopupMenuItem(value: 'delete', child: Text('删除（进回收站）')),
+    final action = await showAppContextMenu<String>(context, position, [
+      const AppMenuItem('rename', '重命名', icon: Icons.edit_outlined),
+      AppMenuItem(
+        'pin',
+        chapter.pinned ? '取消置顶' : '置顶',
+        icon: Icons.push_pin_outlined,
+      ),
+      const AppMenuItem('delete', '删除', icon: Icons.delete_outline, destructive: true),
     ]);
     if (action == null || !context.mounted) return;
     switch (action) {
@@ -162,10 +151,27 @@ class BookTree extends StatelessWidget {
   }
 
   Future<void> _addVolume(BuildContext context, AppState state) async {
-    final name = await inputDialog(context, title: '新建卷', initial: '');
+    final name = await inputDialog(
+      context,
+      title: '新建卷',
+      initial: _suggestVolumeTitle(state.volumeTree),
+    );
     if (name != null && name.trim().isNotEmpty) {
       await state.addVolume(name.trim());
     }
+  }
+
+  /// 推断新卷默认标题：取该书「第N卷」标题的最大 N + 1，输出中文数字（如「第二卷」）。
+  static String _suggestVolumeTitle(List<Volume> volumes) {
+    var max = 0;
+    final reg = RegExp(r'第\s*([0-9０-９一二三四五六七八九十百千两]+)\s*卷');
+    for (final v in volumes) {
+      final m = reg.firstMatch(v.name);
+      if (m == null) continue;
+      final n = _parseChineseNumeral(m.group(1)!);
+      if (n != null && n > max) max = n;
+    }
+    return '第${_toChineseNumeral(max + 1)}卷';
   }
 
   /// 新建章节：预填该卷下一章标题（如已有 3 章则预填「第四章」），创建后自动打开该章。
@@ -296,7 +302,7 @@ class _VolumeTileState extends State<_VolumeTile> {
             height: 48,
             child: Center(
               child: TextButton.icon(
-                icon: const AppIcon(Icons.add, size: 16),
+                icon: const Icon(Icons.add, size: 16),
                 label: const Text('新建章节'),
                 onPressed: () =>
                     BookTree._createChapter(context, state, widget.volume.id),
@@ -324,7 +330,7 @@ class _VolumeTileState extends State<_VolumeTile> {
                     AnimatedRotation(
                       turns: _expanded ? 0.25 : 0,
                       duration: const Duration(milliseconds: 200),
-                      child: const AppIcon(Icons.arrow_right, size: 22),
+                      child: const Icon(Icons.arrow_right, size: 22),
                     ),
                     const SizedBox(width: 4),
                     Expanded(
@@ -369,6 +375,7 @@ class _ChapterTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
+    final std = context.watch<SettingsController>().countStandard;
     final selected = state.currentChapter?.id == chapter.id;
     return GestureDetector(
       onSecondaryTapUp: (details) =>
@@ -391,7 +398,7 @@ class _ChapterTile extends StatelessWidget {
             ),
             if (chapter.pinned) ...[
               const SizedBox(width: 6),
-              AppIcon(
+              Icon(
                 Icons.push_pin,
                 size: 14,
                 color: Theme.of(context).colorScheme.primary,
@@ -399,7 +406,7 @@ class _ChapterTile extends StatelessWidget {
             ],
             const SizedBox(width: 8),
             Text(
-              '${TextStats.charCount(RichTextCodec.plainTextFromDeltaJson(chapter.content))} 字',
+              '${TextStats.count(RichTextCodec.plainTextFromDeltaJson(chapter.content), std)} 字',
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],

@@ -1,9 +1,9 @@
 import 'dart:io';
 
+import 'package:diff_match_patch/diff_match_patch.dart' as dmp;
 import 'package:flutter/material.dart';
 
 import '../../data/repositories.dart' show newId;
-import '../widgets/app_icon.dart';
 import 'book_cover.dart';
 
 /// 可拖动对话框包装：按住弹窗任意空白区域（未被内部控件接管的区域，
@@ -30,7 +30,7 @@ class _DraggableDialogState extends State<DraggableDialog> {
   }
 }
 
-/// 通用输入对话框。
+/// 通用输入对话框（macOS 风格：居中标题 + 紧凑输入框 + 右下角按钮）。
 Future<String?> inputDialog(BuildContext context,
     {required String title, String initial = '', String hint = '', int maxLines = 1}) {
   final controller = TextEditingController(text: initial);
@@ -38,19 +38,53 @@ Future<String?> inputDialog(BuildContext context,
     context: context,
     barrierDismissible: false,
     builder: (ctx) => DraggableDialog(
-      child: AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLines: maxLines,
-          maxLength: maxLines > 1 ? 200 : null,
-          decoration: InputDecoration(hintText: hint, counterText: ''),
+      child: SizedBox(
+        width: 320,
+        child: AlertDialog(
+          backgroundColor: Theme.of(ctx).dialogTheme.backgroundColor,
+          shape: Theme.of(ctx).dialogTheme.shape,
+          titlePadding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
+          contentPadding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
+          actionsPadding: const EdgeInsets.fromLTRB(24, 18, 24, 20),
+          actionsOverflowButtonSpacing: 0,
+          title: Text(
+            title,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            maxLines: maxLines,
+            maxLength: maxLines > 1 ? 200 : null,
+            onSubmitted: (_) => Navigator.pop(ctx, controller.text),
+            decoration: InputDecoration(
+              hintText: hint,
+              counterText: '',
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              style: TextButton.styleFrom(
+                minimumSize: const Size(64, 38),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+              ),
+              child: const Text('取消'),
+            ),
+            const Spacer(),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, controller.text),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(72, 38),
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+              ),
+              child: const Text('确定'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, controller.text), child: const Text('确定')),
-        ],
       ),
     ),
   );
@@ -81,17 +115,29 @@ Future<(String, String, String?)?> createBookDialog(BuildContext context) async 
         }
 
         return DraggableDialog(
-          child: AlertDialog(
-            title: const Text('新建作品'),
+          child: SizedBox(
+            width: 320,
+            child: AlertDialog(
+            titlePadding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
+            contentPadding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
+            actionsPadding: const EdgeInsets.fromLTRB(24, 18, 24, 20),
+            title: const Text('新建作品',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 TextField(controller: titleCtrl, autofocus: true,
-                  decoration: const InputDecoration(labelText: '书名')),
-              const SizedBox(height: 12),
+                  decoration: const InputDecoration(
+                    labelText: '书名',
+                    contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                  )),
+              const SizedBox(height: 14),
               TextField(controller: penCtrl,
-                  decoration: const InputDecoration(labelText: '作者笔名（可选）')),
+                  decoration: const InputDecoration(
+                    labelText: '作者笔名（可选）',
+                    contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                  )),
               const SizedBox(height: 16),
               _CoverUploadBox(
                 previewPath: cleared ? '' : (pickedPath ?? ''),
@@ -114,8 +160,14 @@ Future<(String, String, String?)?> createBookDialog(BuildContext context) async 
                   if (picked != null) await BookCover.deleteFile(picked);
                   if (ctx.mounted) Navigator.pop(ctx);
                 },
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(64, 38),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                ),
                 child: const Text('取消'),
               ),
+              const Spacer(),
               FilledButton(
                 onPressed: () {
                   final title = titleCtrl.text.trim();
@@ -123,9 +175,15 @@ Future<(String, String, String?)?> createBookDialog(BuildContext context) async 
                   Navigator.pop(
                       ctx, (title, penCtrl.text.trim(), cleared ? null : pickedPath));
                 },
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(72, 38),
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                ),
                 child: const Text('创建'),
               ),
             ],
+          ),
           ),
         );
       },
@@ -183,7 +241,7 @@ class _CoverUploadBox extends StatelessWidget {
                     : Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          AppIcon(Icons.upload_file, size: 28,
+                          Icon(Icons.upload_file, size: 32,
                               color: scheme.onSurfaceVariant),
                           const SizedBox(height: 10),
                           Text(
@@ -211,7 +269,7 @@ class _CoverUploadBox extends StatelessWidget {
                         color: Color(0x96000000),
                         shape: BoxShape.circle,
                       ),
-                      child: const AppIcon(Icons.close, size: 14,
+                      child: const Icon(Icons.close, size: 14,
                           color: Colors.white),
                     ),
                   ),
@@ -257,17 +315,29 @@ Future<(String, String, String?)?> editBookDialog(
         }
 
         return DraggableDialog(
-          child: AlertDialog(
-            title: const Text('编辑作品'),
+          child: SizedBox(
+            width: 320,
+            child: AlertDialog(
+            titlePadding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
+            contentPadding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
+            actionsPadding: const EdgeInsets.fromLTRB(24, 18, 24, 20),
+            title: const Text('编辑作品',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 TextField(controller: titleCtrl,
-                  decoration: const InputDecoration(labelText: '书名')),
-              const SizedBox(height: 12),
+                  decoration: const InputDecoration(
+                    labelText: '书名',
+                    contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                  )),
+              const SizedBox(height: 14),
               TextField(controller: penCtrl,
-                  decoration: const InputDecoration(labelText: '作者笔名（可选）')),
+                  decoration: const InputDecoration(
+                    labelText: '作者笔名（可选）',
+                    contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                  )),
               const SizedBox(height: 16),
               _CoverUploadBox(
                 previewPath: previewPath,
@@ -288,8 +358,14 @@ Future<(String, String, String?)?> editBookDialog(
                   }
                   if (ctx.mounted) Navigator.pop(ctx);
                 },
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(64, 38),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                ),
                 child: const Text('取消'),
               ),
+              const Spacer(),
               FilledButton(
                 onPressed: () {
                   final title = titleCtrl.text.trim();
@@ -298,9 +374,15 @@ Future<(String, String, String?)?> editBookDialog(
                   final action = cleared ? '' : newPath;
                   Navigator.pop(ctx, (title, penCtrl.text.trim(), action));
                 },
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(72, 38),
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                ),
                 child: const Text('保存'),
               ),
             ],
+          ),
           ),
         );
       },
@@ -324,47 +406,332 @@ Future<void> showCompareDialog(
       child: Dialog(
         insetPadding: const EdgeInsets.all(24),
         child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 900, maxHeight: 640),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Row(children: [
-              Expanded(child: Text(title, style: Theme.of(ctx).textTheme.titleLarge)),
-              IconButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  icon: const AppIcon(Icons.close)),
-            ]),
-            const SizedBox(height: 12),
-            Expanded(
-              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Expanded(child: _pane(ctx, leftLabel, left)),
-                const SizedBox(width: 12),
-                Expanded(child: _pane(ctx, rightLabel, right)),
-              ]),
-            ),
-          ]),
+          constraints: const BoxConstraints(maxWidth: 1040, maxHeight: 780),
+          child: _CompareBody(
+            title: title,
+            leftLabel: leftLabel,
+            rightLabel: rightLabel,
+            left: left,
+            right: right,
+          ),
         ),
-      ),
       ),
     ),
   );
 }
 
-Widget _pane(BuildContext ctx, String label, String text) {
-  return Container(
-    decoration: BoxDecoration(
-      color: Theme.of(ctx).colorScheme.surfaceContainerHighest.withAlpha(80),
-      borderRadius: BorderRadius.circular(8),
-    ),
-    padding: const EdgeInsets.all(12),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(label, style: Theme.of(ctx).textTheme.titleSmall),
-      const SizedBox(height: 8),
-      Expanded(
-        child: SingleChildScrollView(
-          child: SelectableText(text, style: const TextStyle(height: 1.7)),
+class _CompareBody extends StatefulWidget {
+  const _CompareBody({
+    required this.title,
+    required this.leftLabel,
+    required this.rightLabel,
+    required this.left,
+    required this.right,
+  });
+
+  final String title;
+  final String leftLabel;
+  final String rightLabel;
+  final String left;
+  final String right;
+
+  @override
+  State<_CompareBody> createState() => _CompareBodyState();
+}
+
+class _CompareBodyState extends State<_CompareBody> {
+  List<dmp.Diff>? _diffs;
+  final ScrollController _leftCtrl = ScrollController();
+  final ScrollController _rightCtrl = ScrollController();
+  bool _syncing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _leftCtrl.addListener(() => _syncScroll(_leftCtrl, _rightCtrl));
+    _rightCtrl.addListener(() => _syncScroll(_rightCtrl, _leftCtrl));
+    Future.microtask(() async {
+      final diffs = await Future(() {
+        final d = dmp.diff(widget.left, widget.right);
+        dmp.cleanupSemantic(d);
+        return d;
+      });
+      if (mounted) setState(() => _diffs = diffs);
+    });
+  }
+
+  @override
+  void dispose() {
+    _leftCtrl.dispose();
+    _rightCtrl.dispose();
+    super.dispose();
+  }
+
+  void _syncScroll(ScrollController src, ScrollController dst) {
+    if (_syncing || !src.hasClients || !dst.hasClients) return;
+    final srcMax = src.position.maxScrollExtent;
+    final dstMax = dst.position.maxScrollExtent;
+    if (srcMax <= 0) return;
+    _syncing = true;
+    dst.jumpTo((src.offset / srcMax * dstMax).clamp(0.0, dstMax));
+    _syncing = false;
+  }
+
+  int get _changeCount {
+    final diffs = _diffs;
+    if (diffs == null) return 0;
+    var n = 0;
+    var inRegion = false;
+    for (final d in diffs) {
+      if (d.operation == dmp.DIFF_EQUAL) {
+        inRegion = false;
+      } else if (!inRegion) {
+        n++;
+        inRegion = true;
+      }
+    }
+    return n;
+  }
+
+  int _opChars(int op) {
+    var n = 0;
+    final diffs = _diffs;
+    if (diffs != null) {
+      for (final d in diffs) {
+        if (d.operation == op) n += d.text.length;
+      }
+    }
+    return n;
+  }
+
+  List<TextSpan> _spans(Color delBg, Color delFg, Color insBg, Color insFg,
+      bool isLeft) {
+    final spans = <TextSpan>[];
+    for (final d in _diffs!) {
+      switch (d.operation) {
+        case dmp.DIFF_EQUAL:
+          spans.add(TextSpan(text: d.text));
+        case dmp.DIFF_DELETE:
+          if (isLeft) {
+            spans.add(TextSpan(
+              text: d.text,
+              style: TextStyle(backgroundColor: delBg, color: delFg),
+            ));
+          }
+        case dmp.DIFF_INSERT:
+          if (!isLeft) {
+            spans.add(TextSpan(
+              text: d.text,
+              style: TextStyle(backgroundColor: insBg, color: insFg),
+            ));
+          }
+      }
+    }
+    return spans;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final dark = scheme.brightness == Brightness.dark;
+    final delBg = dark
+        ? const Color(0xFFF87171).withValues(alpha: 0.18)
+        : const Color(0xFFFDE8E8);
+    final delFg = dark ? const Color(0xFFFCA5A5) : const Color(0xFF9B1C1C);
+    final insBg = dark
+        ? const Color(0xFF4ADE80).withValues(alpha: 0.16)
+        : const Color(0xFFE3F5E8);
+    final insFg = dark ? const Color(0xFF86EFAC) : const Color(0xFF1E6B3A);
+
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: scheme.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child:
+                  Icon(Icons.difference_outlined, size: 24, color: scheme.primary),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(widget.title,
+                      style: textTheme.titleLarge?.copyWith(fontSize: 24)),
+                  const SizedBox(height: 2),
+                  Row(children: [
+                    Flexible(
+                      child: Text(
+                        '${widget.leftLabel} ↔ ${widget.rightLabel}',
+                        style: textTheme.bodySmall?.copyWith(
+                            fontSize: 13, color: scheme.onSurfaceVariant),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    _legendDot(delBg, delFg),
+                    const SizedBox(width: 4),
+                    Text('删除',
+                        style: textTheme.bodySmall?.copyWith(
+                            fontSize: 13, color: scheme.onSurfaceVariant)),
+                    const SizedBox(width: 10),
+                    _legendDot(insBg, insFg),
+                    const SizedBox(width: 4),
+                    Text('新增',
+                        style: textTheme.bodySmall?.copyWith(
+                            fontSize: 13, color: scheme.onSurfaceVariant)),
+                  ]),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.close),
+              tooltip: '关闭',
+              onPressed: () => Navigator.pop(context),
+            ),
+          ]),
+          const SizedBox(height: 14),
+          Expanded(
+            child: _diffs == null
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const CircularProgressIndicator(),
+                        const SizedBox(height: 12),
+                        Text('正在计算差异…',
+                            style: textTheme.bodySmall?.copyWith(
+                                fontSize: 13, color: scheme.onSurfaceVariant)),
+                      ],
+                    ),
+                  )
+                : Row(children: [
+                    Expanded(
+                        child: _diffPane(context, widget.leftLabel,
+                            Icons.article_outlined, false, delBg, delFg, insBg, insFg)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      child: CircleAvatar(
+                        radius: 14,
+                        backgroundColor: scheme.primary,
+                        child: Icon(Icons.arrow_forward,
+                            size: 16, color: scheme.onPrimary),
+                      ),
+                    ),
+                    Expanded(
+                        child: _diffPane(context, widget.rightLabel,
+                            Icons.auto_awesome, true, delBg, delFg, insBg, insFg)),
+                  ]),
+          ),
+          const SizedBox(height: 16),
+          Row(children: [
+            Expanded(
+              child: Text(
+                _diffs == null
+                    ? ''
+                    : _changeCount == 0
+                        ? '两版内容一致'
+                        : '共 $_changeCount 处差异（新增 ${_opChars(dmp.DIFF_INSERT)} 字 / 删除 ${_opChars(dmp.DIFF_DELETE)} 字）',
+                style: textTheme.bodySmall
+                    ?.copyWith(fontSize: 13, color: scheme.onSurfaceVariant),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 12),
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('关闭'),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  Widget _legendDot(Color bg, Color fg) {
+    return Container(
+      width: 16,
+      height: 16,
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(3.5),
+        border: Border.all(color: fg.withValues(alpha: 0.6), width: 0.8),
+      ),
+    );
+  }
+
+  Widget _diffPane(
+    BuildContext context,
+    String label,
+    IconData icon,
+    bool isRight,
+    Color delBg,
+    Color delFg,
+    Color insBg,
+    Color insFg,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest
+            .withValues(alpha: isRight ? 0.55 : 0.31),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isRight
+              ? scheme.primary.withValues(alpha: 0.4)
+              : scheme.outlineVariant.withValues(alpha: 0.5),
         ),
       ),
-    ]),
-  );
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(icon,
+                size: 17,
+                color:
+                    isRight ? scheme.primary : scheme.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: textTheme.titleSmall?.copyWith(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: isRight ? scheme.primary : null,
+              ),
+            ),
+          ]),
+          const SizedBox(height: 8),
+          Expanded(
+            child: SingleChildScrollView(
+              controller: isRight ? _rightCtrl : _leftCtrl,
+              child: SelectionArea(
+                child: Text.rich(
+                  TextSpan(
+                    children: _spans(delBg, delFg, insBg, insFg, !isRight),
+                    style: TextStyle(
+                      fontSize: 15,
+                      height: 1.8,
+                      color: Theme.of(context).textTheme.bodyMedium?.color,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

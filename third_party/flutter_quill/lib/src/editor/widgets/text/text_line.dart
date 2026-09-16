@@ -277,7 +277,7 @@ class _TextLineState extends State<TextLine> {
     } else if (alignment == Attribute.justifyAlignment) {
       return TextAlign.justify;
     }
-    return TextAlign.start;
+    return TextAlign.justify;
   }
 
   InlineSpan _buildTextSpan(

@@ -16,7 +16,6 @@ import 'panels/snapshot_panel.dart';
 import 'panels/stats_panel.dart';
 import 'recycle_page.dart';
 import 'widgets/app_bar_nav_actions.dart';
-import 'widgets/app_icon.dart';
 import 'widgets/book_tree.dart';
 import 'widgets/editor_area.dart';
 import 'widgets/window_controls.dart';
@@ -35,7 +34,7 @@ class WorkspacePage extends StatefulWidget {
 class _WorkspacePageState extends State<WorkspacePage> {
   int _mobileTab = 1;
   int _panelIndex = 0;
-  bool _panelOpen = true;
+  bool _panelOpen = false;
   bool _immersive = false;
   String? _openCharacterId;
 
@@ -114,12 +113,12 @@ class _WorkspacePageState extends State<WorkspacePage> {
                 actions: [
                   IconButton(
                     tooltip: '全局搜索替换',
-                    icon: const AppIcon(Icons.search, size: 26),
+                    icon: const Icon(Icons.search, size: 26),
                     onPressed: () => showGlobalSearchDialog(context),
                   ),
                   IconButton(
                     tooltip: _immersive ? '退出沉浸' : '沉浸模式',
-                    icon: AppIcon(
+                    icon: Icon(
                       _immersive ? Icons.fullscreen_exit : Icons.fullscreen,
                       size: 26,
                     ),
@@ -139,15 +138,15 @@ class _WorkspacePageState extends State<WorkspacePage> {
                 }),
                 destinations: const [
                   NavigationDestination(
-                    icon: AppIcon(Icons.folder_outlined),
+                    icon: Icon(Icons.folder_outlined),
                     label: '目录',
                   ),
                   NavigationDestination(
-                    icon: AppIcon(Icons.edit_note),
+                    icon: Icon(Icons.edit_note),
                     label: '写作',
                   ),
                   NavigationDestination(
-                    icon: AppIcon(Icons.widgets_outlined),
+                    icon: Icon(Icons.widgets_outlined),
                     label: '工具',
                   ),
                 ],
@@ -166,7 +165,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
             top: 16,
             child: IconButton.filledTonal(
               tooltip: '退出App沉浸模式',
-              icon: const AppIcon(Icons.fullscreen_exit),
+              icon: const Icon(Icons.fullscreen_exit),
               onPressed: () => setState(() => _immersive = false),
             ),
           ),
@@ -390,7 +389,7 @@ class _RailButton extends StatelessWidget {
                 mouseCursor: SystemMouseCursors.click,
                 onTap: onTap,
                 child: Center(
-                  child: AppIcon(
+                  child: Icon(
                     icon,
                     size: 20,
                     color: selected

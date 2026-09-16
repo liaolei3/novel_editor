@@ -24,4 +24,23 @@ void main() {
     expect(TextStats.readingMinutes(500), 1);
     expect(TextStats.readingMinutes(1200), 3);
   });
+
+  group('CountStandard.count', () {
+    const text = '你好，world！\n 66 ';
+
+    test('withPunctuation 含标点不含空白', () {
+      expect(TextStats.count(text, CountStandard.withPunctuation), 11);
+    });
+
+    test('withoutPunctuation 仅汉字/字母/数字', () {
+      expect(TextStats.count(text, CountStandard.withoutPunctuation), 9);
+      expect(TextStats.count('你好，世界！', CountStandard.withoutPunctuation), 4);
+      expect(TextStats.count('a-b_c', CountStandard.withoutPunctuation), 3);
+    });
+
+    test('withPunctuation 与 charCount 一致', () {
+      expect(TextStats.count('😀哈哈 a', CountStandard.withPunctuation),
+          TextStats.charCount('😀哈哈 a'));
+    });
+  });
 }

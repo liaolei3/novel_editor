@@ -8,7 +8,6 @@ import '../../services/ai/ai_gateway.dart';
 import '../../state/app_state.dart';
 import '../../state/settings_controller.dart';
 import '../common/dialogs.dart';
-import '../widgets/app_icon.dart';
 import '../widgets/toast.dart';
 
 /// AI 面板（FR-16 ~ FR-20 / 9.4）：
@@ -316,7 +315,7 @@ class _AiPanelState extends State<AiPanel> {
                 ..._actionsFor(context, state, text),
                 IconButton(
                   tooltip: '换一批 / 重试',
-                  icon: const AppIcon(Icons.refresh, size: 16),
+                  icon: const Icon(Icons.refresh, size: 16),
                   onPressed: run,
                 ),
               ],

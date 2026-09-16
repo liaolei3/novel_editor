@@ -4,7 +4,9 @@ import 'package:crypto/crypto.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'dart:math';
 
+import '../core/constants.dart';
 import '../core/utils/rich_text_codec.dart';
+import '../core/utils/text_stats.dart';
 import 'db.dart';
 import 'models.dart';
 
@@ -99,6 +101,11 @@ class VolumeRepository {
 }
 
 class ChapterRepository {
+  ChapterRepository({CountStandard Function()? standardResolver})
+      : _standardResolver = standardResolver ?? (() => CountStandard.withPunctuation);
+
+  final CountStandard Function() _standardResolver;
+
   Future<List<Chapter>> listByBook(String bookId) async {
     final db = await Db.instance();
     final rows = await db.query('chapters',
@@ -189,14 +196,22 @@ class ChapterRepository {
     await db.update('chapters', data, where: 'id = ?', whereArgs: [id]);
   }
 
-  static int _countChars(String content) {
-    final plain = RichTextCodec.plainTextFromDeltaJson(content);
-    var n = 0;
-    for (final rune in plain.runes) {
-      final ch = String.fromCharCode(rune);
-      if (ch.trim().isNotEmpty) n++;
+  int _countChars(String content) => TextStats.count(
+      RichTextCodec.plainTextFromDeltaJson(content), _standardResolver());
+
+  /// 按指定口径全库重算 char_count（切换口径后调用一次）。
+  Future<int> recountAll(CountStandard std) async {
+    final db = await Db.instance();
+    final rows = await db.query('chapters', columns: ['id', 'content']);
+    final batch = db.batch();
+    for (final row in rows) {
+      final plain =
+          RichTextCodec.plainTextFromDeltaJson(row['content'] as String? ?? '');
+      batch.update('chapters', {'char_count': TextStats.count(plain, std)},
+          where: 'id = ?', whereArgs: [row['id'] as String]);
     }
-    return n;
+    await batch.commit(noResult: true);
+    return rows.length;
   }
 }
 
@@ -237,8 +252,11 @@ class SnapshotRepository {
         whereArgs: [chapterId],
         orderBy: 'created_at DESC',
         limit: 1000);
-    if (rows.length <= 50) return;
-    final stale = rows.skip(50).map((r) => r['id'] as String).toList();
+    if (rows.length <= AppConstants.snapshotKeepCount) return;
+    final stale = rows
+        .skip(AppConstants.snapshotKeepCount)
+        .map((r) => r['id'] as String)
+        .toList();
     for (final id in stale) {
       await db.delete('snapshots', where: 'id = ?', whereArgs: [id]);
     }

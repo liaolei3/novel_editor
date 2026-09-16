@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
 import 'app_config.dart';
+import '../core/utils/text_stats.dart';
 import '../ui/app_theme.dart';
 
 /// 设置控制器（9.8 设置页）：
-/// 主题（浅色/暗色/像素）、字体大小、行距、自动保存频率、每日目标、AI 配置、同步开关。
+/// 主题（浅色/暗色/蛋黄派）、字体大小、行距、自动保存频率、每日目标、AI 配置、同步开关。
 /// 配置持久化在数据目录的 config.json 中，随数据目录一起迁移。
 class SettingsController extends ChangeNotifier {
   SettingsController(this._cfg);
@@ -15,8 +16,8 @@ class SettingsController extends ChangeNotifier {
     switch (_cfg.getString('appTheme')) {
       case 'dark':
         return AppTheme.dark;
-      case 'pixel':
-        return AppTheme.pixel;
+      case 'eggPie':
+        return AppTheme.eggPie;
       default:
         return AppTheme.light;
     }
@@ -27,6 +28,10 @@ class SettingsController extends ChangeNotifier {
   double get paragraphSpacing => _cfg.getDouble('paragraphSpacing') ?? 0.5;
   int get autosaveSeconds => _cfg.getInt('autosaveSeconds') ?? 2;
   int get dailyGoal => _cfg.getInt('dailyGoal') ?? 2000;
+  CountStandard get countStandard => CountStandard.values.firstWhere(
+        (s) => s.name == _cfg.getString('countStandard'),
+        orElse: () => CountStandard.withPunctuation,
+      );
   bool get syncEnabled => _cfg.getBool('syncEnabled') ?? false;
   String get aiBaseUrl => _cfg.getString('aiBaseUrl') ?? '';
   String get aiApiKey => _cfg.getString('aiApiKey') ?? '';
@@ -52,6 +57,9 @@ class SettingsController extends ChangeNotifier {
 
   Future<void> setDailyGoal(int v) =>
       _set('dailyGoal', v, () => notifyListeners());
+
+  Future<void> setCountStandard(CountStandard v) =>
+      _set('countStandard', v.name, () => notifyListeners());
 
   Future<void> setSyncEnabled(bool v) => _set('syncEnabled', v, null);
 

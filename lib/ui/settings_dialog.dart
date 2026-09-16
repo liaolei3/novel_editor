@@ -2,11 +2,10 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
-import 'package:pixelarticons/pixelarticons.dart';
 import 'package:provider/provider.dart';
 
-
 import '../../core/utils/sensitive_words.dart';
+import '../../core/utils/text_stats.dart';
 import '../../data/db.dart';
 import '../../services/logger.dart';
 import '../../state/app_config.dart';
@@ -17,7 +16,6 @@ import 'common/dialogs.dart';
 import 'common/file_io.dart';
 import 'conflict_page.dart';
 import 'recycle_page.dart';
-import 'widgets/app_icon.dart';
 import 'widgets/toast.dart';
 
 /// 设置弹窗（9.8）：左分类导航 + 右内容区，参考系统设置布局。
@@ -49,10 +47,13 @@ class _FullWidthTrackShape extends RoundedRectSliderTrackShape {
     bool isEnabled = true,
   }) {
     final trackHeight = sliderTheme.trackHeight ?? 4.0;
-    final trackTop =
-        offset.dy + (parentBox.size.height - trackHeight) / 2;
+    final trackTop = offset.dy + (parentBox.size.height - trackHeight) / 2;
     return Rect.fromLTWH(
-        offset.dx, trackTop, parentBox.size.width, trackHeight);
+      offset.dx,
+      trackTop,
+      parentBox.size.width,
+      trackHeight,
+    );
   }
 }
 
@@ -78,8 +79,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsController>();
     final state = context.watch<AppState>();
-    final isPixel =
-        context.watch<SettingsController>().theme == AppTheme.pixel;
+    final isEggPie =
+        context.watch<SettingsController>().theme == AppTheme.eggPie;
     final isLight = Theme.of(context).brightness == Brightness.light;
     final hairline = isLight
         ? const Color(0x1A000000)
@@ -88,14 +89,16 @@ class _SettingsDialogState extends State<SettingsDialog> {
     return AlertDialog(
       titlePadding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
       contentPadding: EdgeInsets.zero,
-      title: Row(children: [
-        const Text('设置'),
-        const Spacer(),
-        IconButton(
-          icon: const AppIcon(Icons.close),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ]),
+      title: Row(
+        children: [
+          const Text('设置'),
+          const Spacer(),
+          IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
       content: ClipRRect(
         borderRadius: BorderRadius.circular(11),
         child: SizedBox(
@@ -105,10 +108,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
             children: [
               Divider(
                 height: 1,
-                thickness: isPixel ? 2 : 0.5,
-                color: isPixel
-                    ? const Color(0xFF5B2E0E)
-                    : hairline,
+                thickness: isEggPie ? 2 : 0.5,
+                color: isEggPie ? const Color(0xFF5B2E0E) : hairline,
               ),
               Expanded(
                 child: Row(
@@ -118,33 +119,33 @@ class _SettingsDialogState extends State<SettingsDialog> {
                       width: 168,
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 12),
+                          horizontal: 10,
+                          vertical: 12,
+                        ),
                         child: Column(
                           children: [
                             for (var i = 0; i < _categories.length; i++)
                               _navItem(
                                 category: _categories[i],
                                 selected: i == _current,
-                                isPixel: isPixel,
-                                onTap: () =>
-                                    setState(() => _current = i),
+                                isEggPie: isEggPie,
+                                onTap: () => setState(() => _current = i),
                               ),
                           ],
                         ),
                       ),
                     ),
                     VerticalDivider(
-                        width: 1,
-                        thickness: isPixel ? 1 : 0.5,
-                        color: isPixel
-                            ? const Color(0x668A5A2A)
-                            : hairline),
+                      width: 1,
+                      thickness: isEggPie ? 1 : 0.5,
+                      color: isEggPie ? const Color(0x668A5A2A) : hairline,
+                    ),
                     Expanded(
                       child: ListView(
                         padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
                         children: switch (_current) {
                           0 => _appearance(settings, hairline),
-                          1 => _writing(settings, hairline),
+                          1 => _writing(settings, state, hairline),
                           2 => _sync(settings, state, hairline),
                           3 => _ai(settings, hairline),
                           _ => _data(settings, hairline),
@@ -172,20 +173,26 @@ class _SettingsDialogState extends State<SettingsDialog> {
               SegmentedButton<AppTheme>(
                 segments: const [
                   ButtonSegment(
-                      value: AppTheme.light,
-                      icon: Tooltip(
-                          message: '浅色',
-                          child: Icon(Icons.light_mode, size: 16))),
+                    value: AppTheme.light,
+                    icon: Tooltip(
+                      message: '浅色',
+                      child: Icon(Icons.light_mode, size: 16),
+                    ),
+                  ),
                   ButtonSegment(
-                      value: AppTheme.dark,
-                      icon: Tooltip(
-                          message: '暗色',
-                          child: Icon(Icons.dark_mode, size: 16))),
+                    value: AppTheme.dark,
+                    icon: Tooltip(
+                      message: '暗色',
+                      child: Icon(Icons.dark_mode, size: 16),
+                    ),
+                  ),
                   ButtonSegment(
-                      value: AppTheme.pixel,
-                      icon: Tooltip(
-                          message: '像素',
-                          child: Icon(Pixel.gamepad, size: 20))),
+                    value: AppTheme.eggPie,
+                    icon: Tooltip(
+                      message: '蛋黄派',
+                      child: Icon(Icons.pie_chart, size: 16),
+                    ),
+                  ),
                 ],
                 selected: {s.theme},
                 onSelectionChanged: (v) => s.setTheme(v.first),
@@ -194,12 +201,16 @@ class _SettingsDialogState extends State<SettingsDialog> {
             ],
           ),
         ),
-        _divider(hairline),
+      ]),
+      const SizedBox(height: 12),
+      _group(hairline, [
         _sliderRow(
           title: '字体大小',
           value: '${s.fontSize.round()}',
           slider: Slider(
-            min: 13, max: 26, divisions: 13,
+            min: 13,
+            max: 26,
+            divisions: 13,
             value: s.fontSize,
             onChanged: s.setFontSize,
           ),
@@ -209,7 +220,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
           title: '行距',
           value: '${s.lineHeight.toStringAsFixed(1)} 倍',
           slider: Slider(
-            min: 1.2, max: 2.6, divisions: 14,
+            min: 1.2,
+            max: 2.6,
+            divisions: 14,
             value: s.lineHeight,
             onChanged: s.setLineHeight,
           ),
@@ -219,7 +232,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
           title: '段间距',
           value: '${s.paragraphSpacing.toStringAsFixed(1)} 倍',
           slider: Slider(
-            min: 0, max: 2.0, divisions: 20,
+            min: 0,
+            max: 2.0,
+            divisions: 20,
             value: s.paragraphSpacing,
             onChanged: s.setParagraphSpacing,
           ),
@@ -228,32 +243,98 @@ class _SettingsDialogState extends State<SettingsDialog> {
     ];
   }
 
-  List<Widget> _writing(SettingsController s, Color hairline) {
+  List<Widget> _writing(SettingsController s, AppState state, Color hairline) {
     return [
       _group(hairline, [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
           child: Row(
             children: [
-              const Expanded(child: Text('自动保存停顿')),
-              SegmentedButton<int>(
-                segments: const [
-                  ButtonSegment(value: 1, label: Text('1s')),
-                  ButtonSegment(value: 2, label: Text('2s')),
-                  ButtonSegment(value: 5, label: Text('5s')),
-                ],
-                selected: {s.autosaveSeconds},
-                onSelectionChanged: (v) => s.setAutosaveSeconds(v.first),
+              const Expanded(child: Text('字数统计口径')),
+              SizedBox(
+                width: 240,
+                child: SegmentedButton<CountStandard>(
+                  style: const ButtonStyle(
+                    minimumSize: WidgetStatePropertyAll(Size(120, 36)),
+                  ),
+                  segments: const [
+                    ButtonSegment(
+                      value: CountStandard.withPunctuation,
+                      label: Text('含标点'),
+                    ),
+                    ButtonSegment(
+                      value: CountStandard.withoutPunctuation,
+                      label: Text('不含标点'),
+                    ),
+                  ],
+                  selected: {s.countStandard},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (v) async {
+                    final std = v.first;
+                    if (std == s.countStandard) return;
+                    await s.setCountStandard(std);
+                    await state.recountAll();
+                  },
+                ),
               ),
             ],
           ),
         ),
+      ]),
+      const SizedBox(height: 12),
+      _group(hairline, [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-          child: Text('输入停顿后落盘；另有 30 秒兜底保存（FR-2）',
-              style: TextStyle(
-                  fontSize: 12,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: Row(
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('自动保存停顿'),
+                  const SizedBox(width: 4),
+                  Tooltip(
+                    message: '输入停顿后保存，另有 30 秒兜底自动保存',
+                    triggerMode: TooltipTriggerMode.tap,
+                    showDuration: const Duration(seconds: 3),
+                    constraints: const BoxConstraints(maxWidth: 160),
+                    child: SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 1),
+                        child: Center(
+                          child: Icon(
+                            Icons.help_outline,
+                            size: 16,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              SizedBox(
+                width: 240,
+                child: SegmentedButton<int>(
+                  style: const ButtonStyle(
+                    minimumSize: WidgetStatePropertyAll(Size(80, 36)),
+                  ),
+                  segments: const [
+                    ButtonSegment(value: 1, label: Text('1s')),
+                    ButtonSegment(value: 2, label: Text('2s')),
+                    ButtonSegment(value: 5, label: Text('5s')),
+                  ],
+                  selected: {s.autosaveSeconds},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (v) => s.setAutosaveSeconds(v.first),
+                ),
+              ),
+            ],
+          ),
         ),
       ]),
       const SizedBox(height: 12),
@@ -262,7 +343,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
           title: '每日码字目标',
           value: '${s.dailyGoal} 字',
           slider: Slider(
-            min: 500, max: 10000, divisions: 19,
+            min: 500,
+            max: 10000,
+            divisions: 19,
             label: '${s.dailyGoal}',
             value: s.dailyGoal.toDouble(),
             onChanged: (v) => s.setDailyGoal(v.round()),
@@ -287,7 +370,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
         ListTile(
           title: const Text('立即同步'),
           subtitle: const Text('检测并推送/拉取增量；若同章双端修改将进入冲突解决'),
-          trailing: const AppIcon(Icons.sync),
+          trailing: const Icon(Icons.sync),
           onTap: () => _syncNow(state),
         ),
       ]),
@@ -299,10 +382,12 @@ class _SettingsDialogState extends State<SettingsDialog> {
       _group(hairline, [
         ListTile(
           title: const Text('AI 网关'),
-          subtitle: Text(s.aiBaseUrl.isEmpty
-              ? '未配置（自动降级为纯写作模式）'
-              : '${s.aiModel} @ ${s.aiBaseUrl}'),
-          trailing: const AppIcon(Icons.chevron_right),
+          subtitle: Text(
+            s.aiBaseUrl.isEmpty
+                ? '未配置（自动降级为纯写作模式）'
+                : '${s.aiModel} @ ${s.aiBaseUrl}',
+          ),
+          trailing: const Icon(Icons.chevron_right),
           onTap: _editAi,
         ),
       ]),
@@ -315,8 +400,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
         ListTile(
           title: const Text('敏感词词库'),
           subtitle: Text(
-              '当前词库：${s.sensitiveDictVersion}\n从 TXT 导入更新（一行一词，# 开头为注释）'),
-          trailing: const AppIcon(Icons.upload_file),
+            '当前词库：${s.sensitiveDictVersion}\n从 TXT 导入更新（一行一词，# 开头为注释）',
+          ),
+          trailing: const Icon(Icons.upload_file),
           onTap: _importDict,
         ),
         _divider(hairline),
@@ -326,18 +412,20 @@ class _SettingsDialogState extends State<SettingsDialog> {
               : Db.defaultDir(),
           builder: (context, snap) => ListTile(
             title: const Text('数据存储目录'),
-            subtitle: Text(snap.data ?? '读取中…', maxLines: 1,
-                overflow: TextOverflow.ellipsis),
-            trailing: const AppIcon(Icons.folder_open),
-            onTap:
-                snap.hasData ? () => _changeDataDir(snap.data!) : null,
+            subtitle: Text(
+              snap.data ?? '读取中…',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: const Icon(Icons.folder_open),
+            onTap: snap.hasData ? () => _changeDataDir(snap.data!) : null,
           ),
         ),
         _divider(hairline),
         ListTile(
           title: const Text('回收站'),
           subtitle: const Text('删除的卷/章/素材保留 30 天'),
-          trailing: const AppIcon(Icons.chevron_right),
+          trailing: const Icon(Icons.chevron_right),
           onTap: _openRecycle,
         ),
       ]),
@@ -346,7 +434,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
         ListTile(
           title: const Text('运行日志'),
           subtitle: const Text('程序出错会自动记录在此，可打包发给支持人员'),
-          trailing: const AppIcon(Icons.description),
+          trailing: const Icon(Icons.description),
           onTap: _openLogs,
         ),
         _divider(hairline),
@@ -359,25 +447,23 @@ class _SettingsDialogState extends State<SettingsDialog> {
   }
 
   /// 卡片与导航选中项的共享底色：选中即「提亮」
-  Color _panelColor(bool isPixel) {
-    if (isPixel) return const Color(0xFFFFF6E0);
+  Color _panelColor(bool isEggPie) {
+    if (isEggPie) return const Color(0xFFFFF6E0);
     final isLight = Theme.of(context).brightness == Brightness.light;
-    return isLight
-        ? const Color(0xFFF5F5F7)
-        : const Color(0xFF34343A);
+    return isLight ? const Color(0xFFF5F5F7) : const Color(0xFF34343A);
   }
 
   /// 分组卡片：底色与导航选中项一致 + 组内行间分割线。
   /// 组内行统一包透明 Material：ListTile 的背景与墨水效果绘制在
   /// 最近的 Material 上，避免被卡片的 DecoratedBox 背景遮住。
   Widget _group(Color hairline, List<Widget> children) {
-    final isPixel =
-        context.read<SettingsController>().theme == AppTheme.pixel;
+    final isEggPie =
+        context.read<SettingsController>().theme == AppTheme.eggPie;
     return Container(
       decoration: BoxDecoration(
-        color: _panelColor(isPixel),
+        color: _panelColor(isEggPie),
         borderRadius: BorderRadius.circular(12),
-        border: isPixel
+        border: isEggPie
             ? Border.all(color: const Color(0xFF5B2E0E), width: 2)
             : null,
       ),
@@ -391,18 +477,17 @@ class _SettingsDialogState extends State<SettingsDialog> {
     );
   }
 
-  /// 组内分割线：像素风用棕色，极简风用发丝线。
+  /// 组内分割线：蛋黄派用棕色，极简风用发丝线。
   Widget _divider(Color hairline) {
-    final isPixel =
-        context.read<SettingsController>().theme == AppTheme.pixel;
+    final isEggPie =
+        context.read<SettingsController>().theme == AppTheme.eggPie;
     return Divider(
-        height: 1,
-        thickness: 1,
-        indent: 16,
-        endIndent: 16,
-        color: isPixel
-            ? const Color(0x668A5A2A)
-            : hairline);
+      height: 1,
+      thickness: 1,
+      indent: 16,
+      endIndent: 16,
+      color: isEggPie ? const Color(0x668A5A2A) : hairline,
+    );
   }
 
   /// 滑块行：标题行（左标题 + 右当前值）+ 下方滑块。
@@ -414,37 +499,45 @@ class _SettingsDialogState extends State<SettingsDialog> {
   }) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      child: Column(children: [
-        Row(children: [
-          Text(title),
-          const Spacer(),
-          Text(value,
-              style: TextStyle(
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Text(title),
+              const Spacer(),
+              Text(
+                value,
+                style: TextStyle(
                   fontSize: 12,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant)),
-        ]),
-        SizedBox(
-          height: 28,
-          child: SliderTheme(
-            data: SliderTheme.of(context)
-                .copyWith(trackShape: const _FullWidthTrackShape()),
-            child: slider,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
           ),
-        ),
-      ]),
+          SizedBox(
+            height: 28,
+            child: SliderTheme(
+              data: SliderTheme.of(
+                context,
+              ).copyWith(trackShape: const _FullWidthTrackShape()),
+              child: slider,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _navItem({
     required _Category category,
     required bool selected,
-    required bool isPixel,
+    required bool isEggPie,
     required VoidCallback onTap,
   }) {
     final scheme = Theme.of(context).colorScheme;
-    // 选中项：像素风用次级面板色 + 木框；极简风用卡片同色。
-    final color = selected ? _panelColor(isPixel) : Colors.transparent;
-    final border = selected && isPixel
+    // 选中项：蛋黄派用次级面板色 + 木框；极简风用卡片同色。
+    final color = selected ? _panelColor(isEggPie) : Colors.transparent;
+    final border = selected && isEggPie
         ? Border.all(color: const Color(0xFF5B2E0E), width: 2)
         : null;
     return Padding(
@@ -461,22 +554,26 @@ class _SettingsDialogState extends State<SettingsDialog> {
               borderRadius: BorderRadius.circular(8),
               border: border,
             ),
-            child: Row(children: [
-              AppIcon(category.icon,
+            child: Row(
+              children: [
+                Icon(
+                  category.icon,
                   size: 16,
-                  color: selected
-                      ? scheme.primary
-                      : scheme.onSurfaceVariant),
-              const SizedBox(width: 10),
-              Text(category.label,
+                  color: selected ? scheme.primary : scheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  category.label,
                   style: TextStyle(
-                      fontSize: 13,
-                      color: selected
-                          ? scheme.onSurface
-                          : scheme.onSurfaceVariant,
-                      fontWeight:
-                          selected ? FontWeight.w600 : FontWeight.w400)),
-            ]),
+                    fontSize: 13,
+                    color: selected
+                        ? scheme.onSurface
+                        : scheme.onSurfaceVariant,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -487,24 +584,27 @@ class _SettingsDialogState extends State<SettingsDialog> {
   Future<void> _changeDataDir(String currentDir) async {
     final target = await FileIO.pickDirectory();
     if (target == null || target == currentDir) return;
-    final hasExisting =
-        File(p.join(target, 'novel_editor.db')).existsSync();
+    final hasExisting = File(p.join(target, 'novel_editor.db')).existsSync();
     final confirmed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => DraggableDialog(
         child: AlertDialog(
           title: const Text('切换数据存储目录'),
-          content: Text(hasExisting
-              ? '目标目录已包含数据文件，切换后将直接使用该目录中的数据（当前数据保留不动）：\n\n$target'
-              : '将把当前全部数据（数据库与备份）迁移到：\n\n$target\n\n迁移后需重启应用生效，当前目录数据不会被删除。'),
+          content: Text(
+            hasExisting
+                ? '目标目录已包含数据文件，切换后将直接使用该目录中的数据（当前数据保留不动）：\n\n$target'
+                : '将把当前全部数据（数据库与备份）迁移到：\n\n$target\n\n迁移后需重启应用生效，当前目录数据不会被删除。',
+          ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('取消')),
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
             FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('确认切换')),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('确认切换'),
+            ),
           ],
         ),
       ),
@@ -526,8 +626,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
             content: const Text('数据存储目录已更新，重启应用后生效。'),
             actions: [
               FilledButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('知道了')),
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('知道了'),
+              ),
             ],
           ),
         ),
@@ -572,20 +673,45 @@ class _SettingsDialogState extends State<SettingsDialog> {
       builder: (ctx) => DraggableDialog(
         child: AlertDialog(
           title: const Text('AI 网关（OpenAI 兼容）'),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            TextField(controller: urlCtrl, decoration: const InputDecoration(labelText: 'Base URL（如 https://api.xxx.com/v1）')),
-            TextField(controller: keyCtrl, obscureText: true, decoration: const InputDecoration(labelText: 'API Key')),
-            TextField(controller: modelCtrl, decoration: const InputDecoration(labelText: '模型名')),
-          ]),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: urlCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Base URL（如 https://api.xxx.com/v1）',
+                ),
+              ),
+              TextField(
+                controller: keyCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'API Key'),
+              ),
+              TextField(
+                controller: modelCtrl,
+                decoration: const InputDecoration(labelText: '模型名'),
+              ),
+            ],
+          ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('保存')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('保存'),
+            ),
           ],
         ),
       ),
     );
     if (ok == true) {
-      await settings.setAiConfig(urlCtrl.text.trim(), keyCtrl.text.trim(), modelCtrl.text.trim());
+      await settings.setAiConfig(
+        urlCtrl.text.trim(),
+        keyCtrl.text.trim(),
+        modelCtrl.text.trim(),
+      );
     }
   }
 
@@ -593,8 +719,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
     final raw = await FileIO.pickReadText();
     if (raw == null) return;
     final scanner = SensitiveWordScanner.parse(raw);
-    await context.read<SettingsController>()
-        .setSensitiveDictVersion('导入词库 ${scanner.words.length} 词');
+    await context.read<SettingsController>().setSensitiveDictVersion(
+      '导入词库 ${scanner.words.length} 词',
+    );
     if (mounted) {
       showToast(context, '词库已更新（${scanner.words.length} 词）');
     }
@@ -616,7 +743,6 @@ class _SettingsDialogState extends State<SettingsDialog> {
   void _openRecycle() {
     final nav = Navigator.of(context);
     nav.pop();
-    nav.push(
-        MaterialPageRoute(builder: (_) => const RecyclePage()));
+    nav.push(MaterialPageRoute(builder: (_) => const RecyclePage()));
   }
 }

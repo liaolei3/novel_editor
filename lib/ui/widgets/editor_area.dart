@@ -16,9 +16,9 @@ import '../../services/autosave_service.dart';
 import '../../state/app_state.dart';
 import '../../state/settings_controller.dart';
 
+import '../common/context_menu.dart';
 import '../common/dialogs.dart';
 import '../common/file_io.dart';
-import 'app_icon.dart';
 import 'character_tip.dart';
 import 'search_replace_bar.dart';
 import 'toast.dart';
@@ -48,6 +48,11 @@ class _EditorAreaState extends State<EditorArea> {
   String _searchQuery = '';
 
   String? _lastChapterId;
+
+  /// 最近一次右键按下的全局坐标与时间：编辑器右键菜单跟随鼠标位置
+  /// 而非选区位置（选区可能在远离点击处）。
+  Offset? _secondaryTapPosition;
+  DateTime? _secondaryTapAt;
 
   /// 搜索栏重挂载计数：全局搜索跳转等场景需要重置栏内状态并重新定位。
   int _searchNonce = 0;
@@ -138,18 +143,19 @@ class _EditorAreaState extends State<EditorArea> {
         .every((attr) => attr.scope != AttributeScope.block);
   }
 
-  /// 回车：换行 + 普通段落行首自动缩进两个全角空格。
-  /// 单次 replaceText 同时写入换行与缩进，撤销时一并回退。
+  /// 回车：自动插入一个空行 + 普通段落行首缩进两个全角空格。
+  /// 单次 replaceText 同时写入空行与缩进，撤销时一并回退。
   /// 块级行（列表/引用/代码块/标题）保持 Quill 默认换行行为。
   void _handleEnterWithIndent(QuillController controller) {
     final sel = controller.selection;
     final start = sel.start;
-    final indent = _isPlainLine(controller, start) ? _cnIndent : '';
+    final insert =
+        _isPlainLine(controller, start) ? '\n\n$_cnIndent' : '\n';
     controller.replaceText(
       start,
       sel.end - start,
-      '\n$indent',
-      TextSelection.collapsed(offset: start + 1 + indent.length),
+      insert,
+      TextSelection.collapsed(offset: start + insert.length),
     );
   }
 
@@ -168,8 +174,75 @@ class _EditorAreaState extends State<EditorArea> {
     return KeyEventResult.handled;
   }
 
+  static bool _isWhitespace(String ch) =>
+      ch == '\n' || ch == ' ' || ch == '\u3000' || ch == '\t';
+
+  /// 段首退格：一次性删除光标前的所有缩进空格与空行，
+  /// 使当前段落直接衔接上一段文字；单次 replaceText，撤销一并回退。
+  /// 光标前（行内）存在非空白字符、有选区或已到文档开头时交给 Quill 默认处理。
+  KeyEventResult? _handleBackspaceAtParagraphStart(
+      QuillController controller) {
+    final sel = controller.selection;
+    if (!sel.isCollapsed) return null;
+    final offset = sel.start;
+    if (offset == 0) return null;
+    final text = controller.document.toPlainText();
+    final lineStart = text.lastIndexOf('\n', offset - 1) + 1;
+    for (var i = lineStart; i < offset; i++) {
+      if (!_isWhitespace(text[i])) return null;
+    }
+    var target = offset;
+    while (target > 0 && _isWhitespace(text[target - 1])) {
+      target--;
+    }
+    if (target == offset) return null;
+    controller.replaceText(
+      target,
+      offset - target,
+      '',
+      TextSelection.collapsed(offset: target),
+    );
+    return KeyEventResult.handled;
+  }
+
   /// 自定义 textSpanBuilder：角色名高亮 + 搜索背景高亮复合。
   InlineSpan _textSpanBuilder(
+    BuildContext context,
+    Node node,
+    int nodeOffset,
+    String text,
+    TextStyle? style,
+    GestureRecognizer? recognizer,
+  ) {
+    // TextAlign.justify 下引擎会裁掉行首空白（段首全角空格缩进会消失），
+    // 渲染层把行首 \u3000 替换为等宽 WidgetSpan 占位：每个占位符对应
+    // 恰好一个字符位，文档文本与光标/选区映射均不受影响。
+    var leading = 0;
+    if (nodeOffset == 0 && node.isFirst) {
+      while (leading < text.length && text.codeUnitAt(leading) == 0x3000) {
+        leading++;
+      }
+    }
+    if (leading > 0) {
+      final fs =
+          style?.fontSize ?? DefaultTextStyle.of(context).style.fontSize ?? 16;
+      return TextSpan(
+        style: style,
+        children: [
+          for (var i = 0; i < leading; i++)
+            WidgetSpan(
+              alignment: PlaceholderAlignment.bottom,
+              child: SizedBox(width: fs),
+            ),
+          _richSpan(context, node, nodeOffset, text.substring(leading), style,
+              recognizer),
+        ],
+      );
+    }
+    return _richSpan(context, node, nodeOffset, text, style, recognizer);
+  }
+
+  InlineSpan _richSpan(
     BuildContext context,
     Node node,
     int nodeOffset,
@@ -331,6 +404,7 @@ class _EditorAreaState extends State<EditorArea> {
     final sessionChars = state.session.sessionChars;
     final savingHint = _saveIndicator(context);
     final plain = state.editorController.document.toPlainText();
+    final std = settings.countStandard;
 
     return CallbackShortcuts(
       bindings: {
@@ -365,7 +439,7 @@ class _EditorAreaState extends State<EditorArea> {
               _searchQuery = '';
             }),
           ),
-        if (TextStats.charCount(plain) > AppConstants.longChapterThreshold)
+        if (TextStats.count(plain, std) > AppConstants.longChapterThreshold)
           MaterialBanner(
             backgroundColor: Theme.of(context).colorScheme.errorContainer,
             content: const Text('本章超过 5 万字，建议拆分为多章以保证编辑流畅度。'),
@@ -376,8 +450,14 @@ class _EditorAreaState extends State<EditorArea> {
             // 鼠标拖选期间抑制 flutter_quill 内部 _showCaretOnScreen 触发的
             // animateTo（它会把视口拉回选区起点，与 bringIntoView 的向下
             // jumpTo 互相冲突，导致滚动条反复向上反弹）。
-            onPointerDown: (event) => _scrollController.suppressAnimateTo =
-                event.kind == PointerDeviceKind.mouse,
+            onPointerDown: (event) {
+              _scrollController.suppressAnimateTo =
+                  event.kind == PointerDeviceKind.mouse;
+              if (event.buttons == kSecondaryButton) {
+                _secondaryTapPosition = event.position;
+                _secondaryTapAt = DateTime.now();
+              }
+            },
             onPointerUp: (_) => _scrollController.suppressAnimateTo = false,
             onPointerCancel: (_) => _scrollController.suppressAnimateTo = false,
             child: QuillEditor.basic(
@@ -388,6 +468,12 @@ class _EditorAreaState extends State<EditorArea> {
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 textSpanBuilder: _textSpanBuilder,
                 customStyles: _editorStyles(context, settings),
+                contextMenuBuilder: (context, state) =>
+                    appEditorContextMenuBuilder(
+                  context,
+                  state,
+                  secondaryTapPosition: _recentSecondaryTap(),
+                ),
                 autoFocus: false,
                 expands: true,
                 // Quill 自带 Ctrl+F 会打开其内置查找弹窗，这里在其按键处理链
@@ -411,6 +497,19 @@ class _EditorAreaState extends State<EditorArea> {
                         !mods.isAltPressed) {
                       _handleEnterWithIndent(state.editorController);
                       return KeyEventResult.handled;
+                    }
+                    return null;
+                  }
+                  // 段首退格：一次性删除前面的所有缩进空格与空行。
+                  if (event is KeyDownEvent &&
+                      event.logicalKey == LogicalKeyboardKey.backspace) {
+                    final mods = HardwareKeyboard.instance;
+                    if (!mods.isControlPressed &&
+                        !mods.isMetaPressed &&
+                        !mods.isAltPressed &&
+                        !mods.isShiftPressed) {
+                      return _handleBackspaceAtParagraphStart(
+                          state.editorController);
                     }
                     return null;
                   }
@@ -448,6 +547,16 @@ class _EditorAreaState extends State<EditorArea> {
     );
   }
 
+  /// 返回 1 秒内的右键位置：右键菜单由 postFrame 弹出，时间窗保证
+  /// 只影响右键触发的菜单；拖选/双击触发的菜单仍跟随选区。
+  Offset? _recentSecondaryTap() {
+    final at = _secondaryTapAt;
+    if (at == null) return null;
+    return DateTime.now().difference(at) <= const Duration(seconds: 1)
+        ? _secondaryTapPosition
+        : null;
+  }
+
   /// 编辑器自定义样式：把全局设置的字号/行距/段间距应用到正文相关块。
   DefaultStyles _editorStyles(BuildContext context, SettingsController settings) {
     final defaults = DefaultStyles.getInstance(context);
@@ -475,6 +584,8 @@ class _EditorAreaState extends State<EditorArea> {
       paragraph: bodyBlock(defaults.paragraph),
       indent: bodyBlock(defaults.indent),
       align: bodyBlock(defaults.align),
+      // 列表序号/圆点样式与正文一致，否则序号字号偏小且垂直位置偏上。
+      leading: defaults.leading?.copyWith(style: base),
       lists: defaults.lists?.copyWith(style: base, verticalSpacing: vs),
       quote: defaults.quote?.copyWith(
         style: base.copyWith(color: base.color?.withValues(alpha: 0.6)),
@@ -488,6 +599,8 @@ class _EditorAreaState extends State<EditorArea> {
     );
   }
 
+  /// 编辑器右键/文字选择菜单：复用应用统一右键菜单样式（与章节树一致），
+  /// 构建逻辑见 context_menu.dart 的 appEditorContextMenuBuilder。
   Widget _saveIndicator(BuildContext context) {
     final autosave = context.read<AppState>().autosave;
     return ValueListenableBuilder<SaveState>(
@@ -507,7 +620,7 @@ class _EditorAreaState extends State<EditorArea> {
         return Tooltip(
           message: '输入停顿 2 秒自动保存；每 30 秒兜底落盘',
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            AppIcon(icon, size: 16, color: color),
+            Icon(icon, size: 16, color: color),
             const SizedBox(width: 4),
             Text(label, style: TextStyle(color: color, fontSize: 12)),
           ]),
@@ -607,15 +720,13 @@ class _EditorAreaState extends State<EditorArea> {
         controller: state.editorController,
         iconTheme: headerTheme,
       ),
-      QuillToolbarToggleStyleButton(
-        attribute: Attribute.ol,
+      _ListStyleButton(
         controller: state.editorController,
-        baseOptions: base,
+        ordered: true,
       ),
-      QuillToolbarToggleStyleButton(
-        attribute: Attribute.ul,
+      _ListStyleButton(
         controller: state.editorController,
-        baseOptions: base,
+        ordered: false,
       ),
       QuillToolbarToggleCheckListButton(
         controller: state.editorController,
@@ -635,7 +746,7 @@ class _EditorAreaState extends State<EditorArea> {
         controller: state.editorController,
         baseOptions: base,
         options: QuillToolbarCustomButtonOptions(
-          icon: const AppIcon(Icons.auto_fix_high, size: 20),
+          icon: const Icon(Icons.auto_fix_high, size: 20),
           tooltip: '一键排版',
           onPressed: () => _runFormatter(context, state),
         ),
@@ -644,7 +755,7 @@ class _EditorAreaState extends State<EditorArea> {
         controller: state.editorController,
         baseOptions: base,
         options: QuillToolbarCustomButtonOptions(
-          icon: const AppIcon(Icons.camera_alt_outlined, size: 20),
+          icon: const Icon(Icons.camera_alt_outlined, size: 20),
           tooltip: '手动快照',
           onPressed: () async {
             await state.durability.manualSnapshot(state.currentChapter!);
@@ -658,7 +769,7 @@ class _EditorAreaState extends State<EditorArea> {
         controller: state.editorController,
         baseOptions: base,
         options: QuillToolbarCustomButtonOptions(
-          icon: const AppIcon(Icons.file_download_outlined, size: 20),
+          icon: const Icon(Icons.file_download_outlined, size: 20),
           tooltip: '导入 TXT / docx',
           onPressed: () => _import(context, state),
         ),
@@ -667,7 +778,7 @@ class _EditorAreaState extends State<EditorArea> {
         controller: state.editorController,
         baseOptions: base,
         options: QuillToolbarCustomButtonOptions(
-          icon: const AppIcon(Icons.file_upload_outlined, size: 20),
+          icon: const Icon(Icons.file_upload_outlined, size: 20),
           tooltip: '导出 TXT / Word',
           onPressed: () => _export(context, state),
         ),
@@ -689,37 +800,38 @@ class _EditorAreaState extends State<EditorArea> {
 
   Widget _statusBar(BuildContext context, Chapter chapter, int sessionChars, String plain) {
     final state = context.watch<AppState>();
+    final std = context.watch<SettingsController>().countStandard;
     return Container(
       height: 30,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.only(left: 16),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(90),
       ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final showNote = constraints.maxWidth >= 520;
-          const style = TextStyle(fontSize: 11);
-          return Row(children: [
-            Flexible(
-              child: Text('本章 ${TextStats.charCount(plain)} 字',
-                  style: style, overflow: TextOverflow.ellipsis),
-            ),
-            const SizedBox(width: 16),
-            Flexible(
-              child: Text('全书 ${state.bookCharTotal} 字',
-                  style: style, overflow: TextOverflow.ellipsis),
-            ),
-            const SizedBox(width: 16),
-            Flexible(
-              child: Text('本次会话 +$sessionChars 字',
-                  style: style, overflow: TextOverflow.ellipsis),
-            ),
-            const Spacer(),
-            if (showNote)
-              const Text('口径：字符数（含标点，不含空白）',
-                  style: TextStyle(fontSize: 10)),
-          ]);
-        },
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('本章 ${TextStats.count(plain, std)} 字',
+                  style: TextStyle(fontSize: 11),
+                  overflow: TextOverflow.ellipsis),
+              const SizedBox(width: 16),
+              Text('全书 ${state.bookCharTotal} 字',
+                  style: TextStyle(fontSize: 11),
+                  overflow: TextOverflow.ellipsis),
+              const SizedBox(width: 16),
+              Text('本次会话 +$sessionChars 字',
+                  style: TextStyle(fontSize: 11),
+                  overflow: TextOverflow.ellipsis),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: Text('字数统计口径：${std.label}',
+                style: TextStyle(fontSize: 10)),
+          ),
+        ],
       ),
     );
   }
@@ -735,71 +847,227 @@ class _EditorAreaState extends State<EditorArea> {
     final chapter = state.currentChapter;
     if (chapter == null) return;
     final before = state.editorController.document.toPlainText();
-    final after = TextFormatter.format(before);
-    if (after == before) {
-      if (context.mounted) {
-        showToast(context, '排版完成：无需修改');
-      }
-      return;
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    var collapseBlank = true;
+    var normalizePunct = true;
+    var indent = true;
+    var joinBlank = true;
+    String preview() => TextFormatter.format(before,
+        collapseBlank: collapseBlank,
+        normalizePunct: normalizePunct,
+        indent: indent,
+        joinBlank: joinBlank);
+    final leftCtrl = ScrollController();
+    final rightCtrl = ScrollController();
+    var syncing = false;
+    void syncScroll(ScrollController src, ScrollController dst) {
+      if (syncing || !src.hasClients || !dst.hasClients) return;
+      final srcMax = src.position.maxScrollExtent;
+      final dstMax = dst.position.maxScrollExtent;
+      if (srcMax <= 0) return;
+      syncing = true;
+      dst.jumpTo((src.offset / srcMax * dstMax).clamp(0.0, dstMax));
+      syncing = false;
     }
+
+    leftCtrl.addListener(() => syncScroll(leftCtrl, rightCtrl));
+    rightCtrl.addListener(() => syncScroll(rightCtrl, leftCtrl));
     final apply = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => DraggableDialog(
-        child: AlertDialog(
-          title: Row(children: [
-            const Text('一键排版预览'),
-            const Spacer(),
-            IconButton(
-              icon: const AppIcon(Icons.close),
-              onPressed: () => Navigator.pop(ctx, false),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final options = [
+            ('清理空行与空格', collapseBlank, (v) => collapseBlank = v),
+            ('统一中文标点', normalizePunct, (v) => normalizePunct = v),
+            ('段首缩进', indent, (v) => indent = v),
+            ('段间空行', joinBlank, (v) => joinBlank = v),
+          ];
+          return DraggableDialog(
+            child: Dialog(
+              insetPadding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1040, maxHeight: 780),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: scheme.primary.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(11),
+                          ),
+                          child: Icon(Icons.auto_fix_high,
+                              size: 24, color: scheme.primary),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('一键排版预览',
+                                  style: textTheme.titleLarge
+                                      ?.copyWith(fontSize: 24)),
+                              const SizedBox(height: 2),
+                              Text(
+                                '排版作用于纯文本，应用后富文本格式将被重置；如需撤销请前往「历史快照」。',
+                                style: textTheme.bodySmall?.copyWith(
+                                    fontSize: 13,
+                                    color: scheme.onSurfaceVariant),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          tooltip: '关闭',
+                          onPressed: () => Navigator.pop(ctx, false),
+                        ),
+                      ]),
+                      const SizedBox(height: 14),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final (label, value, onChanged) in options)
+                            FilterChip(
+                              label: Text(label),
+                              selected: value,
+                              onSelected: (v) =>
+                                  setDialogState(() => onChanged(v)),
+                              showCheckmark: true,
+                              labelStyle: TextStyle(
+                                fontSize: 13,
+                                color: value
+                                    ? scheme.primary
+                                    : scheme.onSurfaceVariant,
+                              ),
+                              checkmarkColor: scheme.primary,
+                              side: BorderSide(
+                                color: value
+                                    ? scheme.primary.withValues(alpha: 0.4)
+                                    : scheme.outlineVariant,
+                              ),
+                              backgroundColor: Colors.transparent,
+                              selectedColor:
+                                  scheme.primary.withValues(alpha: 0.08),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      Expanded(
+                        child: Row(children: [
+                          Expanded(
+                              child: _formatPane(
+                                  ctx, '排版前', before, Icons.article_outlined,
+                                  controller: leftCtrl)),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            child: CircleAvatar(
+                              radius: 14,
+                              backgroundColor: scheme.primary,
+                              child: Icon(Icons.arrow_forward,
+                                  size: 16, color: scheme.onPrimary),
+                            ),
+                          ),
+                          Expanded(
+                              child: _formatPane(ctx, '排版后', preview(),
+                                  Icons.auto_awesome,
+                                  highlight: true, controller: rightCtrl)),
+                        ]),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(children: [
+                        const Spacer(),
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('取消'),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('应用排版'),
+                        ),
+                      ]),
+                    ],
+                  ),
+                ),
+              ),
             ),
-          ]),
-          content: SizedBox(
-            width: 640,
-            height: 420,
-            child: Column(children: [
-              Expanded(
-                child: Row(children: [
-                  Expanded(
-                    child: Column(children: [
-                      const Text('排版前'),
-                      Expanded(child: SingleChildScrollView(child: SelectableText(before,
-                          style: const TextStyle(fontSize: 12, height: 1.5)))),
-                    ]),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(children: [
-                      const Text('排版后'),
-                      Expanded(child: SingleChildScrollView(child: SelectableText(after,
-                          style: const TextStyle(fontSize: 12, height: 1.5)))),
-                    ]),
-                  ),
-                ]),
-              ),
-            ]),
-          ),
-          actions: [
-            Row(children: [
-              const Expanded(
-                child: Text('提示：排版作用于纯文本，应用后富文本格式将被重置。',
-                    style: TextStyle(fontSize: 11, color: Colors.orange)),
-              ),
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('应用')),
-            ]),
-          ],
-        ),
+          );
+        },
       ),
     );
-    if (apply != true) return;
+    if (apply != true) {
+      leftCtrl.dispose();
+      rightCtrl.dispose();
+      return;
+    }
+    leftCtrl.dispose();
+    rightCtrl.dispose();
     await state.durability.manualSnapshot(chapter);
-    state.replaceDocument(RichTextCodec.documentFromContent(after));
+    state.replaceDocument(RichTextCodec.documentFromContent(preview()));
     await state.autosave.flush();
     if (context.mounted) {
       showToast(context, '排版已应用；如需撤销请前往「历史快照」回滚');
     }
+  }
+
+  Widget _formatPane(
+    BuildContext context,
+    String label,
+    String text,
+    IconData icon, {
+    bool highlight = false,
+    ScrollController? controller,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Container(
+      decoration: BoxDecoration(
+        color:
+            scheme.surfaceContainerHighest.withAlpha(highlight ? 140 : 80),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: highlight
+              ? scheme.primary.withValues(alpha: 0.4)
+              : scheme.outlineVariant.withValues(alpha: 0.5),
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(icon,
+                size: 17,
+                color: highlight ? scheme.primary : scheme.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: textTheme.titleSmall?.copyWith(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: highlight ? scheme.primary : null,
+              ),
+            ),
+          ]),
+          const SizedBox(height: 8),
+          Expanded(
+            child: SingleChildScrollView(
+              controller: controller,
+              child: SelectableText(text,
+                  style: const TextStyle(fontSize: 15, height: 1.8)),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _import(BuildContext context, AppState state) async {
@@ -1002,6 +1270,162 @@ class _HeaderStyleButtonsState extends State<_HeaderStyleButtons> {
         );
       }).toList(),
     );
+  }
+}
+
+/// 列表按钮：应用列表时自动清除段首缩进，取消时逐一还原。
+class _ListStyleButton extends StatefulWidget {
+  const _ListStyleButton({
+    required this.controller,
+    required this.ordered,
+  });
+
+  final QuillController controller;
+  final bool ordered;
+
+  @override
+  State<_ListStyleButton> createState() => _ListStyleButtonState();
+}
+
+class _ListStyleButtonState extends State<_ListStyleButton> {
+  /// 按选区段落顺序存储被移除的段首前缀，用于取消列表时还原。
+  List<String> _prefixes = [];
+  bool _isSelected = false;
+
+  Attribute get _attr => widget.ordered ? Attribute.ol : Attribute.ul;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncSelected();
+    widget.controller.addListener(_syncSelected);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ListStyleButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_syncSelected);
+      widget.controller.addListener(_syncSelected);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_syncSelected);
+    super.dispose();
+  }
+
+  void _syncSelected() {
+    final attrs = widget.controller.getSelectionStyle().attributes;
+    final listAttr = attrs[Attribute.list.key];
+    final selected = listAttr != null && listAttr.value == _attr.value;
+    if (selected != _isSelected) {
+      setState(() => _isSelected = selected);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final (icon, tip) = widget.ordered
+        ? (Icons.format_list_numbered, '有序列表')
+        : (Icons.format_list_bulleted, '无序列表');
+
+    return QuillToolbarIconButton(
+      tooltip: tip,
+      iconTheme: QuillIconTheme(
+        iconButtonUnselectedData: IconButtonData(
+          color: onSurface,
+          padding: const EdgeInsets.all(5),
+          constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+        ),
+      ),
+      isSelected: _isSelected,
+      onPressed: _toggle,
+      icon: Icon(icon, size: 20),
+    );
+  }
+
+  void _toggle() {
+    final controller = widget.controller;
+    final sel = controller.selection;
+    if (!sel.isValid) return;
+
+    if (_isSelected) {
+      // 取消列表 → 先移除列表属性，再还原段首缩进
+      controller.formatSelection(Attribute.clone(_attr, null));
+      _restorePrefixes(sel);
+    } else {
+      // 应用列表 → 先清除段首缩进，再应用列表属性
+      _prefixes.clear();
+      _stripPrefixes(sel);
+      controller.formatSelection(_attr);
+    }
+  }
+
+  /// 清除选区内各段落的段首缩进，结果存入 [_prefixes]（文档顺序）。
+  void _stripPrefixes(TextSelection sel) {
+    final text = widget.controller.document.toPlainText();
+    final ranges = <(int start, int end)>[];
+    var pStart = text.lastIndexOf('\n', sel.start - 1) + 1;
+    while (pStart < sel.end) {
+      final pEnd = text.indexOf('\n', pStart);
+      if (pEnd < 0 || pEnd > sel.end) {
+        ranges.add((pStart, sel.end));
+        break;
+      }
+      ranges.add((pStart, pEnd));
+      pStart = pEnd + 1;
+    }
+    if (ranges.isEmpty) return;
+
+    // 逆序处理：后替换不影响前面的偏移
+    for (final (start, end) in ranges.reversed) {
+      var i = start;
+      while (i < end && (text[i] == '\u3000' || text[i] == ' ')) {
+        i++;
+      }
+      final prefix = text.substring(start, i);
+      _prefixes.add(prefix);
+      if (prefix.isNotEmpty) {
+        widget.controller.replaceText(
+          start,
+          prefix.length,
+          '',
+          TextSelection.collapsed(offset: widget.controller.selection.start),
+        );
+      }
+    }
+    _prefixes = _prefixes.reversed.toList();
+  }
+
+  /// 将 [_prefixes] 逐一插回选区段落起始位置。
+  void _restorePrefixes(TextSelection sel) {
+    if (_prefixes.isEmpty) return;
+
+    final text = widget.controller.document.toPlainText();
+    final starts = <int>[];
+    var pStart = text.lastIndexOf('\n', sel.start - 1) + 1;
+    while (pStart < sel.end && starts.length < _prefixes.length) {
+      starts.add(pStart);
+      final pEnd = text.indexOf('\n', pStart);
+      if (pEnd < 0 || pEnd > sel.end) break;
+      pStart = pEnd + 1;
+    }
+
+    // 逆序插入
+    for (var i = starts.length - 1; i >= 0; i--) {
+      final prefix = _prefixes[i];
+      if (prefix.isNotEmpty) {
+        widget.controller.replaceText(
+          starts[i],
+          0,
+          prefix,
+          TextSelection.collapsed(offset: widget.controller.selection.start),
+        );
+      }
+    }
   }
 }
 

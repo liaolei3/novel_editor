@@ -5,7 +5,6 @@ import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../app_root.dart';
 import '../common/dialogs.dart';
-import '../widgets/app_icon.dart';
 
 /// 素材库（FR-21 / 9.7）：角色卡 / 世界观 / 灵感便签三类，支持新建、编辑、删除、搜索。
 class NotesPanel extends StatefulWidget {
@@ -58,7 +57,7 @@ class _NotesPanelState extends State<NotesPanel> {
             ),
             IconButton(
               tooltip: '搜索',
-              icon: const AppIcon(Icons.search),
+              icon: const Icon(Icons.search),
               onPressed: () async {
                 final kw = await inputDialog(context, title: '搜索素材', hint: '标题或正文关键字');
                 if (kw != null) setState(() => _keyword = kw.trim());
@@ -66,7 +65,7 @@ class _NotesPanelState extends State<NotesPanel> {
             ),
             IconButton(
               tooltip: '新建',
-              icon: const AppIcon(Icons.add),
+              icon: const Icon(Icons.add),
               onPressed: () => _create(context),
             ),
           ]),
@@ -111,8 +110,24 @@ class _NotesPanelState extends State<NotesPanel> {
             }
           },
           itemBuilder: (_) => const [
-            PopupMenuItem(value: 'edit', child: Text('编辑')),
-            PopupMenuItem(value: 'delete', child: Text('删除')),
+            PopupMenuItem(
+              height: 44,
+              value: 'edit',
+              child: Row(children: [
+                Icon(Icons.edit_outlined, size: 16),
+                SizedBox(width: 9),
+                Text('编辑'),
+              ]),
+            ),
+            PopupMenuItem(
+              height: 44,
+              value: 'delete',
+              child: Row(children: [
+                Icon(Icons.delete_outline, size: 16),
+                SizedBox(width: 9),
+                Text('删除'),
+              ]),
+            ),
           ],
         ),
         onTap: () => _edit(context, note),

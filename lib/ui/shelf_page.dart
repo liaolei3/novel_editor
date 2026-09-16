@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../data/models.dart';
-import '../services/durability_service.dart';
 import '../state/app_state.dart';
 import '../state/settings_controller.dart';
 import 'app_root.dart';
@@ -10,15 +9,12 @@ import 'app_theme.dart';
 import 'common/book_cover.dart';
 import 'common/dialogs.dart';
 import 'widgets/app_bar_nav_actions.dart';
-import 'widgets/app_icon.dart';
 import 'widgets/window_controls.dart';
 import 'workspace_page.dart';
 
 /// 书架页（9.1 首页）：作品列表、新建作品、回收站、设置、账号。
 class ShelfPage extends StatefulWidget {
-  const ShelfPage({super.key, this.crashReport});
-
-  final CrashReport? crashReport;
+  const ShelfPage({super.key});
 
   @override
   State<ShelfPage> createState() => _ShelfPageState();
@@ -33,17 +29,6 @@ class _ShelfPageState extends State<ShelfPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await appState(context).loadShelf();
       if (mounted) setState(() => _loading = false);
-      if (widget.crashReport != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text(
-              '检测到上次异常退出，已自动恢复至最后一次保存点。如需更早版本，请进入章节的「历史快照」找回。',
-            ),
-            duration: const Duration(seconds: 6),
-            action: SnackBarAction(label: '知道了', onPressed: () {}),
-          ),
-        );
-      }
     });
   }
 
@@ -75,7 +60,7 @@ class _ShelfPageState extends State<ShelfPage> {
             ),
       floatingActionButton: FloatingActionButton.extended(
         mouseCursor: SystemMouseCursors.click,
-        icon: const AppIcon(Icons.add),
+        icon: const Icon(Icons.add),
         label: const Text('新建作品'),
         onPressed: () => _createBook(context),
       ),
@@ -250,8 +235,8 @@ class _BookCardState extends State<_BookCard> {
   Widget build(BuildContext context) {
     final book = widget.book;
     final scheme = Theme.of(context).colorScheme;
-    final isPixel = widget.theme == AppTheme.pixel;
-    final radius = isPixel ? 2.0 : 8.0;
+    final isEggPie = widget.theme == AppTheme.eggPie;
+    final radius = isEggPie ? 2.0 : 8.0;
     final hasCustom = _coverImage != null;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -300,7 +285,7 @@ class _BookCardState extends State<_BookCard> {
                   if (!hasCustom) ...[
                     Positioned.fill(
                       child: Padding(
-                        padding: EdgeInsets.all(isPixel ? 6.0 : 10.0),
+                        padding: EdgeInsets.all(isEggPie ? 6.0 : 10.0),
                         child: DecoratedBox(
                           decoration: BoxDecoration(
                             border: Border.all(
@@ -313,7 +298,7 @@ class _BookCardState extends State<_BookCard> {
                     ),
                     Positioned.fill(
                       child: Padding(
-                        padding: EdgeInsets.all(isPixel ? 9.0 : 14.0),
+                        padding: EdgeInsets.all(isEggPie ? 9.0 : 14.0),
                         child: DecoratedBox(
                           decoration: BoxDecoration(
                             border: Border.all(
@@ -412,8 +397,7 @@ class _BookCardState extends State<_BookCard> {
                       ),
                     ),
                   ),
-                  // 像素主题粗描边。
-                  if (isPixel)
+                  if (isEggPie)
                     Positioned.fill(
                       child: IgnorePointer(
                         child: DecoratedBox(
@@ -463,7 +447,7 @@ class _BookCardState extends State<_BookCard> {
             color: Color(0x96000000),
             shape: BoxShape.circle,
           ),
-          child: AppIcon(icon, size: 15, color: Colors.white),
+          child: Icon(icon, size: 15, color: Colors.white),
         ),
       ),
     );

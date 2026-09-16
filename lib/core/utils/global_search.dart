@@ -108,30 +108,23 @@ class GlobalSearch {
       }
     }
     if (scopes.contains(SearchScope.character)) {
-      const fields = [
-        ('name', '名字'),
-        ('aliases', '别名'),
-        ('appearance', '外貌'),
-        ('personality', '性格'),
-        ('background', '背景'),
-        ('tags', '标签'),
-      ];
       // 以角色为单位聚合：一个角色一条命中，合并全部命中的字段。
+      // 固定字段 + 自定义属性（属性名与属性值均参与匹配）。
       for (final c in characters) {
         final fieldHits = <GlobalSearchFieldHit>[];
-        for (final (key, label) in fields) {
-          final text = switch (key) {
-            'name' => c.name,
-            'aliases' => c.aliases,
-            'appearance' => c.appearance,
-            'personality' => c.personality,
-            'background' => c.background,
-            _ => c.tags,
-          };
-          final starts = matchStarts(text, query);
+        final fixed = <String, String>{
+          '名字': c.name,
+          '别名': c.aliases,
+          '标签': c.tags,
+        };
+        for (final a in c.attrList) {
+          fixed[a.name] = a.value;
+        }
+        for (final entry in fixed.entries) {
+          final starts = matchStarts(entry.value, query);
           if (starts.isNotEmpty) {
-            fieldHits.add(
-                GlobalSearchFieldHit(fieldLabel: label, source: text, starts: starts));
+            fieldHits.add(GlobalSearchFieldHit(
+                fieldLabel: entry.key, source: entry.value, starts: starts));
           }
         }
         if (fieldHits.isNotEmpty) {

@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/models.dart';
+import '../../core/utils/text_stats.dart';
 import '../../state/app_state.dart';
 import '../../state/settings_controller.dart';
-import 'widgets/app_icon.dart';
 import 'widgets/window_controls.dart';
 
 /// 码字统计页（FR-14 / FR-15 / 9.6）：日/周/月曲线、时长、速度、每日目标。
@@ -110,8 +110,8 @@ class _StatsViewState extends State<StatsView> {
                               ),
                       ),
                       const SizedBox(height: 8),
-                      const Text(
-                        '口径：字符数（含标点，不含空白）',
+                      Text(
+                        '字数统计口径：${settings.countStandard.label}',
                         style: TextStyle(fontSize: 10),
                       ),
                     ],
@@ -123,7 +123,7 @@ class _StatsViewState extends State<StatsView> {
               for (final r in records.reversed.take(15))
                 ListTile(
                   dense: true,
-                  leading: const AppIcon(Icons.history_edu, size: 16),
+                  leading: const Icon(Icons.history_edu, size: 16),
                   title: Text(_dateLabel(r.date)),
                   trailing: Text(
                     '${r.chars} 字 · ${r.durationMs ~/ 60000} 分钟',
@@ -239,7 +239,7 @@ class _CelebrateRowState extends State<_CelebrateRow>
       scale: CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut),
       child: Row(
         children: [
-          AppIcon(
+          Icon(
             Icons.emoji_events,
             color: Theme.of(context).colorScheme.primary,
             size: 20,

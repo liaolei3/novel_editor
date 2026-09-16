@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 import '../core/utils/global_search.dart';
 import '../state/app_state.dart';
 import 'common/dialogs.dart';
-import 'widgets/app_icon.dart';
 import 'widgets/toast.dart';
 
 /// 全局搜索替换弹窗：多选范围（正文 / 章纲 / 角色 / 标题），
@@ -146,7 +145,7 @@ class _GlobalSearchDialogState extends State<_GlobalSearchDialog> {
       IconButton(
         tooltip: '关闭 (Esc)',
         onPressed: () => Navigator.of(context).pop(),
-        icon: const AppIcon(Icons.close),
+        icon: const Icon(Icons.close),
       ),
     ]);
   }
