@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 
 
+import '../core/utils/chapter_title_suggest.dart';
 import '../core/utils/global_search.dart';
 import '../core/utils/rich_text_codec.dart';
 import '../core/utils/text_stats.dart';
@@ -355,6 +356,54 @@ class AppState extends ChangeNotifier {
     bookCharTotal = chapterList.fold(0, (sum, c) => sum + c.charCount);
     notifyListeners();
     return ch;
+  }
+
+  /// 一键分章：把当前章节从 [offset]（选区起点或光标位置，编辑器纯文本坐标）
+  /// 拆为两章——光标前内容留在原章节，其后内容剪切到新章节
+  /// （插入当前章节之后、卷内后续章节顺延，章节名取该卷「第N章」最大编号 + 1）。
+  /// 成功后自动打开新章节；无当前章节或光标后无实际内容时返回 null 且不做修改。
+  Future<Chapter?> splitChapterAt(int offset) async {
+    final chapter = currentChapter;
+    if (chapter == null) return null;
+    final delta = editorController.document.toDelta();
+    final docLen = editorController.document.length;
+    if (offset < 0 || offset >= docLen) return null;
+    if (!RichTextCodec.hasContentAfter(delta, offset)) return null;
+
+    // 先落盘未保存的编辑，避免拆分结果被随后的自动保存覆盖。
+    await autosave.flush();
+
+    final (head, tail) = RichTextCodec.splitDelta(delta, offset);
+    final headJson = jsonEncode(head.toJson());
+    final tailJson = jsonEncode(tail.toJson());
+    if (tail.operations.isEmpty ||
+        RichTextCodec.plainTextFromDeltaJson(tailJson).trim().isEmpty) {
+      return null;
+    }
+
+    // 原章节保留前半部分。
+    chapter.content = headJson;
+    chapter.cursorOffset = offset;
+    await chapters.updateContent(chapter);
+
+    // 卷内后续章节 sort 顺延，新章节插到当前章节之后。
+    final newSort = chapter.sort + 1;
+    await chapters.shiftSortFrom(chapter.volumeId, newSort);
+    final created = await chapters.create(
+      bookId: chapter.bookId,
+      volumeId: chapter.volumeId,
+      title: suggestChapterTitle(
+          chapterList.where((c) => c.volumeId == chapter.volumeId).map((c) => c.title)),
+      content: tailJson,
+      sort: newSort,
+    );
+
+    await _reloadTree();
+    bookCharTotal = chapterList.fold(0, (sum, c) => sum + c.charCount);
+    final fresh = chapterList.where((c) => c.id == created.id).firstOrNull ?? created;
+    notifyListeners();
+    await openChapter(fresh);
+    return fresh;
   }
 
   Future<void> reorderChapters(String volumeId, List<String> orderedIds) async {

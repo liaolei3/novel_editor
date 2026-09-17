@@ -32,6 +32,7 @@ class QuillRawEditorConfig {
     this.characterShortcutEvents = const [],
     this.spaceShortcutEvents = const [],
     @experimental this.onKeyPressed,
+    this.autoPairSymbols,
     this.showCursor = true,
     this.scrollable = true,
     this.padding = EdgeInsets.zero,
@@ -157,6 +158,10 @@ class QuillRawEditorConfig {
   ///```
   @experimental
   final KeyEventResult? Function(KeyEvent event, Node? node)? onKeyPressed;
+
+  /// 全角成对符号自动补全表（开符 → 闭符）；null 表示禁用。
+  /// 语义见 QuillEditorConfig.autoPairSymbols。
+  final Map<String, String>? autoPairSymbols;
 
   /// Additional space around the editor contents.
   final EdgeInsetsGeometry padding;

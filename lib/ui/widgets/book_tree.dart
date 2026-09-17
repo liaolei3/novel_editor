@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/utils/chapter_title_suggest.dart';
 import '../../core/utils/rich_text_codec.dart';
 import '../../core/utils/text_stats.dart';
 import '../../data/models.dart';
@@ -154,24 +155,11 @@ class BookTree extends StatelessWidget {
     final name = await inputDialog(
       context,
       title: '新建卷',
-      initial: _suggestVolumeTitle(state.volumeTree),
+      initial: suggestVolumeTitle(state.volumeTree.map((v) => v.name)),
     );
     if (name != null && name.trim().isNotEmpty) {
       await state.addVolume(name.trim());
     }
-  }
-
-  /// 推断新卷默认标题：取该书「第N卷」标题的最大 N + 1，输出中文数字（如「第二卷」）。
-  static String _suggestVolumeTitle(List<Volume> volumes) {
-    var max = 0;
-    final reg = RegExp(r'第\s*([0-9０-９一二三四五六七八九十百千两]+)\s*卷');
-    for (final v in volumes) {
-      final m = reg.firstMatch(v.name);
-      if (m == null) continue;
-      final n = _parseChineseNumeral(m.group(1)!);
-      if (n != null && n > max) max = n;
-    }
-    return '第${_toChineseNumeral(max + 1)}卷';
   }
 
   /// 新建章节：预填该卷下一章标题（如已有 3 章则预填「第四章」），创建后自动打开该章。
@@ -185,67 +173,11 @@ class BookTree extends StatelessWidget {
     final name = await inputDialog(
       context,
       title: '新建章节',
-      initial: _suggestChapterTitle(inVolume),
+      initial: suggestChapterTitle(inVolume.map((c) => c.title)),
     );
     if (name == null || name.trim().isEmpty) return;
     final ch = await state.addChapter(volumeId, title: name.trim());
     await state.openChapter(ch);
-  }
-
-  /// 推断新章节默认标题：取该卷「第N章」标题的最大 N + 1，输出中文数字（如「第四章」）。
-  static String _suggestChapterTitle(List<Chapter> chapters) {
-    var max = 0;
-    final reg = RegExp(r'第\s*([0-9０-９一二三四五六七八九十百千两]+)\s*章');
-    for (final c in chapters) {
-      final m = reg.firstMatch(c.title);
-      if (m == null) continue;
-      final n = _parseChineseNumeral(m.group(1)!);
-      if (n != null && n > max) max = n;
-    }
-    return '第${_toChineseNumeral(max + 1)}章';
-  }
-
-  static const _cnDigits = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
-
-  /// 中文/阿拉伯数字 → 整数；无法解析返回 null。
-  static int? _parseChineseNumeral(String s) {
-    final v = int.tryParse(s);
-    if (v != null) return v;
-    var total = 0, current = 0;
-    for (final ch in s.split('')) {
-      const digitIdx = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
-      final i = digitIdx.indexOf(ch);
-      if (i >= 0) {
-        current = i + 1;
-      } else if (ch == '两') {
-        current = 2;
-      } else if (ch == '十') {
-        total += (current == 0 ? 1 : current) * 10;
-        current = 0;
-      } else if (ch == '百') {
-        total += (current == 0 ? 1 : current) * 100;
-        current = 0;
-      } else if (ch == '千') {
-        total += (current == 0 ? 1 : current) * 1000;
-        current = 0;
-      } else if (ch == '零') {
-        continue;
-      } else {
-        return null;
-      }
-    }
-    return total + current;
-  }
-
-  /// 整数 → 中文数字（1-99，超出退回阿拉伯数字）。
-  static String _toChineseNumeral(int n) {
-    if (n >= 1 && n <= 10) return n == 10 ? '十' : _cnDigits[n];
-    if (n < 20) return '十${_cnDigits[n % 10]}';
-    if (n < 100) {
-      final ones = n % 10;
-      return '${_cnDigits[n ~/ 10]}十${ones == 0 ? '' : _cnDigits[ones]}';
-    }
-    return '$n';
   }
 }
 

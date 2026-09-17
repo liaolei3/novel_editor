@@ -185,6 +185,15 @@ class ChapterRepository {
     await batch.commit(noResult: true);
   }
 
+  /// 卷内 sort >= [minSort] 的章节统一 +[by]（在中间插入章节前调用，腾出位置）。
+  Future<void> shiftSortFrom(String volumeId, int minSort, {int by = 1}) async {
+    final db = await Db.instance();
+    await db.rawUpdate(
+      'UPDATE chapters SET sort = sort + ? WHERE volume_id = ? AND sort >= ?',
+      [by, volumeId, minSort],
+    );
+  }
+
   Future<void> hardDelete(String id) async {
     final db = await Db.instance();
     await db.delete('snapshots', where: 'chapter_id = ?', whereArgs: [id]);

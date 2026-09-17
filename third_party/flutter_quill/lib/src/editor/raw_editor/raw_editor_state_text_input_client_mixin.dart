@@ -229,6 +229,16 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       return;
     }
 
+    // 成对符号自动补全（见 QuillEditorConfig.autoPairSymbols）：
+    // IME 组合期间改动文档会被输入法回滚，因此组合期间只记录、
+    // 组合结束后再补全；无组合的直接输入立即补全。
+    final pairs = widget.config.autoPairSymbols;
+    final composingActive =
+        value.composing.isValid && !value.composing.isCollapsed;
+    final wasComposing = _autoPairComposing;
+    _autoPairComposing = composingActive;
+    final compositionEnded = wasComposing && !composingActive;
+
     // Check if only composing range changed.
     if (_lastKnownRemoteTextEditingValue!.text == value.text &&
         _lastKnownRemoteTextEditingValue!.selection == value.selection) {
@@ -238,6 +248,9 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       // composing updates separately from regular changes for text and
       // selection.
       _lastKnownRemoteTextEditingValue = value;
+      if (pairs != null && compositionEnded) {
+        _executeDeferredAutoPair(pairs);
+      }
       return;
     }
 
@@ -249,12 +262,161 @@ mixin RawEditorStateTextInputClientMixin on EditorState
     final diff = getDiff(oldText, text, cursorPosition);
     if (diff.deleted.isEmpty && diff.inserted.isEmpty) {
       widget.controller.updateSelection(value.selection, ChangeSource.local);
+      if (pairs != null && compositionEnded) {
+        _executeDeferredAutoPair(pairs);
+      }
+      return;
+    }
+
+    if (pairs != null && diff.inserted.length == 1) {
+      final inserted = diff.inserted;
+      final closer = pairs[inserted];
+      final isOpen = closer != null;
+      final isClose = pairs.containsValue(inserted);
+
+      if (composingActive) {
+        // IME 对引号类按键做开/闭交替，此处闭符也可能触发包裹。
+        if (isOpen || isClose) {
+          _autoPairSymbol = inserted;
+          _autoPairPos = diff.start;
+          _autoPairDeleted = diff.deleted;
+        } else {
+          _autoPairSymbol = null;
+        }
+      } else if (!wasComposing) {
+        if (diff.deleted.isEmpty && isOpen) {
+          widget.controller.replaceText(
+            diff.start,
+            0,
+            inserted + closer,
+            TextSelection.collapsed(offset: diff.start + 1),
+          );
+          return;
+        }
+        if (diff.deleted.isEmpty &&
+            isClose &&
+            diff.start < oldText.length &&
+            oldText[diff.start] == inserted) {
+          // 键入闭符且右侧紧邻同款闭符：跳过。
+          widget.controller.updateSelection(
+            TextSelection.collapsed(offset: diff.start + 1),
+            ChangeSource.local,
+          );
+          return;
+        }
+        if (diff.deleted.isEmpty && isClose) {
+          final open = _openSymbolFor(pairs, inserted)!;
+          if (!_hasUnclosedOpenBefore(oldText, diff.start, open, inserted)) {
+            // 输入法交替给出闭符、前方无未闭合开符：实意是开引号，补全整对。
+            widget.controller.replaceText(
+              diff.start,
+              0,
+              open + inserted,
+              TextSelection.collapsed(offset: diff.start + 1),
+            );
+            return;
+          }
+          // 有未闭合开符：按闭符原样插入，落到默认逻辑。
+        }
+        if (diff.deleted.isNotEmpty && (isOpen || isClose)) {
+          // 有选区：包裹选中文本。
+          final open = isOpen ? inserted : _openSymbolFor(pairs, inserted)!;
+          widget.controller.replaceText(
+            diff.start,
+            diff.deleted.length,
+            open + diff.deleted + pairs[open]!,
+            TextSelection.collapsed(
+                offset: diff.start + diff.deleted.length + 2),
+          );
+          return;
+        }
+      }
+    }
+
+    widget.controller.replaceText(
+      diff.start,
+      diff.deleted.length,
+      diff.inserted,
+      value.selection,
+    );
+
+    if (pairs != null && compositionEnded) {
+      _executeDeferredAutoPair(pairs);
+    }
+  }
+
+  // ---- 成对符号自动补全（延后执行） ----
+
+  bool _autoPairComposing = false;
+  String? _autoPairSymbol;
+  int _autoPairPos = -1;
+  String _autoPairDeleted = '';
+
+  String? _openSymbolFor(Map<String, String> pairs, String closer) {
+    for (final e in pairs.entries) {
+      if (e.value == closer) return e.key;
+    }
+    return null;
+  }
+
+  /// offset 之前同族开符多于闭符，视为有未闭合开符。
+  bool _hasUnclosedOpenBefore(String text, int offset, String open, String close) {
+    var opens = 0, closes = 0;
+    for (var i = 0; i < offset && i < text.length; i++) {
+      if (text[i] == open) {
+        opens++;
+      } else if (text[i] == close) {
+        closes++;
+      }
+    }
+    return opens > closes;
+  }
+
+  /// 组合结束后执行延后的配对：开符补闭符 / 闭符跳过 / 选区包裹。
+  /// 符号已不在原位（组合被取消或文档已变化）时放弃。
+  void _executeDeferredAutoPair(Map<String, String> pairs) {
+    final symbol = _autoPairSymbol;
+    _autoPairSymbol = null;
+    if (symbol == null) return;
+    final pos = _autoPairPos;
+    final deleted = _autoPairDeleted;
+    final controller = widget.controller;
+    final text = controller.document.toPlainText();
+    if (pos < 0 || pos >= text.length || text[pos] != symbol) return;
+    final open =
+        pairs.containsKey(symbol) ? symbol : _openSymbolFor(pairs, symbol);
+    if (open == null) return;
+    final closer = pairs[open]!;
+    if (deleted.isEmpty) {
+      if (symbol == open) {
+        controller.replaceText(
+          pos + 1,
+          0,
+          closer,
+          TextSelection.collapsed(offset: pos + 1),
+        );
+      } else if (pos + 1 < text.length && text[pos + 1] == symbol) {
+        controller.replaceText(
+          pos,
+          1,
+          '',
+          TextSelection.collapsed(offset: pos + 1),
+        );
+      } else if (!_hasUnclosedOpenBefore(text, pos, open, symbol)) {
+        // 前方无未闭合开符：实意是开引号，补全整对。
+        controller.replaceText(
+          pos,
+          1,
+          open + closer,
+          TextSelection.collapsed(offset: pos + 1),
+        );
+      }
     } else {
-      widget.controller.replaceText(
-        diff.start,
-        diff.deleted.length,
-        diff.inserted,
-        value.selection,
+      controller.replaceText(
+        pos,
+        1,
+        open + deleted + closer,
+        TextSelection.collapsed(offset: pos + deleted.length + 2),
       );
     }
   }

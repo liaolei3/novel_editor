@@ -66,6 +66,7 @@ Widget appEditorContextMenuBuilder(
   BuildContext context,
   QuillRawEditorState state, {
   Offset? secondaryTapPosition,
+  List<AppMenuAction> extraEntries = const [],
 }) {
   final value = state.textEditingValue;
   final hasSelection = value.selection.isValid && !value.selection.isCollapsed;
@@ -99,6 +100,7 @@ Widget appEditorContextMenuBuilder(
           icon: Icons.select_all,
           onTap: () => state.selectAll(SelectionChangedCause.toolbar),
         ),
+      ...extraEntries,
     ],
     onDismiss: () => state.hideToolbar(),
   );

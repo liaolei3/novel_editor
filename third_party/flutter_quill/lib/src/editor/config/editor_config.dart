@@ -57,6 +57,7 @@ class QuillEditorConfig {
     this.onSingleLongTapMoveUpdate,
     this.onSingleLongTapEnd,
     @experimental this.onKeyPressed,
+    this.autoPairSymbols,
     this.enableAlwaysIndentOnTab = false,
     this.embedBuilders,
     this.textSpanBuilder = defaultSpanBuilder,
@@ -172,6 +173,13 @@ class QuillEditorConfig {
   ///```
   @experimental
   final KeyEventResult? Function(KeyEvent event, Node? node)? onKeyPressed;
+
+  /// 全角成对符号自动补全表（开符 → 闭符）；null 表示禁用。
+  ///
+  /// 输入法提交单个开符（如“《”）时自动补上闭符，光标落在二者中间；
+  /// 有选区时键入开符会包裹选中文本；键入闭符且右侧紧邻同款闭符时
+  /// 跳过而非重复插入。仅对 IME 直接提交的单字符生效。
+  final Map<String, String>? autoPairSymbols;
 
   /// Override [readOnly] for checkbox.
   ///
@@ -489,6 +497,7 @@ class QuillEditorConfig {
     bool? onTapOutsideEnabled,
     Function(PointerDownEvent event, FocusNode focusNode)? onTapOutside,
     KeyEventResult? Function(KeyEvent event, Node? node)? onKeyPressed,
+    Map<String, String>? autoPairSymbols,
     bool? showCursor,
     bool? paintCursorAboveText,
     MouseCursor? readOnlyMouseCursor,
@@ -543,6 +552,7 @@ class QuillEditorConfig {
       disableClipboard: disableClipboard ?? this.disableClipboard,
       scrollable: scrollable ?? this.scrollable,
       onKeyPressed: onKeyPressed ?? this.onKeyPressed,
+      autoPairSymbols: autoPairSymbols ?? this.autoPairSymbols,
       scrollBottomInset: scrollBottomInset ?? this.scrollBottomInset,
       enableAlwaysIndentOnTab:
           enableAlwaysIndentOnTab ?? this.enableAlwaysIndentOnTab,

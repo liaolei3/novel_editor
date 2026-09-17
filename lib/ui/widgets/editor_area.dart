@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/constants.dart';
 import '../../core/utils/docx_exporter.dart';
+import '../../core/utils/pair_symbols.dart';
 import '../../core/utils/rich_text_codec.dart';
 import '../../core/utils/text_formatter.dart';
 import '../../core/utils/text_stats.dart';
@@ -467,13 +468,34 @@ class _EditorAreaState extends State<EditorArea> {
               config: QuillEditorConfig(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 textSpanBuilder: _textSpanBuilder,
+                autoPairSymbols: fullWidthPairSymbols,
                 customStyles: _editorStyles(context, settings),
-                contextMenuBuilder: (context, state) =>
-                    appEditorContextMenuBuilder(
-                  context,
-                  state,
-                  secondaryTapPosition: _recentSecondaryTap(),
-                ),
+                contextMenuBuilder: (context, rawState) {
+                  // 「一键分章」：光标后有实际内容才显示；有选区时以选区起点拆分。
+                  final sel = rawState.textEditingValue.selection;
+                  final splitOffset =
+                      sel.isValid && !sel.isCollapsed ? sel.start : sel.baseOffset;
+                  var extras = const <AppMenuAction>[];
+                  if (!rawState.widget.config.readOnly &&
+                      splitOffset >= 0 &&
+                      splitOffset < rawState.controller.document.length &&
+                      RichTextCodec.hasContentAfter(
+                          rawState.controller.document.toDelta(), splitOffset)) {
+                    extras = [
+                      AppMenuAction(
+                        '一键分章',
+                        icon: Icons.call_split,
+                        onTap: () => state.splitChapterAt(splitOffset),
+                      ),
+                    ];
+                  }
+                  return appEditorContextMenuBuilder(
+                    context,
+                    rawState,
+                    secondaryTapPosition: _recentSecondaryTap(),
+                    extraEntries: extras,
+                  );
+                },
                 autoFocus: false,
                 expands: true,
                 // Quill 自带 Ctrl+F 会打开其内置查找弹窗，这里在其按键处理链
@@ -508,6 +530,10 @@ class _EditorAreaState extends State<EditorArea> {
                         !mods.isMetaPressed &&
                         !mods.isAltPressed &&
                         !mods.isShiftPressed) {
+                      // 成对空符号中间退格：一并删除开闭符。
+                      if (handlePairBackspace(state.editorController)) {
+                        return KeyEventResult.handled;
+                      }
                       return _handleBackspaceAtParagraphStart(
                           state.editorController);
                     }
