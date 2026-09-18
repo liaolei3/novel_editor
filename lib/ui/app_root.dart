@@ -15,12 +15,23 @@ class AppRoot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsController>();
-    final theme = buildAppTheme(settings.theme, settings.fontSize / 17);
+    final theme = buildAppTheme(
+      settings.theme,
+      fontFamily: settings.uiFontFamily,
+    );
     return MaterialApp(
       title: 'NovelEditor 小说编辑器',
       theme: theme,
       darkTheme: theme,
       themeMode: ThemeMode.light,
+      // 界面字体缩放：作用于全部文本（含写死字号的控件）；
+      // 编辑器正文单独用 noScaling 覆盖，由正文字号独立控制。
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(
+          textScaler: TextScaler.linear(settings.uiScale),
+        ),
+        child: child!,
+      ),
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,

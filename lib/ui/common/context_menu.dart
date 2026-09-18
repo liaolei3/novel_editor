@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 
@@ -39,6 +41,76 @@ Future<T?> showAppContextMenu<T>(
     constraints: const BoxConstraints(minWidth: 176, maxWidth: 224),
     items: items,
   );
+}
+
+/// 在 [target]（按钮 RenderBox）下方弹出与右键菜单同规格的菜单，
+/// 右缘与按钮右缘严格对齐（菜单固定宽 176）；外部点击关闭。
+/// 用于设置页字体下拉等场景，替代 showMenu 的不可控定位。
+Future<T?> showAppAnchoredMenu<T>({
+  required BuildContext context,
+  required RenderBox target,
+  required List<AppMenuItem<T>> entries,
+  T? initialValue,
+}) {
+  final overlay = Overlay.of(context, rootOverlay: true);
+  final rect = target.localToGlobal(Offset.zero) & target.size;
+  final popup = PopupMenuTheme.of(context);
+  final completer = Completer<T?>();
+  late OverlayEntry menuEntry;
+  OverlayEntry? barrierEntry;
+
+  void close(T? value) {
+    barrierEntry?.remove();
+    menuEntry.remove();
+    if (!completer.isCompleted) completer.complete(value);
+  }
+
+  barrierEntry = OverlayEntry(
+    builder: (_) => Positioned.fill(
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => close(null),
+        child: const SizedBox.expand(),
+      ),
+    ),
+  );
+  menuEntry = OverlayEntry(
+    builder: (_) {
+      const width = 176.0;
+      const margin = 8.0;
+      final left = (rect.right - width).clamp(margin, double.infinity);
+      return Positioned(
+        left: left,
+        top: rect.bottom + 4,
+        child: Material(
+          color: popup.color ?? Theme.of(context).colorScheme.surface,
+          elevation: popup.elevation ?? 6,
+          shadowColor: popup.shadowColor,
+          shape: popup.shape,
+          child: SizedBox(
+            width: width,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final e in entries)
+                  _AppMenuRow(
+                    label: e.label,
+                    icon: e.icon,
+                    destructive: e.destructive,
+                    highlighted: e.value == initialValue,
+                    onTap: () => close(e.value),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
+  overlay.insert(barrierEntry);
+  overlay.insert(menuEntry);
+  return completer.future;
 }
 
 /// 编辑器文字菜单的动作条目：视觉字段与 [AppMenuItem] 一致，动作由回调提供。
@@ -205,12 +277,17 @@ class _AppMenuRow extends StatefulWidget {
     required this.onTap,
     this.icon,
     this.destructive = false,
+    this.highlighted = false,
   });
 
   final String label;
   final IconData? icon;
   final bool destructive;
   final VoidCallback onTap;
+
+  /// 初始即显示悬停高亮（如下拉菜单打开时定位到当前选中项），
+  /// 鼠标移入其他项后按正常悬停逻辑切换。
+  final bool highlighted;
 
   @override
   State<_AppMenuRow> createState() => _AppMenuRowState();
@@ -232,6 +309,7 @@ class _AppMenuRowState extends State<_AppMenuRow> {
     final hoverColor = destructive
         ? theme.colorScheme.error.withValues(alpha: 0.10)
         : theme.colorScheme.onSurface.withValues(alpha: 0.07);
+    final hover = _hover || widget.highlighted;
 
     return InkWell(
       onTap: widget.onTap,
@@ -244,7 +322,7 @@ class _AppMenuRowState extends State<_AppMenuRow> {
         height: 44,
         padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
-          color: _hover ? hoverColor : Colors.transparent,
+          color: hover ? hoverColor : Colors.transparent,
           borderRadius: BorderRadius.circular(5),
         ),
         alignment: Alignment.centerLeft,

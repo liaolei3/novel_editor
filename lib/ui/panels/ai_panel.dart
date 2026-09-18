@@ -7,11 +7,10 @@ import '../../data/models.dart';
 import '../../services/ai/ai_gateway.dart';
 import '../../state/app_state.dart';
 import '../../state/settings_controller.dart';
-import '../common/dialogs.dart';
 import '../widgets/toast.dart';
 
 /// AI 面板（FR-16 ~ FR-20 / 9.4）：
-/// 四类能力；候选卡片、加载态、失败重试；结果不自动写入正文，需用户确认。
+/// 三类能力；候选卡片、加载态、失败重试；结果不自动写入正文，需用户确认。
 class AiPanel extends StatefulWidget {
   const AiPanel({super.key});
 
@@ -26,8 +25,6 @@ class _AiPanelState extends State<AiPanel> {
   String? _error;
   String _polishMode = '润色';
   String _inspirationType = '剧情转折';
-  final _roleNameCtrl = TextEditingController();
-  final _roleDescCtrl = TextEditingController();
 
   AiGateway? _gateway(SettingsController s) {
     if (s.aiBaseUrl.isEmpty || s.aiApiKey.isEmpty) return null;
@@ -53,7 +50,6 @@ class _AiPanelState extends State<AiPanel> {
                 (AiTask.continueWriting, '续写'),
                 (AiTask.polish, '润色'),
                 (AiTask.inspiration, '灵感'),
-                (AiTask.roleCard, '角色卡'),
               ])
                 Padding(
                   padding: const EdgeInsets.all(6),
@@ -182,27 +178,6 @@ class _AiPanelState extends State<AiPanel> {
               ),
           ],
         );
-      case AiTask.roleCard:
-        return Column(
-          children: [
-            TextField(
-              controller: _roleNameCtrl,
-              decoration: const InputDecoration(
-                labelText: '角色姓名',
-                isDense: true,
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _roleDescCtrl,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: '少量描述（如：冷面剑客，背负灭门之仇）',
-                isDense: true,
-              ),
-            ),
-          ],
-        );
     }
   }
 
@@ -248,16 +223,6 @@ class _AiPanelState extends State<AiPanel> {
         request = AiRequest(
           kind: AiTask.inspiration,
           prompt: AiPrompts.inspiration(_inspirationType),
-          count: 1,
-        );
-        break;
-      case AiTask.roleCard:
-        request = AiRequest(
-          kind: AiTask.roleCard,
-          prompt: AiPrompts.roleCard(
-            _roleNameCtrl.text.trim(),
-            _roleDescCtrl.text.trim(),
-          ),
           count: 1,
         );
         break;
@@ -391,38 +356,6 @@ class _AiPanelState extends State<AiPanel> {
               );
               if (context.mounted) {
                 showToast(context, '已存入灵感便签（素材库）');
-              }
-            },
-          ),
-        ];
-      case AiTask.roleCard:
-        return [
-          FilledButton.tonal(
-            child: const Text('编辑后保存至素材库'),
-            onPressed: () async {
-              final book = state.currentBook;
-              if (book == null) return;
-              final name = await inputDialog(
-                context,
-                title: '保存角色卡',
-                initial: _roleNameCtrl.text.trim(),
-              );
-              if (name == null || name.trim().isEmpty) return;
-              final content = await inputDialog(
-                context,
-                title: '角色卡内容（可编辑）',
-                initial: text,
-                maxLines: 8,
-              );
-              if (content == null) return;
-              await state.notes.create(
-                bookId: book.id,
-                type: NoteType.role,
-                title: name.trim(),
-                content: content,
-              );
-              if (context.mounted) {
-                showToast(context, '已保存至素材库·角色卡');
               }
             },
           ),

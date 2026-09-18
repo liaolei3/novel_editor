@@ -25,6 +25,9 @@ class SettingsController extends ChangeNotifier {
 
   double get fontSize => _cfg.getDouble('fontSize') ?? 17;
   double get lineHeight => _cfg.getDouble('lineHeight') ?? 1.8;
+  double get uiScale => _cfg.getDouble('uiScale') ?? 1.0;
+  String get uiFontFamily => _cfg.getString('uiFontFamily') ?? '';
+  String get editorFontFamily => _cfg.getString('editorFontFamily') ?? '';
   double get paragraphSpacing => _cfg.getDouble('paragraphSpacing') ?? 0.5;
   int get autosaveSeconds => _cfg.getInt('autosaveSeconds') ?? 2;
   int get dailyGoal => _cfg.getInt('dailyGoal') ?? 2000;
@@ -45,6 +48,15 @@ class SettingsController extends ChangeNotifier {
 
   Future<void> setFontSize(double v) =>
       _set('fontSize', v, () => notifyListeners());
+
+  Future<void> setUiScale(double v) =>
+      _set('uiScale', v, () => notifyListeners());
+
+  Future<void> setUiFontFamily(String v) =>
+      _set('uiFontFamily', v, () => notifyListeners());
+
+  Future<void> setEditorFontFamily(String v) =>
+      _set('editorFontFamily', v, () => notifyListeners());
 
   Future<void> setLineHeight(double v) =>
       _set('lineHeight', v, () => notifyListeners());

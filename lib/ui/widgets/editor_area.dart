@@ -461,7 +461,12 @@ class _EditorAreaState extends State<EditorArea> {
             },
             onPointerUp: (_) => _scrollController.suppressAnimateTo = false,
             onPointerCancel: (_) => _scrollController.suppressAnimateTo = false,
-            child: QuillEditor.basic(
+            // 正文不受「界面字体缩放」影响，字号/行距由设置独立控制。
+            child: MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: TextScaler.noScaling,
+              ),
+              child: QuillEditor.basic(
               controller: state.editorController,
               focusNode: _focusNode,
               scrollController: _scrollController,
@@ -565,6 +570,7 @@ class _EditorAreaState extends State<EditorArea> {
                   return null;
                 },
               ),
+              ),
             ),
           ),
         ),
@@ -583,13 +589,17 @@ class _EditorAreaState extends State<EditorArea> {
         : null;
   }
 
-  /// 编辑器自定义样式：把全局设置的字号/行距/段间距应用到正文相关块。
+  /// 编辑器自定义样式：把全局设置的字体/字号/行距/段间距应用到正文相关块。
   DefaultStyles _editorStyles(BuildContext context, SettingsController settings) {
     final defaults = DefaultStyles.getInstance(context);
     final fs = settings.fontSize;
+    // family 为空时保持主题字体（copyWith 传 null 不覆盖）。
     final base = DefaultTextStyle.of(context).style.copyWith(
           fontSize: fs,
           height: settings.lineHeight,
+          fontFamily: settings.editorFontFamily.isEmpty
+              ? null
+              : settings.editorFontFamily,
           decoration: TextDecoration.none,
         );
     final vs =

@@ -3,40 +3,31 @@ import 'package:flutter/material.dart';
 /// 应用主题（三选一）。
 enum AppTheme { light, dark, eggPie }
 
-/// 统一的主题构建入口：主题 x 字号缩放。
-ThemeData buildAppTheme(AppTheme theme, double fontScale) {
-  final data = switch (theme) {
-    AppTheme.light => _minimalTheme(Brightness.light),
-    AppTheme.dark => _minimalTheme(Brightness.dark),
-    AppTheme.eggPie => _eggPieTheme(),
+/// 统一的主题构建入口。全局文本缩放由 MaterialApp.textScaler 承担，
+/// 此处只负责主题配色与界面字体。
+ThemeData buildAppTheme(AppTheme theme, {String? fontFamily}) {
+  return switch (theme) {
+    AppTheme.light => _minimalTheme(Brightness.light, fontFamily),
+    AppTheme.dark => _minimalTheme(Brightness.dark, fontFamily),
+    AppTheme.eggPie => _eggPieTheme(fontFamily),
   };
-  return data.copyWith(textTheme: _scaleTextTheme(data.textTheme, fontScale));
 }
 
-TextTheme _scaleTextTheme(TextTheme t, double factor) {
-  TextStyle? scale(TextStyle? s) {
-    if (s == null || s.fontSize == null) return s;
-    return s.copyWith(fontSize: s.fontSize! * factor);
-  }
-
-  return t.copyWith(
-    displayLarge: scale(t.displayLarge),
-    displayMedium: scale(t.displayMedium),
-    displaySmall: scale(t.displaySmall),
-    headlineLarge: scale(t.headlineLarge),
-    headlineMedium: scale(t.headlineMedium),
-    headlineSmall: scale(t.headlineSmall),
-    titleLarge: scale(t.titleLarge),
-    titleMedium: scale(t.titleMedium),
-    titleSmall: scale(t.titleSmall),
-    bodyLarge: scale(t.bodyLarge),
-    bodyMedium: scale(t.bodyMedium),
-    bodySmall: scale(t.bodySmall),
-    labelLarge: scale(t.labelLarge),
-    labelMedium: scale(t.labelMedium),
-    labelSmall: scale(t.labelSmall),
-  );
+/// 字体候选（界面与正文共用）：family 为空表示默认回退链。
+class FontOption {
+  const FontOption(this.label, this.family);
+  final String label;
+  final String family;
 }
+
+const appFontOptions = <FontOption>[
+  FontOption('默认', ''),
+  FontOption('微软雅黑', 'Microsoft YaHei'),
+  FontOption('宋体', 'SimSun'),
+  FontOption('楷体', 'KaiTi'),
+  FontOption('仿宋', 'FangSong'),
+  FontOption('黑体', 'SimHei'),
+];
 
 const _fontFallbacks = [
   'Inter',
@@ -47,7 +38,7 @@ const _fontFallbacks = [
 
 const _clickCursor = WidgetStatePropertyAll(SystemMouseCursors.click);
 
-ThemeData _minimalTheme(Brightness brightness) {
+ThemeData _minimalTheme(Brightness brightness, String? fontFamily) {
   final isLight = brightness == Brightness.light;
   final scheme = ColorScheme.fromSeed(
     seedColor: isLight ? const Color(0xFF0071E3) : const Color(0xFF0A84FF),
@@ -66,6 +57,9 @@ ThemeData _minimalTheme(Brightness brightness) {
     useMaterial3: true,
     colorScheme: scheme,
     brightness: brightness,
+    fontFamily: (fontFamily == null || fontFamily.isEmpty)
+        ? null
+        : fontFamily,
     fontFamilyFallback: _fontFallbacks,
   );
 
@@ -275,7 +269,7 @@ const _eggPieLight = _EggPiePalette(
   error: Color(0xFFC0392B),
 );
 
-ThemeData _eggPieTheme() {
+ThemeData _eggPieTheme(String? fontFamily) {
   const p = _eggPieLight;
   const brightness = Brightness.light;
   final scheme = ColorScheme(
@@ -310,6 +304,9 @@ ThemeData _eggPieTheme() {
     useMaterial3: true,
     colorScheme: scheme,
     brightness: brightness,
+    fontFamily: (fontFamily == null || fontFamily.isEmpty)
+        ? null
+        : fontFamily,
     fontFamilyFallback: _fontFallbacks,
   );
 

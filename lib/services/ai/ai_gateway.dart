@@ -38,7 +38,7 @@ class AiResult {
   bool get ok => error == null && candidates.isNotEmpty;
 }
 
-enum AiTask { continueWriting, polish, inspiration, roleCard }
+enum AiTask { continueWriting, polish, inspiration }
 
 /// OpenAI 兼容实现。
 class OpenAiCompatibleGateway implements AiGateway {
@@ -131,8 +131,4 @@ class AiPrompts {
     return '为一部网络小说${typeDesc[type] ?? '提供创作灵感'}。'
         '每条灵感包含一句话概括与两三句展开，共 3 条，按序号列出。';
   }
-
-  static String roleCard(String name, String desc) =>
-      '为小说角色生成角色卡。角色名：$name。描述：$desc。\n'
-      '请按以下字段输出，每项一行，格式为"字段：内容"：\n外貌、性格、背景、口头禅、人物关系。';
 }

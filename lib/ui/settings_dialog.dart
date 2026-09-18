@@ -12,6 +12,7 @@ import '../../state/app_config.dart';
 import '../../state/app_state.dart';
 import '../../state/settings_controller.dart';
 import 'app_theme.dart';
+import 'common/context_menu.dart';
 import 'common/dialogs.dart';
 import 'common/file_io.dart';
 import 'conflict_page.dart';
@@ -64,6 +65,17 @@ const _categories = [
   _Category(Icons.message_outlined, 'AI 配置'),
   _Category(Icons.folder_open, '数据'),
 ];
+
+const _pageDescriptions = [
+  '主题、界面字体与缩放',
+  '正文排版、统计与保存',
+  '本地优先的云端增量同步',
+  '连接 OpenAI 兼容网关（可选）',
+  '存储、词库与日志',
+];
+
+/// 滑块行/下拉行共享的标题列宽，保证各滑块左侧起点一致。
+const _rowLabelWidth = 80.0;
 
 class SettingsDialog extends StatefulWidget {
   const SettingsDialog({super.key});
@@ -142,14 +154,20 @@ class _SettingsDialogState extends State<SettingsDialog> {
                     ),
                     Expanded(
                       child: ListView(
-                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-                        children: switch (_current) {
-                          0 => _appearance(settings, hairline),
-                          1 => _writing(settings, state, hairline),
-                          2 => _sync(settings, state, hairline),
-                          3 => _ai(settings, hairline),
-                          _ => _data(settings, hairline),
-                        },
+                        padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+                        children: [
+                          _pageHeader(
+                            _categories[_current].label,
+                            _pageDescriptions[_current],
+                          ),
+                          ...switch (_current) {
+                            0 => _appearance(settings, hairline),
+                            1 => _writing(settings, state, hairline),
+                            2 => _sync(settings, state, hairline),
+                            3 => _ai(settings, hairline),
+                            _ => _data(settings, hairline),
+                          },
+                        ],
                       ),
                     ),
                   ],
@@ -204,8 +222,39 @@ class _SettingsDialogState extends State<SettingsDialog> {
       ]),
       const SizedBox(height: 12),
       _group(hairline, [
+        _dropdownRow(
+          title: '界面字体',
+          value: s.uiFontFamily,
+          onChanged: (v) => s.setUiFontFamily(v),
+        ),
+        _divider(hairline),
         _sliderRow(
-          title: '字体大小',
+          title: '界面缩放',
+          value: '${(s.uiScale * 100).round()}%',
+          slider: Slider(
+            min: 0.8,
+            max: 1.5,
+            divisions: 14,
+            value: s.uiScale.clamp(0.8, 1.5),
+            onChanged: s.setUiScale,
+            padding: EdgeInsets.zero,
+          ),
+        ),
+      ]),
+    ];
+  }
+
+  List<Widget> _writing(SettingsController s, AppState state, Color hairline) {
+    return [
+      _group(hairline, [
+        _dropdownRow(
+          title: '正文字体',
+          value: s.editorFontFamily,
+          onChanged: (v) => s.setEditorFontFamily(v),
+        ),
+        _divider(hairline),
+        _sliderRow(
+          title: '正文字号',
           value: '${s.fontSize.round()}',
           slider: Slider(
             min: 13,
@@ -213,6 +262,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
             divisions: 13,
             value: s.fontSize,
             onChanged: s.setFontSize,
+            padding: EdgeInsets.zero,
           ),
         ),
         _divider(hairline),
@@ -225,6 +275,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
             divisions: 14,
             value: s.lineHeight,
             onChanged: s.setLineHeight,
+            padding: EdgeInsets.zero,
           ),
         ),
         _divider(hairline),
@@ -237,14 +288,11 @@ class _SettingsDialogState extends State<SettingsDialog> {
             divisions: 20,
             value: s.paragraphSpacing,
             onChanged: s.setParagraphSpacing,
+            padding: EdgeInsets.zero,
           ),
         ),
       ]),
-    ];
-  }
-
-  List<Widget> _writing(SettingsController s, AppState state, Color hairline) {
-    return [
+      const SizedBox(height: 12),
       _group(hairline, [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
@@ -340,7 +388,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
       const SizedBox(height: 12),
       _group(hairline, [
         _sliderRow(
-          title: '每日码字目标',
+          title: '码字目标',
           value: '${s.dailyGoal} 字',
           slider: Slider(
             min: 500,
@@ -349,6 +397,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
             label: '${s.dailyGoal}',
             value: s.dailyGoal.toDouble(),
             onChanged: (v) => s.setDailyGoal(v.round()),
+            padding: EdgeInsets.zero,
           ),
         ),
       ]),
@@ -359,6 +408,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
     return [
       _group(hairline, [
         SwitchListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
           title: const Text('云同步'),
           subtitle: const Text('本地优先；联网时自动增量同步。\n关闭不影响本地写作。'),
           value: s.syncEnabled,
@@ -368,9 +418,10 @@ class _SettingsDialogState extends State<SettingsDialog> {
       const SizedBox(height: 12),
       _group(hairline, [
         ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
           title: const Text('立即同步'),
           subtitle: const Text('检测并推送/拉取增量；若同章双端修改将进入冲突解决'),
-          trailing: const Icon(Icons.sync),
+          trailing: _actionIcon(Icons.sync),
           onTap: () => _syncNow(state),
         ),
       ]),
@@ -381,13 +432,14 @@ class _SettingsDialogState extends State<SettingsDialog> {
     return [
       _group(hairline, [
         ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
           title: const Text('AI 网关'),
           subtitle: Text(
             s.aiBaseUrl.isEmpty
                 ? '未配置（自动降级为纯写作模式）'
                 : '${s.aiModel} @ ${s.aiBaseUrl}',
           ),
-          trailing: const Icon(Icons.chevron_right),
+          trailing: _chevron(),
           onTap: _editAi,
         ),
       ]),
@@ -398,11 +450,10 @@ class _SettingsDialogState extends State<SettingsDialog> {
     return [
       _group(hairline, [
         ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
           title: const Text('敏感词词库'),
-          subtitle: Text(
-            '当前词库：${s.sensitiveDictVersion}\n从 TXT 导入更新（一行一词，# 开头为注释）',
-          ),
-          trailing: const Icon(Icons.upload_file),
+          subtitle: Text('当前词库：${s.sensitiveDictVersion}'),
+          trailing: _actionIcon(Icons.upload_file),
           onTap: _importDict,
         ),
         _divider(hairline),
@@ -411,39 +462,97 @@ class _SettingsDialogState extends State<SettingsDialog> {
               ? Future.value(s.dataDir)
               : Db.defaultDir(),
           builder: (context, snap) => ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
             title: const Text('数据存储目录'),
             subtitle: Text(
               snap.data ?? '读取中…',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
-            trailing: const Icon(Icons.folder_open),
+            trailing: _actionIcon(Icons.folder_open),
             onTap: snap.hasData ? () => _changeDataDir(snap.data!) : null,
           ),
         ),
         _divider(hairline),
         ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
           title: const Text('回收站'),
           subtitle: const Text('删除的卷/章/素材保留 30 天'),
-          trailing: const Icon(Icons.chevron_right),
+          trailing: _chevron(),
           onTap: _openRecycle,
         ),
       ]),
       const SizedBox(height: 12),
       _group(hairline, [
         ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
           title: const Text('运行日志'),
-          subtitle: const Text('程序出错会自动记录在此，可打包发给支持人员'),
-          trailing: const Icon(Icons.description),
+          subtitle: const Text('程序出错会自动记录在此'),
+          trailing: _actionIcon(Icons.description),
           onTap: _openLogs,
         ),
         _divider(hairline),
         const ListTile(
+          contentPadding: EdgeInsets.symmetric(horizontal: 16),
           title: Text('关于'),
-          subtitle: Text('NovelEditor MVP 0.1.0 · 本地数据双副本 + 快照 + 崩溃恢复'),
+          subtitle: Text('NovelEditor MVP 0.1.0'),
         ),
       ]),
     ];
+  }
+
+  /// 动作行 trailing：小描边容器图标，与下拉按钮/值胶囊同一视觉语言。
+  Widget _actionIcon(IconData icon) {
+    final scheme = Theme.of(context).colorScheme;
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    return Container(
+      width: 28,
+      height: 28,
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(
+          color: isLight
+              ? const Color(0x2E000000)
+              : const Color(0x2EFFFFFF),
+        ),
+      ),
+      child: Icon(icon, size: 15, color: scheme.onSurfaceVariant),
+    );
+  }
+
+  /// 跳转行 trailing：弱色 chevron。
+  Widget _chevron() {
+    return Icon(
+      Icons.chevron_right,
+      size: 18,
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
+    );
+  }
+
+  /// 页头：当前分类大标题 + 一句话说明。
+  Widget _pageHeader(String title, String subtitle) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 2, 4, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            subtitle,
+            style: TextStyle(
+              fontSize: 12,
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   /// 卡片与导航选中项的共享底色：选中即「提亮」
@@ -490,37 +599,129 @@ class _SettingsDialogState extends State<SettingsDialog> {
     );
   }
 
-  /// 滑块行：标题行（左标题 + 右当前值）+ 下方滑块。
-  /// 滑块轨道覆盖为全宽 shape，使轨道左右端点与上方文字对齐。
+  /// 滑块行：标题（固定宽，与下拉行对齐）+ 滑块 + 描边胶囊值同一行。
   Widget _sliderRow({
     required String title,
     required String value,
     required Widget slider,
   }) {
+    final scheme = Theme.of(context).colorScheme;
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final hairlineStrong = isLight
+        ? const Color(0x2E000000)
+        : const Color(0x2EFFFFFF);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      child: Column(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Row(
         children: [
-          Row(
-            children: [
-              Text(title),
-              const Spacer(),
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+          SizedBox(
+            width: _rowLabelWidth,
+            child: Text(title),
+          ),
+          Expanded(
+            child: SizedBox(
+              height: 28,
+              child: SliderTheme(
+                data: SliderTheme.of(
+                  context,
+                ).copyWith(trackShape: const _FullWidthTrackShape()),
+                child: slider,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Container(
+            width: 88,
+            height: 28,
+            decoration: BoxDecoration(
+              color: scheme.surface,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: hairlineStrong),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: 12,
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 下拉行：与滑块行同构（左标题 + 右控件）。右侧为描边选择器按钮，
+  /// 点击弹出与右键菜单同规格（popupMenuTheme、44px 行高）的字体菜单，
+  /// 当前项初始高亮。
+  Widget _dropdownRow({
+    required String title,
+    required String value,
+    required ValueChanged<String> onChanged,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final current = appFontOptions.firstWhere(
+      (f) => f.family == value,
+      orElse: () => appFontOptions.first,
+    );
+    final hairlineStrong = isLight
+        ? const Color(0x2E000000)
+        : const Color(0x2EFFFFFF);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Row(
+        children: [
+          SizedBox(
+            width: _rowLabelWidth,
+            child: Text(title),
+          ),
+          const Spacer(),
+          Builder(
+            builder: (ctx) => Material(
+              color: scheme.surface,
+              borderRadius: BorderRadius.circular(8),
+              child: InkWell(
+                onTap: () async {
+                  final box = ctx.findRenderObject() as RenderBox;
+                  final picked = await showAppAnchoredMenu<String>(
+                    context: ctx,
+                    target: box,
+                    initialValue: value,
+                    entries: [
+                      for (final f in appFontOptions)
+                        AppMenuItem(f.family, f.label),
+                    ],
+                  );
+                  if (picked != null) onChanged(picked);
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  height: 36,
+                  width: 88,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: hairlineStrong),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        current.label,
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.expand_more,
+                        size: 16,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ],
-          ),
-          SizedBox(
-            height: 28,
-            child: SliderTheme(
-              data: SliderTheme.of(
-                context,
-              ).copyWith(trackShape: const _FullWidthTrackShape()),
-              child: slider,
             ),
           ),
         ],
@@ -534,52 +735,13 @@ class _SettingsDialogState extends State<SettingsDialog> {
     required bool isEggPie,
     required VoidCallback onTap,
   }) {
-    final scheme = Theme.of(context).colorScheme;
-    // 选中项：蛋黄派用次级面板色 + 木框；极简风用卡片同色。
-    final color = selected ? _panelColor(isEggPie) : Colors.transparent;
-    final border = selected && isEggPie
-        ? Border.all(color: const Color(0xFF5B2E0E), width: 2)
-        : null;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: onTap,
-          behavior: HitTestBehavior.opaque,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(8),
-              border: border,
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  category.icon,
-                  size: 16,
-                  color: selected ? scheme.primary : scheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  category.label,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: selected
-                        ? scheme.onSurface
-                        : scheme.onSurfaceVariant,
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+    return _NavItem(
+      category: category,
+      selected: selected,
+      isEggPie: isEggPie,
+      onTap: onTap,
     );
   }
-
   /// 切换数据存储目录：选目录 → 确认 → 迁移数据 → 保存设置（重启后生效）。
   Future<void> _changeDataDir(String currentDir) async {
     final target = await FileIO.pickDirectory();
@@ -744,5 +906,86 @@ class _SettingsDialogState extends State<SettingsDialog> {
     final nav = Navigator.of(context);
     nav.pop();
     nav.push(MaterialPageRoute(builder: (_) => const RecyclePage()));
+  }
+}
+
+/// 左侧导航项：悬停浅高亮；极简风选中用品牌色浅底，蛋黄派保持米底木框。
+class _NavItem extends StatefulWidget {
+  const _NavItem({
+    required this.category,
+    required this.selected,
+    required this.isEggPie,
+    required this.onTap,
+  });
+
+  final _Category category;
+  final bool selected;
+  final bool isEggPie;
+  final VoidCallback onTap;
+
+  @override
+  State<_NavItem> createState() => _NavItemState();
+}
+
+class _NavItemState extends State<_NavItem> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final selected = widget.selected;
+    final selectedColor = widget.isEggPie
+        ? const Color(0xFFFFF6E0)
+        : scheme.primary.withValues(alpha: isLight ? 0.10 : 0.18);
+    final hoverColor = widget.isEggPie
+        ? const Color(0xFFFFF6E0).withValues(alpha: 0.55)
+        : (isLight ? const Color(0x08000000) : const Color(0x08FFFFFF));
+    final border = selected && widget.isEggPie
+        ? Border.all(color: const Color(0xFF5B2E0E), width: 2)
+        : null;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          behavior: HitTestBehavior.opaque,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            decoration: BoxDecoration(
+              color: selected
+                  ? selectedColor
+                  : (_hover ? hoverColor : Colors.transparent),
+              borderRadius: BorderRadius.circular(8),
+              border: border,
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  widget.category.icon,
+                  size: 16,
+                  color: selected ? scheme.primary : scheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  widget.category.label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: selected
+                        ? scheme.onSurface
+                        : scheme.onSurfaceVariant,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

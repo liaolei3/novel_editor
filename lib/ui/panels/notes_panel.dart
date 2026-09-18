@@ -6,7 +6,7 @@ import '../../state/app_state.dart';
 import '../app_root.dart';
 import '../common/dialogs.dart';
 
-/// 素材库（FR-21 / 9.7）：角色卡 / 世界观 / 灵感便签三类，支持新建、编辑、删除、搜索。
+/// 素材库（FR-21 / 9.7）：世界观 / 灵感便签两类，支持新建、编辑、删除、搜索。
 class NotesPanel extends StatefulWidget {
   const NotesPanel({super.key, required this.book});
 
@@ -17,10 +17,10 @@ class NotesPanel extends StatefulWidget {
 }
 
 class _NotesPanelState extends State<NotesPanel> {
-  NoteType _tab = NoteType.role;
+  NoteType _tab = NoteType.world;
   String _keyword = '';
 
-  static const _tabs = [(NoteType.role, '角色卡'), (NoteType.world, '世界观'), (NoteType.idea, '灵感便签')];
+  static const _tabs = [(NoteType.world, '世界观'), (NoteType.idea, '灵感便签')];
 
   @override
   Widget build(BuildContext context) {
