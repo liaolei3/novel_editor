@@ -272,27 +272,72 @@ class _CharacterTipViewState extends State<_CharacterTipView> {
                 ]),
                 if (char.aliases.isNotEmpty) ...[
                   const SizedBox(height: 6),
-                  Text('别名：${char.aliases}',
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
+                  Text.rich(
+                    TextSpan(
+                      text: '别名：',
                       style: TextStyle(
-                          fontSize: 11, color: scheme.onSurfaceVariant)),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: scheme.onSurfaceVariant),
+                      children: [
+                        TextSpan(
+                          text: char.aliases,
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w400,
+                              color: scheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ],
                 if (char.tags.isNotEmpty) ...[
                   const SizedBox(height: 3),
-                  Text('标签：${char.tags}',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                  Text.rich(
+                    TextSpan(
+                      text: '标签：',
                       style: TextStyle(
-                          fontSize: 11, color: scheme.onSurfaceVariant)),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: scheme.onSurfaceVariant),
+                      children: [
+                        TextSpan(
+                          text: char.tags,
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w400,
+                              color: scheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ],
                 for (final attr in char.attrList) ...[
                   const SizedBox(height: 3),
-                  Text('${attr.name}：${attr.value}',
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
+                  Text.rich(
+                    TextSpan(
+                      text: '${attr.name}：',
                       style: TextStyle(
-                          fontSize: 11, color: scheme.onSurfaceVariant)),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: scheme.onSurfaceVariant),
+                      children: [
+                        TextSpan(
+                          text: attr.value,
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w400,
+                              color: scheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ],
                 const SizedBox(height: 8),
                 SizedBox(

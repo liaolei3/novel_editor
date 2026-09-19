@@ -47,7 +47,8 @@ void main() {
         char_count INTEGER NOT NULL DEFAULT 0,
         last_edited_at INTEGER NOT NULL,
         cursor_offset INTEGER NOT NULL DEFAULT 0,
-        pinned INTEGER NOT NULL DEFAULT 0
+        pinned INTEGER NOT NULL DEFAULT 0,
+        outline_edited_at INTEGER
       )
     ''');
 

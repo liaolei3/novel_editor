@@ -6,10 +6,12 @@ import '../../core/utils/foreshadow_delta.dart';
 import '../../core/utils/rich_text_codec.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
+import '../../state/settings_controller.dart';
 import '../common/dialogs.dart' show DraggableDialog;
 import '../common/foreshadow_dialogs.dart';
 import '../widgets/foreshadow_tip.dart' show foreshadowMarkColor;
 import '../widgets/toast.dart';
+import '../widgets/view_toggle.dart';
 
 /// 伏笔面板：列表态（状态筛选 + 卡片）↔ 详情态（编辑 + 片段列表）。
 class ForeshadowPanel extends StatefulWidget {
@@ -37,6 +39,7 @@ class _ForeshadowPanelState extends State<ForeshadowPanel> {
   String _keyword = '';
   bool _searching = false;
   bool _loading = true;
+  bool _gridView = false;
 
   final _nameCtrl = TextEditingController();
   final _contentCtrl = TextEditingController();
@@ -50,6 +53,7 @@ class _ForeshadowPanelState extends State<ForeshadowPanel> {
   @override
   void initState() {
     super.initState();
+    _gridView = context.read<SettingsController>().foreshadowGridView;
     _appState = context.read<AppState>();
     _appState.foreshadowVersion.addListener(_reload);
     _load();
@@ -454,6 +458,14 @@ class _ForeshadowPanelState extends State<ForeshadowPanel> {
               ),
             ),
           ),
+          const SizedBox(width: 6),
+          ViewToggleGroup(
+            gridView: _gridView,
+            onChanged: (grid) {
+              setState(() => _gridView = grid);
+              context.read<SettingsController>().setForeshadowGridView(grid);
+            },
+          ),
         ]),
       ),
       SizedBox(
@@ -502,18 +514,43 @@ class _ForeshadowPanelState extends State<ForeshadowPanel> {
                       ],
                     ),
                   )
-                : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
-                    itemCount: _filtered.length,
-                    itemBuilder: (ctx, i) => _ForeshadowCard(
-                      foreshadow: _filtered[i],
-                      segmentCount: _segCounts[_filtered[i].id] ?? 0,
-                      onTap: () => _openDetail(_filtered[i]),
-                      onDelete: () => _deleteForeshadow(_filtered[i]),
-                    ),
-                  ),
+                : _gridView
+                    ? _buildGrid(scheme)
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
+                        itemCount: _filtered.length,
+                        itemBuilder: (ctx, i) => _ForeshadowCard(
+                          foreshadow: _filtered[i],
+                          segmentCount: _segCounts[_filtered[i].id] ?? 0,
+                          onTap: () => _openDetail(_filtered[i]),
+                          onDelete: () => _deleteForeshadow(_filtered[i]),
+                        ),
+                      ),
       ),
     ]);
+  }
+
+  /// 伏笔网格视图：竖向卡片，高度与大纲网格一致（180px）。
+  Widget _buildGrid(ColorScheme scheme) {
+    return LayoutBuilder(builder: (ctx, constraints) {
+      final columns = (constraints.maxWidth ~/ 180).clamp(1, 4);
+      return GridView.builder(
+        padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
+        itemCount: _filtered.length,
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: columns,
+          mainAxisSpacing: 6,
+          crossAxisSpacing: 6,
+          mainAxisExtent: 240,
+        ),
+        itemBuilder: (ctx, i) => _ForeshadowGridCell(
+          foreshadow: _filtered[i],
+          segmentCount: _segCounts[_filtered[i].id] ?? 0,
+          onTap: () => _openDetail(_filtered[i]),
+          onDelete: () => _deleteForeshadow(_filtered[i]),
+        ),
+      );
+    });
   }
 
   // ---------- 详情态 ----------
@@ -745,6 +782,152 @@ class _UnderlineTab extends StatelessWidget {
                 fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                 color:
                     selected ? scheme.onSurface : scheme.onSurfaceVariant)),
+      ),
+    );
+  }
+}
+
+/// 伏笔网格卡片：竖向布局，图标 + 状态徽章 + 名称 + 描述 + 片段数/时间。
+class _ForeshadowGridCell extends StatefulWidget {
+  const _ForeshadowGridCell({
+    required this.foreshadow,
+    required this.segmentCount,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  final Foreshadow foreshadow;
+  final int segmentCount;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  @override
+  State<_ForeshadowGridCell> createState() => _ForeshadowGridCellState();
+}
+
+class _ForeshadowGridCellState extends State<_ForeshadowGridCell> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final foreshadow = widget.foreshadow;
+    final color = foreshadowMarkColor(foreshadow.status, scheme.brightness);
+    String two(int n) => n.toString().padLeft(2, '0');
+    final t = foreshadow.updatedAt;
+    final timeText = t.year == DateTime.now().year
+        ? '${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}'
+        : '${t.year}-${two(t.month)}-${two(t.day)}';
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: Material(
+        color: _hover
+            ? scheme.surfaceContainerHighest.withValues(alpha: 0.4)
+            : scheme.surface,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          mouseCursor: SystemMouseCursors.click,
+          borderRadius: BorderRadius.circular(10),
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: _hover
+                    ? scheme.outlineVariant
+                    : scheme.outlineVariant.withValues(alpha: 0.6),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(7),
+                    ),
+                    child: Icon(Icons.flag_outlined, size: 15, color: color),
+                  ),
+                  const Spacer(),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                        foreshadow.status == ForeshadowStatus.done
+                            ? '已完成'
+                            : '未完成',
+                        style: TextStyle(fontSize: 10, color: color)),
+                  ),
+                  if (_hover) ...[
+                    const SizedBox(width: 4),
+                    SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: Material(
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(6),
+                        child: InkWell(
+                          mouseCursor: SystemMouseCursors.click,
+                          borderRadius: BorderRadius.circular(6),
+                          onTap: widget.onDelete,
+                          child: Center(
+                            child: Icon(Icons.delete_outline,
+                                size: 15, color: scheme.error),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ]),
+                const SizedBox(height: 6),
+                Text(foreshadow.name.isEmpty ? '未命名伏笔' : foreshadow.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: scheme.onSurface)),
+                const SizedBox(height: 4),
+                Expanded(
+                  child: Text(
+                      foreshadow.content.isEmpty
+                          ? '暂无描述'
+                          : foreshadow.content,
+                      maxLines: 5,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 12,
+                          height: 1.5,
+                          color: foreshadow.content.isEmpty
+                              ? scheme.onSurfaceVariant
+                              : scheme.onSurface.withValues(alpha: 0.85))),
+                ),
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                  Text('${widget.segmentCount} 个片段',
+                      style: TextStyle(
+                          fontSize: 10,
+                          color:
+                              scheme.onSurfaceVariant.withValues(alpha: 0.7))),
+                  Text(timeText,
+                      style: TextStyle(
+                          fontSize: 10,
+                          color:
+                              scheme.onSurfaceVariant.withValues(alpha: 0.7))),
+                ]),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

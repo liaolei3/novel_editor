@@ -89,57 +89,61 @@ class _DraggableDialogState extends State<DraggableDialog> {
 
 /// 通用输入对话框（macOS 风格：居中标题 + 紧凑输入框 + 右下角按钮）。
 Future<String?> inputDialog(BuildContext context,
-    {required String title, String initial = '', String hint = '', int maxLines = 1}) {
+    {required String title,
+    String initial = '',
+    String hint = '',
+    int maxLines = 1,
+    double width = 320}) {
   final controller = TextEditingController(text: initial);
   return showDialog<String>(
     context: context,
     barrierDismissible: false,
     builder: (ctx) => DraggableDialog(
-      child: SizedBox(
-        width: 320,
-        child: AlertDialog(
-          backgroundColor: Theme.of(ctx).dialogTheme.backgroundColor,
-          shape: Theme.of(ctx).dialogTheme.shape,
-          titlePadding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
-          contentPadding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
-          actionsPadding: const EdgeInsets.fromLTRB(24, 18, 24, 20),
-          actionsOverflowButtonSpacing: 0,
-          title: Text(
-            title,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-          ),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            maxLines: maxLines,
-            maxLength: maxLines > 1 ? 200 : null,
-            onSubmitted: (_) => Navigator.pop(ctx, controller.text),
-            decoration: InputDecoration(
-              hintText: hint,
-              counterText: '',
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-            ),
-          ),
-          actionsAlignment: MainAxisAlignment.end,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              style: TextButton.styleFrom(
-                minimumSize: const Size(64, 38),
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-              ),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, controller.text),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size(72, 38),
-                padding: const EdgeInsets.symmetric(horizontal: 18),
-              ),
-              child: const Text('确定'),
-            ),
-          ],
+      child: AlertDialog(
+        constraints: BoxConstraints(minWidth: width, maxWidth: width),
+        backgroundColor: Theme.of(ctx).dialogTheme.backgroundColor,
+        shape: Theme.of(ctx).dialogTheme.shape,
+        titlePadding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
+        contentPadding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 18, 24, 20),
+        actionsOverflowButtonSpacing: 0,
+        title: Text(
+          title,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: maxLines,
+          maxLength: maxLines > 1 ? 200 : null,
+          style: const TextStyle(fontSize: 13),
+          onSubmitted: (_) => Navigator.pop(ctx, controller.text),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: const TextStyle(fontSize: 13),
+            counterText: '',
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          ),
+        ),
+        actionsAlignment: MainAxisAlignment.end,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            style: TextButton.styleFrom(
+              minimumSize: const Size(64, 38),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+            ),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(72, 38),
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+            ),
+            child: const Text('确定'),
+          ),
+        ],
       ),
     ),
   );
@@ -182,15 +186,22 @@ Future<(String, String, String?)?> createBookDialog(BuildContext context) async 
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                TextField(controller: titleCtrl, autofocus: true,
+                TextField(
+                  controller: titleCtrl,
+                  autofocus: true,
+                  style: const TextStyle(fontSize: 13),
                   decoration: const InputDecoration(
                     labelText: '书名',
+                    labelStyle: TextStyle(fontSize: 13),
                     contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 13),
                   )),
               const SizedBox(height: 14),
-              TextField(controller: penCtrl,
+              TextField(
+                  controller: penCtrl,
+                  style: const TextStyle(fontSize: 13),
                   decoration: const InputDecoration(
                     labelText: '作者笔名（可选）',
+                    labelStyle: TextStyle(fontSize: 13),
                     contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 13),
                   )),
               const SizedBox(height: 16),
@@ -378,15 +389,21 @@ Future<(String, String, String?)?> editBookDialog(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                TextField(controller: titleCtrl,
+                TextField(
+                  controller: titleCtrl,
+                  style: const TextStyle(fontSize: 13),
                   decoration: const InputDecoration(
                     labelText: '书名',
+                    labelStyle: TextStyle(fontSize: 13),
                     contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 13),
                   )),
               const SizedBox(height: 14),
-              TextField(controller: penCtrl,
+              TextField(
+                  controller: penCtrl,
+                  style: const TextStyle(fontSize: 13),
                   decoration: const InputDecoration(
                     labelText: '作者笔名（可选）',
+                    labelStyle: TextStyle(fontSize: 13),
                     contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 13),
                   )),
               const SizedBox(height: 16),

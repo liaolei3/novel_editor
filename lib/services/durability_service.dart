@@ -92,6 +92,17 @@ class DurabilityService {
       }
     }
   }
+
+  /// 彻底删除书籍时清理其全部章节备份文件。
+  Future<void> deleteBookBackups(String bookId) async {
+    try {
+      final dir = Directory(p.join(await _ensureBackupDir(), bookId));
+      if (dir.existsSync()) await dir.delete(recursive: true);
+    } catch (e, s) {
+      Logger.error('书籍备份清理失败: $bookId',
+          error: e, stackTrace: s, tag: 'Durability');
+    }
+  }
 }
 
 /// 崩溃恢复（FR-11 / S3）：

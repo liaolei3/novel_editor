@@ -23,7 +23,7 @@ class Db {
     _db = await databaseFactory.openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 6,
+        version: 8,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
       ),
@@ -76,6 +76,7 @@ class Db {
         last_edited_at INTEGER NOT NULL,
         cursor_offset INTEGER NOT NULL DEFAULT 0,
         pinned INTEGER NOT NULL DEFAULT 0,
+        outline_edited_at INTEGER,
         FOREIGN KEY (book_id) REFERENCES books(id),
         FOREIGN KEY (volume_id) REFERENCES volumes(id)
       )
@@ -110,7 +111,9 @@ class Db {
         id TEXT PRIMARY KEY,
         date TEXT NOT NULL,
         chars INTEGER NOT NULL,
-        duration_ms INTEGER NOT NULL
+        duration_ms INTEGER NOT NULL,
+        idle_ms INTEGER NOT NULL DEFAULT 0,
+        idle_count INTEGER NOT NULL DEFAULT 0
       )
     ''');
     await db.execute('CREATE UNIQUE INDEX idx_wr_date ON write_records(date)');
@@ -222,6 +225,25 @@ class Db {
         )
       ''');
       await db.execute('CREATE INDEX IF NOT EXISTS idx_fsseg_fs ON fs_segments(fs_id)');
+    }
+    if (oldVersion < 7) {
+      final cols = await db.rawQuery('PRAGMA table_info(write_records)');
+      final names = cols.map((c) => c['name']).toSet();
+      if (!names.contains('idle_ms')) {
+        await db.execute(
+            'ALTER TABLE write_records ADD COLUMN idle_ms INTEGER NOT NULL DEFAULT 0');
+      }
+      if (!names.contains('idle_count')) {
+        await db.execute(
+            'ALTER TABLE write_records ADD COLUMN idle_count INTEGER NOT NULL DEFAULT 0');
+      }
+    }
+    if (oldVersion < 8) {
+      final cols = await db.rawQuery('PRAGMA table_info(chapters)');
+      final hasCol = cols.any((c) => c['name'] == 'outline_edited_at');
+      if (!hasCol) {
+        await db.execute('ALTER TABLE chapters ADD COLUMN outline_edited_at INTEGER');
+      }
     }
   }
 

@@ -44,12 +44,14 @@ ThemeData _minimalTheme(Brightness brightness, String? fontFamily) {
     seedColor: isLight ? const Color(0xFF0071E3) : const Color(0xFF0A84FF),
     brightness: brightness,
   ).copyWith(
-    surface: isLight ? const Color(0xFFFFFFFF) : const Color(0xFF1C1C1E),
+    // 中性色参考成熟产品：浅色为暖灰背景+白色面板分层（Apple/Notion），
+    // 暗色正文文字压暗至 GitHub/VS Code 亮度，避免大面积近纯白刺眼。
+    surface: isLight ? const Color(0xFFF7F7F5) : const Color(0xFF18181B),
     surfaceContainerHighest: isLight
-        ? const Color(0xFFF5F5F7)
+        ? const Color(0xFFEFEFED)
         : const Color(0xFF2C2C2E),
-    onSurface: isLight ? const Color(0xFF1D1D1F) : const Color(0xFFF5F5F7),
-    onSurfaceVariant: isLight ? const Color(0xFF86868B) : const Color(0xFFAEAEB2),
+    onSurface: isLight ? const Color(0xFF1D1D1F) : const Color(0xFFD6D6DB),
+    onSurfaceVariant: isLight ? const Color(0xFF6E6E73) : const Color(0xFF9A9AA2),
   );
   final hairline = isLight ? const Color(0x1A000000) : const Color(0x1AFFFFFF);
 
@@ -185,7 +187,7 @@ ThemeData _minimalTheme(Brightness brightness, String? fontFamily) {
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: isLight ? const Color(0xFFF5F5F7) : const Color(0xFF2C2C2E),
+      fillColor: isLight ? const Color(0xFFEFEFED) : const Color(0xFF2C2C2E),
       hoverColor: Colors.transparent,
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       border: OutlineInputBorder(

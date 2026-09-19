@@ -21,6 +21,29 @@ class FileIO {
     return file.bytes != null ? String.fromCharCodes(file.bytes!) : null;
   }
 
+  /// 选择并读取文本文件，返回 (去扩展名文件名, 内容)，取消返回 null。
+  static Future<(String, String)?> pickReadTextNamed({
+    List<String> ext = const ['txt'],
+  }) async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ext,
+      withData: true,
+    );
+    final file = result?.files.single;
+    if (file == null) return null;
+    String? content;
+    if (file.path != null && File(file.path!).existsSync()) {
+      content = await File(file.path!).readAsString();
+    } else if (file.bytes != null) {
+      content = String.fromCharCodes(file.bytes!);
+    }
+    if (content == null) return null;
+    final name = file.name;
+    final dot = name.lastIndexOf('.');
+    return (dot > 0 ? name.substring(0, dot) : name, content);
+  }
+
   static Future<String?> pickDirectory() =>
       FilePicker.platform.getDirectoryPath();
 

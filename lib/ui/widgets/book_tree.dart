@@ -205,6 +205,10 @@ class _VolumeTileState extends State<_VolumeTile> {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final chapters = widget.chapters;
+    final scheme = Theme.of(context).colorScheme;
+    // 当前打开章节所在的卷，标题染主色以标示归属。
+    final containsCurrent =
+        state.currentChapter?.volumeId == widget.volume.id;
     final children = Column(
       key: ValueKey(widget.volume.id),
       mainAxisSize: MainAxisSize.min,
@@ -270,8 +274,13 @@ class _VolumeTileState extends State<_VolumeTile> {
                         widget.volume.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyLarge
-                            ?.copyWith(fontSize: 14),
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          fontSize: 14,
+                          color: containsCurrent ? scheme.primary : null,
+                          fontWeight: containsCurrent
+                              ? FontWeight.w600
+                              : null,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -308,42 +317,65 @@ class _ChapterTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final std = context.watch<SettingsController>().countStandard;
+    final scheme = Theme.of(context).colorScheme;
     final selected = state.currentChapter?.id == chapter.id;
     return GestureDetector(
       onSecondaryTapUp: (details) =>
           BookTree._showChapterMenu(context, chapter, details.globalPosition),
-      child: ListTile(
-        minTileHeight: 48,
-        titleTextStyle: Theme.of(context).textTheme.bodyLarge
-            ?.copyWith(fontSize: 14),
-        selected: selected,
-        shape: const RoundedRectangleBorder(side: BorderSide.none),
-        contentPadding: const EdgeInsets.only(left: 42, right: 16),
-        title: Row(
-          children: [
-            Expanded(
-              child: Text(
-                chapter.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+      child: Stack(
+        children: [
+          ListTile(
+            minTileHeight: 48,
+            titleTextStyle: Theme.of(context).textTheme.bodyLarge?.copyWith(
+              fontSize: 14,
+              color: selected ? scheme.primary : null,
+              fontWeight: selected ? FontWeight.w600 : null,
+            ),
+            selected: selected,
+            selectedTileColor: scheme.primary.withValues(alpha: 0.08),
+            shape: const RoundedRectangleBorder(side: BorderSide.none),
+            contentPadding: const EdgeInsets.only(left: 42, right: 16),
+            title: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    chapter.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (chapter.pinned) ...[
+                  const SizedBox(width: 6),
+                  Icon(
+                    Icons.push_pin,
+                    size: 14,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ],
+                const SizedBox(width: 8),
+                Text(
+                  '${TextStats.count(RichTextCodec.plainTextFromDeltaJson(chapter.content), std)} 字',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+            onTap: () => state.openChapter(chapter),
+          ),
+          // 选中态左侧主色竖条，与淡主色底、主色标题共同标示当前章节。
+          if (selected)
+            Positioned(
+              left: 26,
+              top: 12,
+              bottom: 12,
+              child: Container(
+                width: 3,
+                decoration: BoxDecoration(
+                  color: scheme.primary,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
             ),
-            if (chapter.pinned) ...[
-              const SizedBox(width: 6),
-              Icon(
-                Icons.push_pin,
-                size: 14,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ],
-            const SizedBox(width: 8),
-            Text(
-              '${TextStats.count(RichTextCodec.plainTextFromDeltaJson(chapter.content), std)} 字',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
-        ),
-        onTap: () => state.openChapter(chapter),
+        ],
       ),
     );
   }

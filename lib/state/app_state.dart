@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
+import 'package:path/path.dart' as p;
 
 
 import '../core/utils/chapter_title_suggest.dart';
@@ -10,6 +12,8 @@ import '../core/utils/foreshadow_delta.dart';
 import '../core/utils/global_search.dart';
 import '../core/utils/rich_text_codec.dart';
 import '../core/utils/text_stats.dart';
+import '../core/utils/txt_importer.dart';
+import '../data/db.dart';
 import '../data/models.dart';
 import '../data/repositories.dart';
 import '../services/autosave_service.dart';
@@ -125,6 +129,96 @@ class AppState extends ChangeNotifier {
     return book;
   }
 
+  /// 从 TXT 文本导入新书：按"第X章"切分为章节，正文转 Delta JSON 存储。
+  Future<Book> importBookFromText(String title, String raw) async {
+    final book = await books.create(title);
+    final vol = await volumes.create(book.id, '第一卷');
+    final parts = TxtImporter.splitChapters(raw);
+    for (final part in parts) {
+      await chapters.create(
+        bookId: book.id,
+        volumeId: vol.id,
+        title: part.key,
+        content: RichTextCodec.deltaJsonFromPlainText(part.value),
+      );
+    }
+    await loadShelf();
+    return book;
+  }
+
+  /// 删除书籍 → 回收站（一条 book 条目；子数据原地不动，恢复即全部复原）。
+  Future<void> deleteBook(Book book) async {
+    await books.softDelete(book.id);
+    await recycle.add(RecycleType.book, book.id, {
+      'book_id': book.id,
+      'title': book.title,
+      'pen_name': book.penName,
+      'cover_path': book.coverPath,
+      'summary': book.summary,
+    });
+    await loadShelf();
+  }
+
+  /// 启动时过期清理：book 条目级联彻底删除，其余沿用既有行为。
+  Future<void> purgeExpiredRecycle() async {
+    final now = DateTime.now();
+    for (final item in await recycle.list()) {
+      if (item.expireAt.isAfter(now)) continue;
+      if (item.type == RecycleType.book) {
+        await _purgeBookCompletely(item);
+      } else {
+        if (item.type == RecycleType.chapter) {
+          // 章节行已不存在，hardDelete 仅清理其残留快照。
+          await chapters.hardDelete(item.originId);
+        }
+        await recycle.remove(item.id);
+      }
+    }
+  }
+
+  /// 彻底删除回收站条目；书籍类型执行级联清理。
+  Future<void> purgeRecycleItem(RecycleItem item) async {
+    if (item.type == RecycleType.book) {
+      await _purgeBookCompletely(item);
+      return;
+    }
+    if (item.type == RecycleType.chapter) {
+      await chapters.hardDelete(item.originId);
+    }
+    await recycle.remove(item.id);
+  }
+
+  /// 书籍级联彻底删除：子数据、快照、封面文件、章节备份、回收站遗留子条目。
+  Future<void> _purgeBookCompletely(RecycleItem item) async {
+    final bookId = item.originId;
+    // 先清回收站里该书遗留的子条目，避免恢复时父书已不存在。
+    for (final r in await recycle.list()) {
+      if (r.type == RecycleType.book) continue;
+      if (_decode(r.payload)['book_id'] == bookId) {
+        await recycle.remove(r.id);
+      }
+    }
+    await volumes.hardDeleteByBook(bookId);
+    await chapters.hardDeleteByBook(bookId);
+    await fsSegments.hardDeleteByBook(bookId);
+    await foreshadows.hardDeleteByBook(bookId);
+    await characters.hardDeleteByBook(bookId);
+    await notes.hardDeleteByBook(bookId);
+    final coverPath = _decode(item.payload)['cover_path'] as String? ?? '';
+    if (coverPath.isNotEmpty) {
+      try {
+        final f = File(p.join(await Db.supportDir(), coverPath));
+        if (f.existsSync()) await f.delete();
+      } catch (_) {
+        // 文件被占用或缺失时忽略，不影响 DB 状态。
+      }
+    }
+    await durability.deleteBookBackups(bookId);
+    await books.hardDelete(bookId);
+    await recycle.remove(item.id);
+    await loadShelf();
+  }
+
   /// 打开作品：加载卷章树并恢复上次编辑位置（12.1）。
   Future<void> openBook(Book book, {String? startChapterId}) async {
     await autosave.flush();
@@ -201,7 +295,7 @@ class AppState extends ChangeNotifier {
       if (scopes.contains(SearchScope.outline) && ch.outline.contains(query)) {
         final n = GlobalSearch.matchStarts(ch.outline, query).length;
         ch.outline = ch.outline.replaceAll(query, replacement);
-        await chapters.updateOutline(ch.id, ch.outline);
+        await chapters.updateOutline(ch, ch.outline);
         total += n;
       }
       if (scopes.contains(SearchScope.title) && ch.title.contains(query)) {
@@ -624,7 +718,11 @@ class AppState extends ChangeNotifier {
 
   /// 从回收站恢复章节。
   Future<void> restoreRecycleItem(RecycleItem item) async {
-    if (item.type == RecycleType.chapter) {
+    if (item.type == RecycleType.book) {
+      // 子数据删除书籍时未清理，恢复软删标记即全部复原。
+      await books.restore(item.originId);
+      await loadShelf();
+    } else if (item.type == RecycleType.chapter) {
       final payload = Map<String, Object?>.from(_decode(item.payload));
       await chapters.create(
         bookId: payload['book_id'] as String,

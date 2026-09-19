@@ -25,6 +25,7 @@ dependencies:
   dart_quill_delta: ^10.8.3
   window_manager: ^0.5.2
   diff_match_patch: ^0.4.1
+  fl_chart: ^1.2.0
 
 dev_dependencies:
   flutter_test:

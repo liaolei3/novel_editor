@@ -47,6 +47,9 @@ class SettingsController extends ChangeNotifier {
   double get workspaceRightWidth => _cfg.getDouble('workspaceRightWidth') ?? 408;
   int get workspacePanelIndex => _cfg.getInt('workspacePanelIndex') ?? 0;
   bool get workspacePanelOpen => _cfg.getBool('workspacePanelOpen') ?? false;
+  bool get outlineGridView => _cfg.getBool('outlineGridView') ?? true;
+  bool get characterGridView => _cfg.getBool('characterGridView') ?? false;
+  bool get foreshadowGridView => _cfg.getBool('foreshadowGridView') ?? false;
 
   Future<void> setTheme(AppTheme theme) =>
       _set('appTheme', theme.name, () => notifyListeners());
@@ -97,6 +100,9 @@ class SettingsController extends ChangeNotifier {
   Future<void> setWorkspaceRightWidth(double v) => _cfg.setDouble('workspaceRightWidth', v);
   Future<void> setWorkspacePanelIndex(int v) => _cfg.setInt('workspacePanelIndex', v);
   Future<void> setWorkspacePanelOpen(bool v) => _cfg.setBool('workspacePanelOpen', v);
+  Future<void> setOutlineGridView(bool v) => _cfg.setBool('outlineGridView', v);
+  Future<void> setCharacterGridView(bool v) => _cfg.setBool('characterGridView', v);
+  Future<void> setForeshadowGridView(bool v) => _cfg.setBool('foreshadowGridView', v);
 
   /// 切换数据存储目录（空 = 应用默认目录）；重启应用后生效。
   Future<void> setDataDir(String v) =>

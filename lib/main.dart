@@ -77,7 +77,6 @@ Future<void> _bootstrap() async {
 
   autosave.startInterval();
   session.begin();
-  await recycle.purgeExpired();
 
   await crash.detect();
   await crash.markAlive();
@@ -100,6 +99,8 @@ Future<void> _bootstrap() async {
     session: session,
     sync: sync,
   );
+
+  await appState.purgeExpiredRecycle();
 
   if (Platform.isWindows) {
     await windowManager.ensureInitialized();

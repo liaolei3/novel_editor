@@ -15,7 +15,7 @@ import 'panels/notes_panel.dart';
 import 'panels/outline_panel.dart';
 import 'panels/sensitive_panel.dart';
 import 'panels/snapshot_panel.dart';
-import 'panels/stats_panel.dart';
+
 import 'recycle_page.dart';
 import 'widgets/app_bar_nav_actions.dart';
 import 'widgets/book_tree.dart';
@@ -51,7 +51,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
     _appState = context.read<AppState>();
     _settings = context.read<SettingsController>();
     _panelIndex = _settings.workspacePanelIndex.clamp(0, _panels.length - 1);
-    _panelOpen = _settings.workspacePanelOpen;
+    _panelOpen = _panelIndex < _panels.length && _settings.workspacePanelOpen;
     _leftWidth = _settings.workspaceLeftWidth;
     _rightWidth = _settings.workspaceRightWidth;
     _appState.openCharacterNonce.addListener(_onOpenCharacter);
@@ -105,7 +105,16 @@ class _WorkspacePageState extends State<WorkspacePage> {
     });
   }
 
-  static const _panels = ['大纲视图', 'AI 助手', '历史快照', '角色', '伏笔', '素材库', '敏感词', '码字统计', '回收站'];
+  static const _panels = [
+    '大纲视图',
+    'AI 助手',
+    '历史快照',
+    '角色',
+    '伏笔',
+    '素材库',
+    '敏感词',
+    '回收站',
+  ];
   static const _panelIcons = [
     Icons.account_tree_outlined,
     Icons.auto_awesome,
@@ -114,7 +123,6 @@ class _WorkspacePageState extends State<WorkspacePage> {
     Icons.flag_outlined,
     Icons.sticky_note_2_outlined,
     Icons.shield_outlined,
-    Icons.query_stats_outlined,
     Icons.delete_outline,
   ];
   static const double _minLeftWidth = 220;
@@ -143,6 +151,11 @@ class _WorkspacePageState extends State<WorkspacePage> {
         appBar: _immersive
             ? null
             : AppTopBar(
+                leading: IconButton(
+                  tooltip: '返回主页',
+                  icon: const Icon(Icons.home_outlined, size: 26),
+                  onPressed: () => Navigator.of(context).maybePop(),
+                ),
                 title: Text(widget.book.title),
                 actions: [
                   IconButton(
@@ -211,10 +224,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
         final total = constraints.maxWidth;
         final chrome = _dividerWidth * 2;
         // 联合约束：左 + 右 <= 窗口宽 − 分隔条 − 中栏保底，保证中栏不被挤压。
-        final midBudget = math.max(
-          0.0,
-          total - chrome - _minMidWidth,
-        );
+        final midBudget = math.max(0.0, total - chrome - _minMidWidth);
         var left = math.max(_minLeftWidth, _leftWidth);
         var right = math.max(_minRightWidth, _rightWidth);
         if (_panelOpen && left + right > midBudget) {
@@ -240,8 +250,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
                   math.max(_minLeftWidth, midBudget - right),
                 );
               }),
-              onDragEnd: () =>
-                  _settings.setWorkspaceLeftWidth(_leftWidth),
+              onDragEnd: () => _settings.setWorkspaceLeftWidth(_leftWidth),
             ),
             Expanded(child: EditorArea(book: widget.book)),
             if (_panelOpen)
@@ -253,8 +262,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
                     math.max(_minRightWidth, midBudget - left),
                   );
                 }),
-                onDragEnd: () =>
-                    _settings.setWorkspaceRightWidth(_rightWidth),
+                onDragEnd: () => _settings.setWorkspaceRightWidth(_rightWidth),
               ),
             SizedBox(
               width: _panelOpen ? right : _railWidth,
@@ -349,10 +357,8 @@ class _WorkspacePageState extends State<WorkspacePage> {
         return NotesPanel(book: book);
       case 6:
         return const SensitivePanel();
-      case 7:
-        return const StatsPanel();
       default:
-        return const RecycleView();
+        return const RecycleView(scope: RecycleScope.workspace);
     }
   }
 }
@@ -440,9 +446,7 @@ class _RailButton extends StatelessWidget {
                   child: Icon(
                     icon,
                     size: 20,
-                    color: selected
-                        ? scheme.primary
-                        : scheme.onSurfaceVariant,
+                    color: selected ? scheme.primary : scheme.onSurfaceVariant,
                   ),
                 ),
               ),

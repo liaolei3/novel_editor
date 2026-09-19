@@ -16,7 +16,6 @@ import 'common/context_menu.dart';
 import 'common/dialogs.dart';
 import 'common/file_io.dart';
 import 'conflict_page.dart';
-import 'recycle_page.dart';
 import 'widgets/toast.dart';
 
 /// 设置弹窗（9.8）：左分类导航 + 右内容区，参考系统设置布局。
@@ -114,8 +113,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
       content: ClipRRect(
         borderRadius: BorderRadius.circular(11),
         child: SizedBox(
-          width: 680,
-          height: 500,
+          width: 820,
+          height: 620,
           child: Column(
             children: [
               Divider(
@@ -472,14 +471,6 @@ class _SettingsDialogState extends State<SettingsDialog> {
             trailing: _actionIcon(Icons.folder_open),
             onTap: snap.hasData ? () => _changeDataDir(snap.data!) : null,
           ),
-        ),
-        _divider(hairline),
-        ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-          title: const Text('回收站'),
-          subtitle: const Text('删除的卷/章/素材保留 30 天'),
-          trailing: _chevron(),
-          onTap: _openRecycle,
         ),
       ]),
       const SizedBox(height: 12),
@@ -903,12 +894,6 @@ class _SettingsDialogState extends State<SettingsDialog> {
     } catch (e) {
       if (mounted) showToast(context, '打开失败：$e\n目录：$dirPath');
     }
-  }
-
-  void _openRecycle() {
-    final nav = Navigator.of(context);
-    nav.pop();
-    nav.push(MaterialPageRoute(builder: (_) => const RecyclePage()));
   }
 }
 

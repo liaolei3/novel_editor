@@ -107,6 +107,7 @@ class Chapter {
     required this.lastEditedAt,
     this.cursorOffset = 0,
     this.pinned = false,
+    this.outlineEditedAt,
   });
 
   final String id;
@@ -122,6 +123,9 @@ class Chapter {
   int cursorOffset;
   bool pinned;
 
+  /// 大纲最后修改时间（null = 从未编辑过大纲）。
+  DateTime? outlineEditedAt;
+
   Map<String, Object?> toMap() => {
         'id': id,
         'book_id': bookId,
@@ -135,6 +139,7 @@ class Chapter {
         'last_edited_at': lastEditedAt.millisecondsSinceEpoch,
         'cursor_offset': cursorOffset,
         'pinned': pinned ? 1 : 0,
+        'outline_edited_at': outlineEditedAt?.millisecondsSinceEpoch,
       };
 
   static Chapter fromMap(Map<String, Object?> map) => Chapter(
@@ -151,6 +156,10 @@ class Chapter {
             DateTime.fromMillisecondsSinceEpoch(map['last_edited_at'] as int),
         cursorOffset: map['cursor_offset'] as int? ?? 0,
         pinned: (map['pinned'] as int? ?? 0) == 1,
+        outlineEditedAt: map['outline_edited_at'] == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(
+                map['outline_edited_at'] as int),
       );
 }
 
@@ -251,18 +260,24 @@ class WriteRecord {
     required this.date,
     required this.chars,
     required this.durationMs,
+    this.idleMs = 0,
+    this.idleCount = 0,
   });
 
   final String id;
   final DateTime date;
   int chars;
   int durationMs;
+  int idleMs;
+  int idleCount;
 
   Map<String, Object?> toMap() => {
         'id': id,
         'date': _dateKey(date),
         'chars': chars,
         'duration_ms': durationMs,
+        'idle_ms': idleMs,
+        'idle_count': idleCount,
       };
 
   static WriteRecord fromMap(Map<String, Object?> map) => WriteRecord(
@@ -270,6 +285,8 @@ class WriteRecord {
         date: DateTime.parse('${map['date']}'),
         chars: map['chars'] as int,
         durationMs: map['duration_ms'] as int,
+        idleMs: (map['idle_ms'] as int?) ?? 0,
+        idleCount: (map['idle_count'] as int?) ?? 0,
       );
 
   static String _dateKey(DateTime d) =>
@@ -533,4 +550,4 @@ class ForeshadowSegment {
       );
 }
 
-enum RecycleType { volume, chapter, note, character, foreshadow }
+enum RecycleType { volume, chapter, note, character, foreshadow, book }

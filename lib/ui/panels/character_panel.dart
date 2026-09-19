@@ -3,9 +3,11 @@ import 'package:provider/provider.dart';
 
 import '../../data/models.dart';
 import '../../state/app_state.dart';
+import '../../state/settings_controller.dart';
 import '../app_root.dart';
 import '../common/dialogs.dart' show DraggableDialog;
 import '../widgets/toast.dart';
+import '../widgets/view_toggle.dart';
 
 /// 角色卡面板：收藏卡册风格，角色列表 + 内页详情编辑。
 class CharacterPanel extends StatefulWidget {
@@ -27,6 +29,7 @@ class _CharacterPanelState extends State<CharacterPanel> {
   String _keyword = '';
   bool _searching = false;
   bool _loading = true;
+  bool _gridView = false;
 
   late Character _draft;
   bool _isNew = false;
@@ -42,6 +45,7 @@ class _CharacterPanelState extends State<CharacterPanel> {
   @override
   void initState() {
     super.initState();
+    _gridView = context.read<SettingsController>().characterGridView;
     _load();
     final openId = widget.openCharacterId;
     if (openId != null) _openById(openId);
@@ -305,6 +309,14 @@ class _CharacterPanelState extends State<CharacterPanel> {
               ),
             ),
           ),
+          const SizedBox(width: 6),
+          ViewToggleGroup(
+            gridView: _gridView,
+            onChanged: (grid) {
+              setState(() => _gridView = grid);
+              context.read<SettingsController>().setCharacterGridView(grid);
+            },
+          ),
         ]),
       ),
       SizedBox(
@@ -340,13 +352,39 @@ class _CharacterPanelState extends State<CharacterPanel> {
                       ],
                     ),
                   )
-                : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
-                    itemCount: _filtered.length,
-                    itemBuilder: (ctx, i) => _buildCard(_filtered[i], scheme),
-                  ),
+                : _gridView
+                    ? _buildGrid(scheme)
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
+                        itemCount: _filtered.length,
+                        itemBuilder: (ctx, i) => _buildCard(_filtered[i], scheme),
+                      ),
       ),
     ]);
+  }
+
+  /// 角色网格视图：竖向卡片，高度与大纲网格一致（180px）。
+  Widget _buildGrid(ColorScheme scheme) {
+    return LayoutBuilder(builder: (ctx, constraints) {
+      final columns = (constraints.maxWidth ~/ 180).clamp(1, 4);
+      return GridView.builder(
+        padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
+        itemCount: _filtered.length,
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: columns,
+          mainAxisSpacing: 6,
+          crossAxisSpacing: 6,
+          mainAxisExtent: 240,
+        ),
+        itemBuilder: (ctx, i) => _CharacterGridCell(
+          char: _filtered[i],
+          avatarAsset: _avatarAsset(_filtered[i].gender),
+          typeLabel: _typeLabels[_filtered[i].type] ?? '',
+          onTap: () => _openDetail(_filtered[i]),
+          onDelete: () => _deleteFromList(_filtered[i]),
+        ),
+      );
+    });
   }
 
   Widget _buildCard(Character char, ColorScheme scheme) {
@@ -843,6 +881,215 @@ class _ColorSwatch extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// 角色网格卡片：内容与正文角色 tip 一致（别名/标签/自定义属性），悬浮显示删除。
+class _CharacterGridCell extends StatefulWidget {
+  const _CharacterGridCell({
+    required this.char,
+    required this.avatarAsset,
+    required this.typeLabel,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  final Character char;
+  final String avatarAsset;
+  final String typeLabel;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  @override
+  State<_CharacterGridCell> createState() => _CharacterGridCellState();
+}
+
+class _CharacterGridCellState extends State<_CharacterGridCell> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final char = widget.char;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: Material(
+        color: _hover
+            ? scheme.surfaceContainerHighest.withValues(alpha: 0.4)
+            : scheme.surface,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          mouseCursor: SystemMouseCursors.click,
+          borderRadius: BorderRadius.circular(10),
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: _hover
+                    ? scheme.outlineVariant
+                    : scheme.outlineVariant.withValues(alpha: 0.6),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  CircleAvatar(
+                    radius: 16,
+                    backgroundImage: AssetImage(widget.avatarAsset),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(children: [
+                          Flexible(
+                            child: Text(char.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: scheme.onSurface)),
+                          ),
+                          const SizedBox(width: 4),
+                          _TypeBadge(
+                              label: widget.typeLabel, type: char.type),
+                          const SizedBox(width: 4),
+                          Text(char.gender == Gender.female ? '女' : '男',
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  color: scheme.onSurfaceVariant)),
+                        ]),
+                        const SizedBox(height: 2),
+                        Text('修改于 ${_formatUpdated(char.updatedAt)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 10,
+                                color: scheme.onSurfaceVariant
+                                    .withValues(alpha: 0.7))),
+                      ],
+                    ),
+                  ),
+                  if (_hover)
+                    SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: Material(
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(6),
+                        child: InkWell(
+                          mouseCursor: SystemMouseCursors.click,
+                          borderRadius: BorderRadius.circular(6),
+                          onTap: widget.onDelete,
+                          child: Center(
+                            child: Icon(Icons.delete_outline,
+                                size: 15, color: scheme.error),
+                          ),
+                        ),
+                      ),
+                    ),
+                ]),
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (char.aliases.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text.rich(
+                            TextSpan(
+                              text: '别名：',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: scheme.onSurfaceVariant),
+                              children: [
+                                TextSpan(
+                                  text: char.aliases,
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w400,
+                                      color: scheme.onSurfaceVariant),
+                                ),
+                              ],
+                            ),
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                        if (char.tags.isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Text.rich(
+                            TextSpan(
+                              text: '标签：',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: scheme.onSurfaceVariant),
+                              children: [
+                                TextSpan(
+                                  text: char.tags,
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w400,
+                                      color: scheme.onSurfaceVariant),
+                                ),
+                              ],
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                        for (final attr in char.attrList) ...[
+                          const SizedBox(height: 3),
+                          Text.rich(
+                            TextSpan(
+                              text: '${attr.name}：',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: scheme.onSurfaceVariant),
+                              children: [
+                                TextSpan(
+                                  text: attr.value,
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w400,
+                                      color: scheme.onSurfaceVariant),
+                                ),
+                              ],
+                            ),
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatUpdated(DateTime t) {
+    final now = DateTime.now();
+    String two(int n) => n.toString().padLeft(2, '0');
+    if (t.year == now.year) {
+      return '${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}';
+    }
+    return '${t.year}-${two(t.month)}-${two(t.day)}';
   }
 }
 

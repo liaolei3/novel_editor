@@ -27,9 +27,9 @@ class AppRoot extends StatelessWidget {
       // 界面字体缩放：作用于全部文本（含写死字号的控件）；
       // 编辑器正文单独用 noScaling 覆盖，由正文字号独立控制。
       builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(
-          textScaler: TextScaler.linear(settings.uiScale),
-        ),
+        data: MediaQuery.of(
+          context,
+        ).copyWith(textScaler: TextScaler.linear(settings.uiScale)),
         child: child!,
       ),
       localizationsDelegates: const [
@@ -55,25 +55,25 @@ Future<bool> confirmDangerous(
     context: context,
     barrierDismissible: false,
     builder: (ctx) => DraggableDialog(
-      child: SizedBox(
-        width: 360,
-        child: AlertDialog(
-          title: const Text('请确认'),
-          content: Text(message),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消'),
+      child: AlertDialog(
+        // Dialog 内部 Align 会架空外层 SizedBox 宽度，须用 constraints 指定。
+        constraints: const BoxConstraints(minWidth: 320, maxWidth: 320),
+        title: const Text('请确认'),
+        content: Text(message),
+        actionsAlignment: MainAxisAlignment.end,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
             ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(ctx).colorScheme.error,
-              ),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(confirmLabel),
-            ),
-          ],
-        ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(confirmLabel),
+          ),
+        ],
       ),
     ),
   );

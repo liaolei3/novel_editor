@@ -82,26 +82,35 @@ class _WindowControlsState extends State<WindowControls> with WindowListener {
   @override
   Widget build(BuildContext context) {
     if (!_isWindowsDesktop) return const SizedBox.shrink();
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      IconButton(
-        icon: const Icon(Icons.horizontal_rule),
-        onPressed: windowManager.minimize,
-      ),
-      IconButton(
-        icon: Icon(_maximized ? Icons.filter_none : Icons.crop_square),
-        onPressed: _toggleMaximize,
-      ),
-      IconButton(
-        icon: const Icon(Icons.close),
-        onPressed: windowManager.close,
-      ),
-    ]);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          icon: const Icon(Icons.horizontal_rule),
+          onPressed: windowManager.minimize,
+        ),
+        IconButton(
+          icon: Icon(_maximized ? Icons.filter_none : Icons.crop_square),
+          onPressed: _toggleMaximize,
+        ),
+        IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: windowManager.close,
+        ),
+      ],
+    );
   }
 }
 
 /// 应用统一顶栏：AppBar 空白区可拖动窗口、双击最大化/还原，右侧自带窗口控制。
 class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
-  const AppTopBar({super.key, this.title, this.actions, this.titleSpacing});
+  const AppTopBar({
+    super.key,
+    this.title,
+    this.actions,
+    this.titleSpacing,
+    this.leading,
+  });
 
   /// 顶栏图标统一尺寸（返回、actions、窗口控制按钮）。
   static const double _iconSize = 20;
@@ -109,6 +118,7 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
   final Widget? title;
   final List<Widget>? actions;
   final double? titleSpacing;
+  final Widget? leading;
 
   @override
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
@@ -117,19 +127,23 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
   Widget build(BuildContext context) {
     final bar = IconButtonTheme(
       data: IconButtonThemeData(
-        style: IconButton.styleFrom(
-          iconSize: _iconSize,
-          minimumSize: const Size(32, 32),
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.all(Radius.circular(6)),
-          ),
-          padding: const EdgeInsets.all(5),
-        ).copyWith(
-          mouseCursor: const WidgetStatePropertyAll(SystemMouseCursors.click),
-        ),
+        style:
+            IconButton.styleFrom(
+              iconSize: _iconSize,
+              minimumSize: const Size(32, 32),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.all(Radius.circular(6)),
+              ),
+              padding: const EdgeInsets.all(5),
+            ).copyWith(
+              mouseCursor: const WidgetStatePropertyAll(
+                SystemMouseCursors.click,
+              ),
+            ),
       ),
       child: AppBar(
+        leading: leading,
         title: title,
         titleSpacing: titleSpacing,
         actionsIconTheme: const IconThemeData(size: _iconSize),
@@ -140,4 +154,3 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
     return DragToMoveArea(child: bar);
   }
 }
-

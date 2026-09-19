@@ -60,6 +60,13 @@ class BookRepository {
     await db.update('books', {'deleted': 1},
         where: 'id = ?', whereArgs: [id]);
   }
+
+  Future<void> restore(String id) => _update(id, {'deleted': 0});
+
+  Future<void> hardDelete(String id) async {
+    final db = await Db.instance();
+    await db.delete('books', where: 'id = ?', whereArgs: [id]);
+  }
 }
 
 class VolumeRepository {
@@ -97,6 +104,11 @@ class VolumeRepository {
           where: 'id = ? AND book_id = ?', whereArgs: [orderedIds[i], bookId]);
     }
     await batch.commit(noResult: true);
+  }
+
+  Future<void> hardDeleteByBook(String bookId) async {
+    final db = await Db.instance();
+    await db.delete('volumes', where: 'book_id = ?', whereArgs: [bookId]);
   }
 }
 
@@ -165,8 +177,14 @@ class ChapterRepository {
   Future<void> updateTitle(String id, String title) =>
       _patch(id, {'title': title});
 
-  Future<void> updateOutline(String id, String outline) =>
-      _patch(id, {'outline': outline});
+  Future<void> updateOutline(Chapter chapter, String outline) async {
+    final db = await Db.instance();
+    chapter
+      ..outline = outline
+      ..outlineEditedAt = DateTime.now();
+    await db.update('chapters', chapter.toMap(),
+        where: 'id = ?', whereArgs: [chapter.id]);
+  }
 
   Future<void> updateCursor(String id, int offset) =>
       _patch(id, {'cursor_offset': offset});
@@ -198,6 +216,16 @@ class ChapterRepository {
     final db = await Db.instance();
     await db.delete('snapshots', where: 'chapter_id = ?', whereArgs: [id]);
     await db.delete('chapters', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> hardDeleteByBook(String bookId) async {
+    final db = await Db.instance();
+    await db.execute(
+      'DELETE FROM snapshots WHERE chapter_id IN '
+      '(SELECT id FROM chapters WHERE book_id = ?)',
+      [bookId],
+    );
+    await db.delete('chapters', where: 'book_id = ?', whereArgs: [bookId]);
   }
 
   Future<void> _patch(String id, Map<String, Object?> data) async {
@@ -311,6 +339,11 @@ class NoteRepository {
     final db = await Db.instance();
     await db.delete('notes', where: 'id = ?', whereArgs: [id]);
   }
+
+  Future<void> hardDeleteByBook(String bookId) async {
+    final db = await Db.instance();
+    await db.delete('notes', where: 'book_id = ?', whereArgs: [bookId]);
+  }
 }
 
 class CharacterRepository {
@@ -354,6 +387,11 @@ class CharacterRepository {
   Future<void> hardDelete(String id) async {
     final db = await Db.instance();
     await db.delete('characters', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> hardDeleteByBook(String bookId) async {
+    final db = await Db.instance();
+    await db.delete('characters', where: 'book_id = ?', whereArgs: [bookId]);
   }
 }
 
@@ -401,6 +439,12 @@ class ForeshadowRepository {
   Future<void> hardDelete(String id) async {
     final db = await Db.instance();
     await db.delete('foreshadowings', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> hardDeleteByBook(String bookId) async {
+    final db = await Db.instance();
+    await db.delete('foreshadowings',
+        where: 'book_id = ?', whereArgs: [bookId]);
   }
 }
 
@@ -464,6 +508,15 @@ class ForeshadowSegmentRepository {
     final db = await Db.instance();
     await db.delete('fs_segments', where: 'fs_id = ?', whereArgs: [fsId]);
   }
+
+  Future<void> hardDeleteByBook(String bookId) async {
+    final db = await Db.instance();
+    await db.execute(
+      'DELETE FROM fs_segments WHERE fs_id IN '
+      '(SELECT id FROM foreshadowings WHERE book_id = ?)',
+      [bookId],
+    );
+  }
 }
 
 class StatsRepository {
@@ -487,6 +540,32 @@ class StatsRepository {
     final db = await Db.instance();
     await db.update('write_records', rec.toMap(),
         where: 'id = ?', whereArgs: [rec.id]);
+  }
+
+  /// 累计摸鱼时长与摸鱼次数（次数为增量累加）。
+  Future<void> addIdle({required int durationMs, int count = 0}) async {
+    if (durationMs == 0 && count == 0) return;
+    final rec = await today();
+    rec.idleMs += durationMs;
+    rec.idleCount += count;
+    final db = await Db.instance();
+    await db.update('write_records', rec.toMap(),
+        where: 'id = ?', whereArgs: [rec.id]);
+  }
+
+  /// [from, to] 闭区间内的日记录（按日期升序，缺失日期不补零）。
+  Future<List<WriteRecord>> range(DateTime from, DateTime to) async {
+    final db = await Db.instance();
+    final rows = await db.query(
+      'write_records',
+      where: 'date >= ? AND date <= ?',
+      whereArgs: [
+        WriteRecord.dateKeyOf(from),
+        WriteRecord.dateKeyOf(to),
+      ],
+      orderBy: 'date ASC',
+    );
+    return rows.map(WriteRecord.fromMap).toList();
   }
 
   /// 最近 [days] 天的记录（旧→新）。
@@ -537,19 +616,5 @@ class RecycleRepository {
   Future<void> remove(String id) async {
     final db = await Db.instance();
     await db.delete('recycle_bin', where: 'id = ?', whereArgs: [id]);
-  }
-
-  Future<void> purgeExpired() async {
-    final db = await Db.instance();
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final rows = await db.query('recycle_bin',
-        where: 'expire_at < ?', whereArgs: [now]);
-    for (final row in rows.map(RecycleItem.fromMap)) {
-      if (row.type == RecycleType.chapter) {
-        await db.delete('snapshots',
-            where: 'chapter_id = ?', whereArgs: [row.originId]);
-      }
-      await db.delete('recycle_bin', where: 'id = ?', whereArgs: [row.id]);
-    }
   }
 }
