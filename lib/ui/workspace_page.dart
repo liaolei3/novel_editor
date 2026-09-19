@@ -5,10 +5,12 @@ import 'package:provider/provider.dart';
 
 import '../data/models.dart';
 import '../state/app_state.dart';
+import '../state/settings_controller.dart';
 import 'app_root.dart';
 import 'global_search_dialog.dart';
 import 'panels/ai_panel.dart';
 import 'panels/character_panel.dart';
+import 'panels/foreshadow_panel.dart';
 import 'panels/notes_panel.dart';
 import 'panels/outline_panel.dart';
 import 'panels/sensitive_panel.dart';
@@ -37,20 +39,29 @@ class _WorkspacePageState extends State<WorkspacePage> {
   bool _panelOpen = false;
   bool _immersive = false;
   String? _openCharacterId;
+  String? _openForeshadowId;
 
   /// 缓存 AppState：dispose 期间禁止通过 context 查找祖先节点。
   late final AppState _appState;
+  late final SettingsController _settings;
 
   @override
   void initState() {
     super.initState();
     _appState = context.read<AppState>();
+    _settings = context.read<SettingsController>();
+    _panelIndex = _settings.workspacePanelIndex.clamp(0, _panels.length - 1);
+    _panelOpen = _settings.workspacePanelOpen;
+    _leftWidth = _settings.workspaceLeftWidth;
+    _rightWidth = _settings.workspaceRightWidth;
     _appState.openCharacterNonce.addListener(_onOpenCharacter);
+    _appState.openForeshadowNonce.addListener(_onOpenForeshadow);
   }
 
   @override
   void dispose() {
     _appState.openCharacterNonce.removeListener(_onOpenCharacter);
+    _appState.openForeshadowNonce.removeListener(_onOpenForeshadow);
     super.dispose();
   }
 
@@ -66,18 +77,41 @@ class _WorkspacePageState extends State<WorkspacePage> {
       _panelOpen = true;
       _immersive = false;
       _mobileTab = 2;
+      _settings.setWorkspacePanelIndex(_panelIndex);
+      _settings.setWorkspacePanelOpen(_panelOpen);
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) setState(() => _openCharacterId = null);
     });
   }
 
-  static const _panels = ['大纲视图', 'AI 助手', '历史快照', '角色', '素材库', '敏感词', '码字统计', '回收站'];
+  /// 编辑器悬浮 tip 的「编辑」请求：切到伏笔面板并打开对应伏笔详情。
+  void _onOpenForeshadow() {
+    final state = context.read<AppState>();
+    final id = state.pendingOpenForeshadowId;
+    if (id == null) return;
+    state.pendingOpenForeshadowId = null;
+    setState(() {
+      _openForeshadowId = id;
+      _panelIndex = 4;
+      _panelOpen = true;
+      _immersive = false;
+      _mobileTab = 2;
+      _settings.setWorkspacePanelIndex(_panelIndex);
+      _settings.setWorkspacePanelOpen(_panelOpen);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _openForeshadowId = null);
+    });
+  }
+
+  static const _panels = ['大纲视图', 'AI 助手', '历史快照', '角色', '伏笔', '素材库', '敏感词', '码字统计', '回收站'];
   static const _panelIcons = [
     Icons.account_tree_outlined,
     Icons.auto_awesome,
     Icons.history,
     Icons.people_outlined,
+    Icons.flag_outlined,
     Icons.sticky_note_2_outlined,
     Icons.shield_outlined,
     Icons.query_stats_outlined,
@@ -206,6 +240,8 @@ class _WorkspacePageState extends State<WorkspacePage> {
                   math.max(_minLeftWidth, midBudget - right),
                 );
               }),
+              onDragEnd: () =>
+                  _settings.setWorkspaceLeftWidth(_leftWidth),
             ),
             Expanded(child: EditorArea(book: widget.book)),
             if (_panelOpen)
@@ -217,6 +253,8 @@ class _WorkspacePageState extends State<WorkspacePage> {
                     math.max(_minRightWidth, midBudget - left),
                   );
                 }),
+                onDragEnd: () =>
+                    _settings.setWorkspaceRightWidth(_rightWidth),
               ),
             SizedBox(
               width: _panelOpen ? right : _railWidth,
@@ -283,6 +321,8 @@ class _WorkspacePageState extends State<WorkspacePage> {
                       _panelIndex = i;
                       _panelOpen = true;
                     }
+                    _settings.setWorkspacePanelIndex(_panelIndex);
+                    _settings.setWorkspacePanelOpen(_panelOpen);
                   }),
                 ),
             ],
@@ -304,10 +344,12 @@ class _WorkspacePageState extends State<WorkspacePage> {
       case 3:
         return CharacterPanel(book: book, openCharacterId: _openCharacterId);
       case 4:
-        return NotesPanel(book: book);
+        return ForeshadowPanel(book: book, openForeshadowId: _openForeshadowId);
       case 5:
-        return const SensitivePanel();
+        return NotesPanel(book: book);
       case 6:
+        return const SensitivePanel();
+      case 7:
         return const StatsPanel();
       default:
         return const RecycleView();
@@ -317,10 +359,15 @@ class _WorkspacePageState extends State<WorkspacePage> {
 
 /// 可拖动的垂直分隔条：拖动调整左右栏宽度，hover 时高亮。
 class _DragDivider extends StatefulWidget {
-  const _DragDivider({required this.width, required this.onDrag});
+  const _DragDivider({
+    required this.width,
+    required this.onDrag,
+    this.onDragEnd,
+  });
 
   final double width;
   final ValueChanged<double> onDrag;
+  final VoidCallback? onDragEnd;
 
   @override
   State<_DragDivider> createState() => _DragDividerState();
@@ -341,6 +388,7 @@ class _DragDividerState extends State<_DragDivider> {
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onHorizontalDragUpdate: (details) => widget.onDrag(details.delta.dx),
+          onHorizontalDragEnd: (_) => widget.onDragEnd?.call(),
           child: Center(
             child: Container(
               width: _hovered ? 2 : 1,

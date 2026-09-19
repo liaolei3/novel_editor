@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/constants.dart';
 import '../../core/utils/docx_exporter.dart';
+import '../../core/utils/foreshadow_delta.dart';
 import '../../core/utils/pair_symbols.dart';
 import '../../core/utils/rich_text_codec.dart';
 import '../../core/utils/text_formatter.dart';
@@ -20,7 +21,9 @@ import '../../state/settings_controller.dart';
 import '../common/context_menu.dart';
 import '../common/dialogs.dart';
 import '../common/file_io.dart';
+import '../common/foreshadow_dialogs.dart';
 import 'character_tip.dart';
+import 'foreshadow_tip.dart';
 import 'search_replace_bar.dart';
 import 'toast.dart';
 
@@ -62,6 +65,9 @@ class _EditorAreaState extends State<EditorArea> {
   Map<String, Character> _nameToChar = const {};
   RegExp? _nameRegExp;
 
+  /// 伏笔标注词典：片段 id → (伏笔, 片段)，渲染时按节点 fsid 属性查表。
+  Map<String, (Foreshadow, ForeshadowSegment)> _fsDict = const {};
+
   /// 缓存 AppState：dispose 期间禁止通过 context 查找祖先节点。
   late final AppState _appState;
 
@@ -71,6 +77,48 @@ class _EditorAreaState extends State<EditorArea> {
     _appState = context.read<AppState>();
     _refreshCharacterDict();
     _appState.characterDictVersion.addListener(_refreshCharacterDict);
+    _refreshForeshadowDict();
+    _appState.foreshadowVersion.addListener(_refreshForeshadowDict);
+    _appState.segmentJumpNonce.addListener(_onSegmentJump);
+  }
+
+  /// 面板"跳转正文"：聚焦编辑器触发滚动到选区。
+  void _onSegmentJump() {
+    if (!_focusNode.hasFocus) _focusNode.requestFocus();
+  }
+
+  Future<void> _onCreateForeshadowFromSelection() async {
+    final state = context.read<AppState>();
+    if (state.selectionHasFsidMark()) {
+      showToast(context, '选区内已存在伏笔标注，请先取消原标注');
+      return;
+    }
+    final result = await showCreateForeshadowDialog(context,
+        excerpt: state.selectedPlainText());
+    if (result == null || !mounted) return;
+    if (state.selectionHasFsidMark()) {
+      showToast(context, '选区内已存在伏笔标注，请先取消原标注');
+      return;
+    }
+    await state.createForeshadowFromSelection(result.$1, result.$2, result.$3);
+    showToast(context, '伏笔创建成功，选区标注完成');
+  }
+
+  Future<void> _onLinkForeshadow() async {
+    final state = context.read<AppState>();
+    if (state.selectionHasFsidMark()) {
+      showToast(context, '选区内已存在伏笔标注，请先取消原标注');
+      return;
+    }
+    final result = await showLinkForeshadowDialog(context, widget.book.id,
+        excerpt: state.selectedPlainText());
+    if (result == null || !mounted) return;
+    if (state.selectionHasFsidMark()) {
+      showToast(context, '选区内已存在伏笔标注，请先取消原标注');
+      return;
+    }
+    await state.linkSegmentToForeshadow(result.$1, result.$2);
+    showToast(context, '关联成功：「${result.$1.name}」');
   }
 
   Future<void> _refreshCharacterDict() async {
@@ -95,6 +143,20 @@ class _EditorAreaState extends State<EditorArea> {
       _nameToChar = map;
       _nameRegExp = names.isEmpty ? null : RegExp(names.map(RegExp.escape).join('|'));
     });
+  }
+
+  Future<void> _refreshForeshadowDict() async {
+    final state = context.read<AppState>();
+    final fss = await state.foreshadows.listByBook(widget.book.id);
+    final segs = await state.fsSegments.listByBook(widget.book.id);
+    if (!mounted) return;
+    final fsById = {for (final f in fss) f.id: f};
+    final dict = <String, (Foreshadow, ForeshadowSegment)>{};
+    for (final s in segs) {
+      final f = fsById[s.fsId];
+      if (f != null) dict[s.id] = (f, s);
+    }
+    setState(() => _fsDict = dict);
   }
 
   void _onSearchChanged(List<int> offsets, int index, String query) {
@@ -128,6 +190,8 @@ class _EditorAreaState extends State<EditorArea> {
   @override
   void dispose() {
     _appState.characterDictVersion.removeListener(_refreshCharacterDict);
+    _appState.foreshadowVersion.removeListener(_refreshForeshadowDict);
+    _appState.segmentJumpNonce.removeListener(_onSegmentJump);
     _focusNode.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -251,6 +315,16 @@ class _EditorAreaState extends State<EditorArea> {
     TextStyle? style,
     GestureRecognizer? recognizer,
   ) {
+    // 伏笔标注优先于角色名匹配：节点带 fsid 属性且词典可查时整体标注。
+    final fsAttr = node.style.attributes[kFsidKey];
+    if (fsAttr?.value is String) {
+      final entry = _fsDict[fsAttr!.value as String];
+      if (entry != null) {
+        return _foreshadowSpan(
+            context, entry.$1, entry.$2, text, style, recognizer);
+      }
+    }
+
     final regex = _nameRegExp;
     if (regex == null) {
       return _searchHighlightSpanBuilder(
@@ -296,6 +370,36 @@ class _EditorAreaState extends State<EditorArea> {
     }
     if (pos < text.length) children.add(plain(pos, text.length));
     return TextSpan(children: children, style: style);
+  }
+
+  /// 伏笔标注渲染：状态色文字 + 波浪下划线，悬浮展示信息卡。
+  /// 不使用行内 WidgetSpan 图标——占位符会占据一个文字位置，
+  /// 导致该行后续字符的光标/选区偏移错位。
+  InlineSpan _foreshadowSpan(
+    BuildContext context,
+    Foreshadow foreshadow,
+    ForeshadowSegment segment,
+    String text,
+    TextStyle? style,
+    GestureRecognizer? recognizer,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = foreshadowMarkColor(foreshadow.status, scheme.brightness);
+    return TextSpan(
+      text: text,
+      style: (style ?? const TextStyle()).copyWith(
+        color: color,
+        decoration: TextDecoration.underline,
+        decorationColor: color,
+        decorationStyle: TextDecorationStyle.wavy,
+        decorationThickness: 2,
+      ),
+      onEnter: (e) => scheduleForeshadowTip(
+          context, e.position, foreshadow, segment, () {
+        context.read<AppState>().requestOpenForeshadow(foreshadow.id);
+      }),
+      onExit: (_) => cancelForeshadowTip(),
+    );
   }
 
   /// 搜索匹配背景高亮分段。
@@ -476,23 +580,36 @@ class _EditorAreaState extends State<EditorArea> {
                 autoPairSymbols: fullWidthPairSymbols,
                 customStyles: _editorStyles(context, settings),
                 contextMenuBuilder: (context, rawState) {
+                  var extras = <AppMenuAction>[];
                   // 「一键分章」：光标后有实际内容才显示；有选区时以选区起点拆分。
                   final sel = rawState.textEditingValue.selection;
                   final splitOffset =
                       sel.isValid && !sel.isCollapsed ? sel.start : sel.baseOffset;
-                  var extras = const <AppMenuAction>[];
                   if (!rawState.widget.config.readOnly &&
                       splitOffset >= 0 &&
                       splitOffset < rawState.controller.document.length &&
                       RichTextCodec.hasContentAfter(
                           rawState.controller.document.toDelta(), splitOffset)) {
-                    extras = [
-                      AppMenuAction(
-                        '一键分章',
-                        icon: Icons.call_split,
-                        onTap: () => state.splitChapterAt(splitOffset),
-                      ),
-                    ];
+                    extras.add(AppMenuAction(
+                      '一键分章',
+                      icon: Icons.call_split,
+                      onTap: () => state.splitChapterAt(splitOffset),
+                    ));
+                  }
+                  // 伏笔标注：非空选区时提供新建 / 关联入口。
+                  if (!rawState.widget.config.readOnly &&
+                      sel.isValid &&
+                      !sel.isCollapsed) {
+                    extras.add(AppMenuAction(
+                      '新建伏笔',
+                      icon: Icons.flag,
+                      onTap: _onCreateForeshadowFromSelection,
+                    ));
+                    extras.add(AppMenuAction(
+                      '关联伏笔',
+                      icon: Icons.link,
+                      onTap: _onLinkForeshadow,
+                    ));
                   }
                   return appEditorContextMenuBuilder(
                     context,
@@ -796,7 +913,7 @@ class _EditorAreaState extends State<EditorArea> {
           onPressed: () async {
             await state.durability.manualSnapshot(state.currentChapter!);
             if (context.mounted) {
-              showToast(context, '已创建手动快照');
+              showToast(context, '手动快照创建成功');
             }
           },
         ),
@@ -846,26 +963,37 @@ class _EditorAreaState extends State<EditorArea> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('本章 ${TextStats.count(plain, std)} 字',
-                  style: TextStyle(fontSize: 11),
-                  overflow: TextOverflow.ellipsis),
-              const SizedBox(width: 16),
-              Text('全书 ${state.bookCharTotal} 字',
-                  style: TextStyle(fontSize: 11),
-                  overflow: TextOverflow.ellipsis),
-              const SizedBox(width: 16),
-              Text('本次会话 +$sessionChars 字',
-                  style: TextStyle(fontSize: 11),
-                  overflow: TextOverflow.ellipsis),
-            ],
+          Flexible(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text('本章 ${TextStats.count(plain, std)} 字',
+                      style: TextStyle(fontSize: 11),
+                      overflow: TextOverflow.ellipsis),
+                ),
+                const SizedBox(width: 16),
+                Flexible(
+                  child: Text('全书 ${state.bookCharTotal} 字',
+                      style: TextStyle(fontSize: 11),
+                      overflow: TextOverflow.ellipsis),
+                ),
+                const SizedBox(width: 16),
+                Flexible(
+                  child: Text('本次会话 +$sessionChars 字',
+                      style: TextStyle(fontSize: 11),
+                      overflow: TextOverflow.ellipsis),
+                ),
+              ],
+            ),
           ),
-          Padding(
-            padding: const EdgeInsets.only(right: 10),
-            child: Text('字数统计口径：${std.label}',
-                style: TextStyle(fontSize: 10)),
+          Flexible(
+            child: Padding(
+              padding: const EdgeInsets.only(right: 10),
+              child: Text('字数统计口径：${std.label}',
+                  style: TextStyle(fontSize: 10),
+                  overflow: TextOverflow.ellipsis),
+            ),
           ),
         ],
       ),
@@ -1050,7 +1178,7 @@ class _EditorAreaState extends State<EditorArea> {
     state.replaceDocument(RichTextCodec.documentFromContent(preview()));
     await state.autosave.flush();
     if (context.mounted) {
-      showToast(context, '排版已应用；如需撤销请前往「历史快照」回滚');
+      showToast(context, '排版应用成功；如需撤销请前往「历史快照」回滚');
     }
   }
 
@@ -1134,7 +1262,7 @@ class _EditorAreaState extends State<EditorArea> {
         await state.chapters.updateContent(ch);
       }
       if (context.mounted) {
-        showToast(context, '已导入 ${parts.length} 个章节');
+        showToast(context, '导入成功，共 ${parts.length} 个章节');
       }
     } else {
       final raw = await FileIO.pickReadText(ext: ['docx']);

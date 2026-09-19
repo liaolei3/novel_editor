@@ -6,6 +6,7 @@ import 'package:flutter_quill/flutter_quill.dart';
 
 
 import '../core/utils/chapter_title_suggest.dart';
+import '../core/utils/foreshadow_delta.dart';
 import '../core/utils/global_search.dart';
 import '../core/utils/rich_text_codec.dart';
 import '../core/utils/text_stats.dart';
@@ -27,6 +28,8 @@ class AppState extends ChangeNotifier {
     required this.snapshots,
     required this.notes,
     required this.characters,
+    required this.foreshadows,
+    required this.fsSegments,
     required this.stats,
     required this.recycle,
     required this.autosave,
@@ -47,6 +50,8 @@ class AppState extends ChangeNotifier {
   final SnapshotRepository snapshots;
   final NoteRepository notes;
   final CharacterRepository characters;
+  final ForeshadowRepository foreshadows;
+  final ForeshadowSegmentRepository fsSegments;
   final StatsRepository stats;
   final RecycleRepository recycle;
   final AutosaveService autosave;
@@ -75,6 +80,21 @@ class AppState extends ChangeNotifier {
     pendingOpenCharacterId = id;
     openCharacterNonce.value++;
   }
+
+  /// 伏笔数据版本号：增删改后自增，编辑器据此重建标注词典。
+  final ValueNotifier<int> foreshadowVersion = ValueNotifier(0);
+
+  /// 伏笔面板跳转请求：悬浮 tip「编辑」按钮触发。
+  String? pendingOpenForeshadowId;
+  final ValueNotifier<int> openForeshadowNonce = ValueNotifier(0);
+
+  void requestOpenForeshadow(String id) {
+    pendingOpenForeshadowId = id;
+    openForeshadowNonce.value++;
+  }
+
+  /// 片段跳转请求（面板 → 编辑器定位）：编辑器收到后聚焦滚动到选区。
+  final ValueNotifier<int> segmentJumpNonce = ValueNotifier(0);
 
   StreamSubscription<SyncEvent>? _syncSub;
 
@@ -419,6 +439,139 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ---------- 伏笔 ----------
+
+  /// 当前选区是否有效且可标注（非空、不越界）。
+  bool selectionMarkable() {
+    final sel = editorController.selection;
+    if (!sel.isValid || sel.isCollapsed) return false;
+    return sel.start >= 0 && sel.end <= editorController.document.length;
+  }
+
+  /// 选区内是否已含伏笔标注（叠加拦截）。
+  bool selectionHasFsidMark() {
+    if (!selectionMarkable()) return false;
+    return deltaRangeHasFsid(
+        editorController.document.toDelta(),
+        editorController.selection.start,
+        editorController.selection.end);
+  }
+
+  String _selectedPlainText() {
+    final sel = editorController.selection;
+    return editorController.document
+        .toPlainText()
+        .substring(sel.start, sel.end);
+  }
+
+  /// 当前选区纯文本（供新建/关联伏笔弹窗展示摘要）。
+  String selectedPlainText() =>
+      selectionMarkable() ? _selectedPlainText() : '';
+
+  /// 从选区新建伏笔并以选区为首片段；备注归属片段，调用方需先通过 selectionHasFsidMark 拦截。
+  Future<Foreshadow> createForeshadowFromSelection(
+      String name, String content, String remark) async {
+    final book = currentBook!;
+    final chapter = currentChapter!;
+    final excerpt = _selectedPlainText();
+    final fs =
+        await foreshadows.create(bookId: book.id, name: name, content: content);
+    final seg = await fsSegments.create(
+        fsId: fs.id, chapterId: chapter.id, excerpt: excerpt, remark: remark);
+    editorController.formatSelection(fsidAttribute(seg.id));
+    foreshadowVersion.value++;
+    return fs;
+  }
+
+  /// 将选区作为新片段关联到已有伏笔；调用方需先通过 selectionHasFsidMark 拦截。
+  Future<void> linkSegmentToForeshadow(Foreshadow fs, String segRemark) async {
+    final chapter = currentChapter!;
+    final excerpt = _selectedPlainText();
+    final seg = await fsSegments.create(
+        fsId: fs.id, chapterId: chapter.id, excerpt: excerpt, remark: segRemark);
+    editorController.formatSelection(fsidAttribute(seg.id));
+    foreshadowVersion.value++;
+  }
+
+  /// 保存伏笔名称修改。
+  Future<void> saveForeshadow(Foreshadow fs) async {
+    await foreshadows.update(fs);
+    foreshadowVersion.value++;
+  }
+
+  /// 删除伏笔：软删除进回收站（携带片段以支持原 id 恢复），
+  /// 正文中的 fsid 属性不清洗——渲染时查无词典自动降级，恢复后自动复原。
+  Future<void> deleteForeshadow(Foreshadow fs) async {
+    final segs = await fsSegments.listByForeshadow(fs.id);
+    await recycle.add(RecycleType.foreshadow, fs.id, {
+      'book_id': fs.bookId,
+      'name': fs.name,
+      'status': fs.status.name,
+      'sort': fs.sort,
+      'segments': [for (final s in segs) s.toMap()],
+    });
+    await fsSegments.hardDeleteByForeshadow(fs.id);
+    await foreshadows.hardDelete(fs.id);
+    foreshadowVersion.value++;
+  }
+
+  /// 解除关联 / 删除片段：物理删除记录并清除正文标注属性。
+  Future<void> removeSegment(ForeshadowSegment seg) async {
+    await fsSegments.hardDelete(seg.id);
+    foreshadowVersion.value++;
+    await _clearSegmentMark(seg);
+  }
+
+  /// 清除片段在正文中的 fsid 属性。
+  /// 当前章节走 formatSelection（保留撤销栈）；其他章节直接改写章节 JSON。
+  Future<void> _clearSegmentMark(ForeshadowSegment seg) async {
+    if (currentChapter?.id == seg.chapterId) {
+      final ranges = deltaFsidRanges(editorController.document.toDelta(), seg.id);
+      if (ranges.isEmpty) return;
+      final restore = editorController.selection;
+      for (final (start, end) in ranges) {
+        editorController.updateSelection(
+            TextSelection(baseOffset: start, extentOffset: end),
+            ChangeSource.local);
+        editorController.formatSelection(unsetFsidAttribute());
+      }
+      if (restore.isValid) {
+        editorController.updateSelection(restore, ChangeSource.local);
+      }
+      return;
+    }
+    final ch = await chapters.get(seg.chapterId);
+    if (ch == null || ch.content.isEmpty) return;
+    final delta = RichTextCodec.documentFromContent(ch.content).toDelta();
+    final cleaned = removeFsidFromDelta(delta, seg.id);
+    final newJson = jsonEncode(cleaned.toJson());
+    if (newJson == ch.content) return;
+    await durability.manualSnapshot(ch);
+    ch.content = newJson;
+    await chapters.updateContent(ch);
+    final inList = chapterList.where((c) => c.id == ch.id).firstOrNull;
+    if (inList != null) inList.content = newJson;
+  }
+
+  /// 面板 → 编辑器：打开片段所在章节并选中标注文字。
+  /// 返回 false 表示章节不存在或片段已失锚（正文无该标注）。
+  Future<bool> jumpToSegment(ForeshadowSegment seg) async {
+    if (currentChapter?.id != seg.chapterId) {
+      final target =
+          chapterList.where((c) => c.id == seg.chapterId).firstOrNull;
+      if (target == null) return false;
+      await openChapter(target);
+    }
+    final ranges = deltaFsidRanges(editorController.document.toDelta(), seg.id);
+    if (ranges.isEmpty) return false;
+    final r = ranges.first;
+    editorController.updateSelection(
+        TextSelection(baseOffset: r.$1, extentOffset: r.$2),
+        ChangeSource.local);
+    segmentJumpNonce.value++;
+    return true;
+  }
+
   /// 删除章节 → 回收站（FR-6 / NFR-R5）。
   Future<void> deleteChapter(String id) async {
     final ch = await chapters.get(id);
@@ -511,6 +664,31 @@ class AppState extends ChangeNotifier {
       char.tags = payload['tags'] as String? ?? '';
       await characters.update(char);
       characterDictVersion.value++;
+    } else if (item.type == RecycleType.foreshadow) {
+      final payload = Map<String, Object?>.from(_decode(item.payload));
+      // 以原 id 重建伏笔与片段，正文中的 fsid 标注才能恢复关联。
+      final fs = await foreshadows.create(
+        bookId: payload['book_id'] as String,
+        name: payload['name'] as String? ?? '恢复伏笔',
+        id: item.originId,
+      );
+      fs.status = ForeshadowStatus.values.firstWhere(
+        (s) => s.name == payload['status'],
+        orElse: () => ForeshadowStatus.undone);
+      fs.sort = (payload['sort'] as int?) ?? 0;
+      await foreshadows.update(fs);
+      final segs = (payload['segments'] as List<Object?>?) ?? const [];
+      for (final raw in segs) {
+        final m = Map<String, Object?>.from(raw! as Map);
+        await fsSegments.create(
+          fsId: fs.id,
+          chapterId: m['chapter_id'] as String? ?? '',
+          excerpt: m['excerpt'] as String? ?? '',
+          remark: m['remark'] as String? ?? '',
+          id: m['id'] as String?,
+        );
+      }
+      foreshadowVersion.value++;
     }
     await recycle.remove(item.id);
     if (currentBook != null) await _reloadTree();

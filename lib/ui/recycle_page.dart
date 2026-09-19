@@ -57,6 +57,8 @@ class _RecycleViewState extends State<RecycleView> {
           ),
           trailing: IconButton(
             tooltip: '清空回收站',
+            iconSize: 24,
+            visualDensity: VisualDensity.compact,
             icon: const Icon(Icons.delete_forever),
             onPressed: _items.isEmpty ? null : _clearAll,
           ),
@@ -76,7 +78,7 @@ class _RecycleViewState extends State<RecycleView> {
                     return ListTile(
                       leading: Icon(_iconOf(item.type)),
                       title: Text(title),
-                      subtitle: Text('$daysLeft 天后自动清除（保留 30 天）'),
+                      subtitle: Text('$daysLeft 天后自动清除'),
                       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                         TextButton(
                             onPressed: () => _restore(item),
@@ -108,6 +110,7 @@ class _RecycleViewState extends State<RecycleView> {
         RecycleType.chapter => Icons.description,
         RecycleType.note => Icons.sticky_note_2_outlined,
         RecycleType.character => Icons.person_outline,
+        RecycleType.foreshadow => Icons.flag_outlined,
       };
 
   Future<void> _restore(RecycleItem item) async {
@@ -115,7 +118,7 @@ class _RecycleViewState extends State<RecycleView> {
     await state.restoreRecycleItem(item);
     await _refresh();
     if (mounted) {
-      showToast(context, '已恢复「${_titleOf(item)}」');
+      showToast(context, '「${_titleOf(item)}」恢复成功');
     }
   }
 

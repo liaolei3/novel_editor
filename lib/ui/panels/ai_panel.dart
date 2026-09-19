@@ -311,7 +311,7 @@ class _AiPanelState extends State<AiPanel> {
               state.onEditorChanged();
               await state.autosave.flush();
               if (context.mounted) {
-                showToast(context, '已插入；插入前已自动快照，可从「历史快照」撤销');
+                showToast(context, '插入成功；插入前已自动创建快照，可从「历史快照」撤销');
               }
             },
           ),
@@ -336,7 +336,7 @@ class _AiPanelState extends State<AiPanel> {
               state.onEditorChanged();
               await state.autosave.flush();
               if (context.mounted) {
-                showToast(context, '已采纳写入正文');
+                showToast(context, '采纳成功，已写入正文');
               }
             },
           ),
@@ -355,7 +355,7 @@ class _AiPanelState extends State<AiPanel> {
                 content: text,
               );
               if (context.mounted) {
-                showToast(context, '已存入灵感便签（素材库）');
+                showToast(context, '保存成功，已存入灵感便签（素材库）');
               }
             },
           ),

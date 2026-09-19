@@ -135,6 +135,9 @@ class Attribute<T> {
     Attribute.font.key,
     Attribute.size.key,
     Attribute.inlineCode.key,
+    // 业务自定义内联属性（伏笔标注）：登记后 PreserveInlineStylesRule
+    // 才会在标注中间键入文字时继承该属性。
+    'fsid',
   });
 
   static final ignoreKeys = Set.unmodifiable(<String>{

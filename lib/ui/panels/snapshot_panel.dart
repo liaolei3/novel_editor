@@ -61,7 +61,7 @@ class _SnapshotPanelState extends State<SnapshotPanel> {
                             ?.copyWith(fontWeight: FontWeight.w600)),
                     const SizedBox(height: 2),
                     Text(
-                      '保留最近 30 个（手动 / 每日自动 / 回滚前）',
+                      '保留最近 30 个',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
@@ -177,6 +177,7 @@ class _SnapshotPanelState extends State<SnapshotPanel> {
       barrierDismissible: false,
       builder: (ctx) => DraggableDialog(
         child: AlertDialog(
+          constraints: const BoxConstraints(maxWidth: 320),
           title: const Text('回滚确认'),
           content: const Text('将回滚到所选快照版本。当前版本会先自动保存为「回滚前」快照，操作本身可逆。'),
           actions: [
@@ -200,7 +201,7 @@ class _SnapshotPanelState extends State<SnapshotPanel> {
     await state.autosave.flush();
     await _refresh();
     if (context.mounted) {
-      showToast(context, '已回滚；当前版本已存为「回滚前」快照');
+      showToast(context, '回滚成功；当前版本已存为「回滚前」快照');
     }
   }
 }

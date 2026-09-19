@@ -180,7 +180,7 @@ class _SearchReplaceBarState extends State<SearchReplaceBar> {
       widget.controller.replaceText(off, _query.length, _replaceCtrl.text, null);
     }
     _recompute(relocate: false);
-    showToast(context, '已替换 $count 处');
+    showToast(context, '替换成功，共 $count 处');
   }
 
   void _notifySearchChanged() {

@@ -56,7 +56,7 @@ flutter test             # 全部测试
 flutter analyze          # 静态检查
 ```
 
-- `flutter_quill` 必须使用 `third_party/flutter_quill` 本地补丁版（dependency_overrides）。**禁止通过升级依赖覆盖该补丁**；如需升级，必须先确认并重新应用 Windows IME 补丁（候选框跟随光标：逐帧上报 composing rect、锚点取光标行底部、含异常保护）。
+- `flutter_quill` 必须使用 `third_party/flutter_quill` 本地补丁版（dependency\_overrides）。**禁止通过升级依赖覆盖该补丁**；如需升级，必须先确认并重新应用 Windows IME 补丁（候选框跟随光标：逐帧上报 composing rect、锚点取光标行底部、含异常保护）。
 - `objective_c` 固定 9.6.0，禁止升级（9.6.1 在 Windows 构建失败）。
 - 新增资源必须放入 `assets/` 并在 pubspec 注册。
 
@@ -70,6 +70,10 @@ flutter analyze          # 静态检查
 ## 五、UI 红线
 
 ### 对话框与弹窗
-- **所有弹窗（每一个 showDialog 调用）必须 `barrierDismissible: false`：点击外部永不关闭，只能通过显式按钮 / 图标关闭。**
-- **所有弹窗必须支持拖动。**
+
+- **所有弹窗（每一个 showDialog 调用）点击外部永不关闭，只能通过显式按钮 / 图标关闭，且必须支持拖动。**
+- **编写弹窗时默认指定宽度为 320px，并添加** **`actionsAlignment: MainAxisAlignment.end`。** 特殊尺寸（如全宽列表弹窗）需用户明确同意后方可偏离。
 - 提示统一使用 `lib/ui/widgets/toast.dart` 的 `showToast`（顶部滑动通知），禁止使用 SnackBar 等其他形式。
+- **操作成功 / 失败提示统一为「xxx + 成功 / 失败」格式**（如「保存成功」「名称修改成功」「删除失败」），禁止使用「已 xxx」「xxx 已修改」等过去式描述开头。
+- **所有可点击的地方鼠标必须为手型**：`InkWell` / `GestureDetector` 等可点击组件需设置 `mouseCursor: SystemMouseCursors.click`（`IconButton`、`ListTile` 等自带手型的除外）。
+

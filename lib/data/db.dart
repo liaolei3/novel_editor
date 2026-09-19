@@ -23,7 +23,7 @@ class Db {
     _db = await databaseFactory.openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 5,
+        version: 6,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
       ),
@@ -152,6 +152,31 @@ class Db {
       )
     ''');
     await db.execute('CREATE INDEX idx_characters_book ON characters(book_id)');
+    await db.execute('''
+      CREATE TABLE foreshadowings (
+        id TEXT PRIMARY KEY,
+        book_id TEXT NOT NULL,
+        name TEXT NOT NULL DEFAULT '',
+        remark TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'undone',
+        sort INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX idx_foreshadow_book ON foreshadowings(book_id)');
+    await db.execute('''
+      CREATE TABLE fs_segments (
+        id TEXT PRIMARY KEY,
+        fs_id TEXT NOT NULL,
+        chapter_id TEXT NOT NULL,
+        excerpt TEXT NOT NULL DEFAULT '',
+        remark TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('CREATE INDEX idx_fsseg_fs ON fs_segments(fs_id)');
   }
 
   /// 增量迁移。
@@ -170,6 +195,33 @@ class Db {
         await db.execute(
             "ALTER TABLE characters ADD COLUMN attributes TEXT NOT NULL DEFAULT ''");
       }
+    }
+    if (oldVersion < 6) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS foreshadowings (
+          id TEXT PRIMARY KEY,
+          book_id TEXT NOT NULL,
+          name TEXT NOT NULL DEFAULT '',
+          remark TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL DEFAULT 'undone',
+          sort INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )
+      ''');
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_foreshadow_book ON foreshadowings(book_id)');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS fs_segments (
+          id TEXT PRIMARY KEY,
+          fs_id TEXT NOT NULL,
+          chapter_id TEXT NOT NULL,
+          excerpt TEXT NOT NULL DEFAULT '',
+          remark TEXT NOT NULL DEFAULT '',
+          created_at INTEGER NOT NULL
+        )
+      ''');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_fsseg_fs ON fs_segments(fs_id)');
     }
   }
 

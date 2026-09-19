@@ -357,6 +357,115 @@ class CharacterRepository {
   }
 }
 
+class ForeshadowRepository {
+  Future<List<Foreshadow>> listByBook(String bookId) async {
+    final db = await Db.instance();
+    final rows = await db.query('foreshadowings',
+        where: 'book_id = ?',
+        whereArgs: [bookId],
+        orderBy: 'created_at DESC');
+    return rows.map(Foreshadow.fromMap).toList();
+  }
+
+  Future<Foreshadow?> get(String id) async {
+    final db = await Db.instance();
+    final rows = await db.query('foreshadowings',
+        where: 'id = ?', whereArgs: [id]);
+    if (rows.isEmpty) return null;
+    return Foreshadow.fromMap(rows.first);
+  }
+
+  /// [id] 供回收站恢复时沿用原 id（正文 fsid 标注依赖 id 关联）。
+  Future<Foreshadow> create({
+    required String bookId,
+    required String name,
+    String content = '',
+    String? id,
+  }) async {
+    final now = DateTime.now();
+    final fs = Foreshadow(
+        id: id ?? newId(), bookId: bookId, name: name, content: content,
+        createdAt: now, updatedAt: now);
+    final db = await Db.instance();
+    await db.insert('foreshadowings', fs.toMap());
+    return fs;
+  }
+
+  Future<void> update(Foreshadow fs) async {
+    fs.updatedAt = DateTime.now();
+    final db = await Db.instance();
+    await db.update('foreshadowings', fs.toMap(),
+        where: 'id = ?', whereArgs: [fs.id]);
+  }
+
+  Future<void> hardDelete(String id) async {
+    final db = await Db.instance();
+    await db.delete('foreshadowings', where: 'id = ?', whereArgs: [id]);
+  }
+}
+
+class ForeshadowSegmentRepository {
+  Future<List<ForeshadowSegment>> listByForeshadow(String fsId) async {
+    final db = await Db.instance();
+    final rows = await db.query('fs_segments',
+        where: 'fs_id = ?',
+        whereArgs: [fsId],
+        orderBy: 'created_at ASC');
+    return rows.map(ForeshadowSegment.fromMap).toList();
+  }
+
+  /// 全书片段（JOIN 伏笔表限定 book_id），供编辑器构建标注词典。
+  Future<List<ForeshadowSegment>> listByBook(String bookId) async {
+    final db = await Db.instance();
+    final rows = await db.rawQuery('''
+      SELECT s.* FROM fs_segments s
+      INNER JOIN foreshadowings f ON f.id = s.fs_id
+      WHERE f.book_id = ?
+      ORDER BY s.created_at ASC
+    ''', [bookId]);
+    return rows.map(ForeshadowSegment.fromMap).toList();
+  }
+
+  Future<ForeshadowSegment?> get(String id) async {
+    final db = await Db.instance();
+    final rows = await db.query('fs_segments',
+        where: 'id = ?', whereArgs: [id]);
+    if (rows.isEmpty) return null;
+    return ForeshadowSegment.fromMap(rows.first);
+  }
+
+  Future<ForeshadowSegment> create({
+    required String fsId,
+    required String chapterId,
+    String excerpt = '',
+    String remark = '',
+    String? id,
+  }) async {
+    final seg = ForeshadowSegment(
+        id: id ?? newId(), fsId: fsId, chapterId: chapterId,
+        excerpt: excerpt, remark: remark, createdAt: DateTime.now());
+    final db = await Db.instance();
+    await db.insert('fs_segments', seg.toMap());
+    return seg;
+  }
+
+  Future<void> update(ForeshadowSegment seg) async {
+    final db = await Db.instance();
+    await db.update('fs_segments', seg.toMap(),
+        where: 'id = ?', whereArgs: [seg.id]);
+  }
+
+  Future<void> hardDelete(String id) async {
+    final db = await Db.instance();
+    await db.delete('fs_segments', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> hardDeleteByForeshadow(String fsId) async {
+    final db = await Db.instance();
+    await db.delete('fs_segments', where: 'fs_id = ?', whereArgs: [fsId]);
+  }
+}
+
 class StatsRepository {
   Future<WriteRecord> today() async {
     final key = WriteRecord.dateKeyOf(DateTime.now());

@@ -56,7 +56,7 @@ class _SensitivePanelState extends State<SensitivePanel> {
                         .replaceDocument(RichTextCodec.documentFromContent(replaced));
                     await state.autosave.flush();
                     if (context.mounted) {
-                      showToast(context, '已替换全部命中词');
+                      showToast(context, '替换成功，全部命中词已处理');
                     }
                     setState(() => _hits = scanner.scan(replaced));
                   },

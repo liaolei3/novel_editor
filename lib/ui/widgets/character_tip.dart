@@ -190,7 +190,7 @@ class _CharacterTipViewState extends State<_CharacterTipView> {
 
     // 位置：与文字左对齐、正下方紧贴（无间隙）；
     // 下方空间不足时按实测高度上翻，屏幕边缘钳制。
-    const tipWidth = 200.0;
+    const tipWidth = 240.0;
     final tipHeight = _measuredHeight ?? 240.0;
     final measured = _measuredHeight != null;
     var left = widget.position.dx;
@@ -273,7 +273,7 @@ class _CharacterTipViewState extends State<_CharacterTipView> {
                 if (char.aliases.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Text('别名：${char.aliases}',
-                      maxLines: 1,
+                      maxLines: 3,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                           fontSize: 11, color: scheme.onSurfaceVariant)),
@@ -281,7 +281,15 @@ class _CharacterTipViewState extends State<_CharacterTipView> {
                 if (char.tags.isNotEmpty) ...[
                   const SizedBox(height: 3),
                   Text('标签：${char.tags}',
-                      maxLines: 1,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 11, color: scheme.onSurfaceVariant)),
+                ],
+                for (final attr in char.attrList) ...[
+                  const SizedBox(height: 3),
+                  Text('${attr.name}：${attr.value}',
+                      maxLines: 3,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                           fontSize: 11, color: scheme.onSurfaceVariant)),

@@ -20,12 +20,69 @@ class DraggableDialog extends StatefulWidget {
 
 class _DraggableDialogState extends State<DraggableDialog> {
   Offset _offset = Offset.zero;
+  Rect? _baseRect; // 弹窗未偏移时的初始位置（基准）。
+  final _childKey = GlobalKey();
+
+  // 子树会被对话框路由的紧约束拉成全窗尺寸，且 Dialog 自带 insetPadding
+  // 等包裹层，只有最内层 Material 才是弹窗本体；找到它再做边界钳制。
+  RenderBox? _contentBox(Size window) {
+    final ctx = _childKey.currentContext;
+    if (ctx == null) return null;
+    RenderBox? found;
+    void visit(Element el) {
+      if (found != null) return;
+      if (el.widget is Material) {
+        final ro = el.findRenderObject();
+        if (ro is RenderBox &&
+            ro.hasSize &&
+            ro.size.width < window.width &&
+            ro.size.height < window.height) {
+          found = ro;
+        }
+        return;
+      }
+      el.visitChildElements(visit);
+    }
+
+    visit(ctx as Element);
+    if (found != null) return found;
+    final root = ctx.findRenderObject();
+    return root is RenderBox && root.hasSize ? root : null;
+  }
+
+  // 边缘位置钳制：盒子不小于窗口时锁定居中，否则限制在 [0, 窗口-盒子]。
+  double _limit(double edge, double size, double boundary) {
+    if (size >= boundary) return (boundary - size) / 2;
+    return edge.clamp(0.0, boundary - size);
+  }
+
+  void _onPanUpdate(DragUpdateDetails details) {
+    final window = MediaQuery.sizeOf(context);
+    if (_baseRect == null) {
+      final box = _contentBox(window);
+      if (box == null) return;
+      // 全局坐标含当前 transform 偏移，换算回未偏移基准。
+      _baseRect = (box.localToGlobal(Offset.zero) - _offset) & box.size;
+    }
+    final rect = _baseRect!.shift(_offset);
+    final dx =
+        _limit(rect.left + details.delta.dx, rect.width, window.width) -
+            rect.left;
+    final dy =
+        _limit(rect.top + details.delta.dy, rect.height, window.height) -
+            rect.top;
+    if (dx == 0 && dy == 0) return;
+    setState(() => _offset += Offset(dx, dy));
+  }
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onPanUpdate: (details) => setState(() => _offset += details.delta),
-      child: Transform.translate(offset: _offset, child: widget.child),
+      onPanUpdate: _onPanUpdate,
+      child: Transform.translate(
+        offset: _offset,
+        child: KeyedSubtree(key: _childKey, child: widget.child),
+      ),
     );
   }
 }
@@ -63,23 +120,21 @@ Future<String?> inputDialog(BuildContext context,
               contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
             ),
           ),
+          actionsAlignment: MainAxisAlignment.end,
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
               style: TextButton.styleFrom(
                 minimumSize: const Size(64, 38),
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
               ),
               child: const Text('取消'),
             ),
-            const Spacer(),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, controller.text),
               style: FilledButton.styleFrom(
                 minimumSize: const Size(72, 38),
                 padding: const EdgeInsets.symmetric(horizontal: 18),
-                textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
               ),
               child: const Text('确定'),
             ),
@@ -115,9 +170,9 @@ Future<(String, String, String?)?> createBookDialog(BuildContext context) async 
         }
 
         return DraggableDialog(
-          child: SizedBox(
-            width: 320,
-            child: AlertDialog(
+          child: AlertDialog(
+            // Dialog 内部 Align 会架空外层 SizedBox 的宽度，须用 constraints 指定。
+            constraints: const BoxConstraints(minWidth: 320),
             titlePadding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
             contentPadding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
             actionsPadding: const EdgeInsets.fromLTRB(24, 18, 24, 20),
@@ -152,6 +207,7 @@ Future<(String, String, String?)?> createBookDialog(BuildContext context) async 
               ),
               ],
             ),
+            actionsAlignment: MainAxisAlignment.end,
             actions: [
               TextButton(
                 onPressed: () async {
@@ -163,11 +219,9 @@ Future<(String, String, String?)?> createBookDialog(BuildContext context) async 
                 style: TextButton.styleFrom(
                   minimumSize: const Size(64, 38),
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                 ),
                 child: const Text('取消'),
               ),
-              const Spacer(),
               FilledButton(
                 onPressed: () {
                   final title = titleCtrl.text.trim();
@@ -178,12 +232,10 @@ Future<(String, String, String?)?> createBookDialog(BuildContext context) async 
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(72, 38),
                   padding: const EdgeInsets.symmetric(horizontal: 18),
-                  textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                 ),
                 child: const Text('创建'),
               ),
             ],
-          ),
           ),
         );
       },
@@ -315,9 +367,8 @@ Future<(String, String, String?)?> editBookDialog(
         }
 
         return DraggableDialog(
-          child: SizedBox(
-            width: 320,
-            child: AlertDialog(
+          child: AlertDialog(
+            constraints: const BoxConstraints(minWidth: 320),
             titlePadding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
             contentPadding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
             actionsPadding: const EdgeInsets.fromLTRB(24, 18, 24, 20),
@@ -348,6 +399,7 @@ Future<(String, String, String?)?> editBookDialog(
               ),
               ],
             ),
+            actionsAlignment: MainAxisAlignment.end,
             actions: [
               TextButton(
                 onPressed: () async {
@@ -361,11 +413,9 @@ Future<(String, String, String?)?> editBookDialog(
                 style: TextButton.styleFrom(
                   minimumSize: const Size(64, 38),
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                 ),
                 child: const Text('取消'),
               ),
-              const Spacer(),
               FilledButton(
                 onPressed: () {
                   final title = titleCtrl.text.trim();
@@ -377,12 +427,10 @@ Future<(String, String, String?)?> editBookDialog(
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(72, 38),
                   padding: const EdgeInsets.symmetric(horizontal: 18),
-                  textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                 ),
                 child: const Text('保存'),
               ),
             ],
-          ),
           ),
         );
       },

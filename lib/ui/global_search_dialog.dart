@@ -95,7 +95,7 @@ class _GlobalSearchDialogState extends State<_GlobalSearchDialog> {
     );
     if (!mounted) return;
     setState(() => _replacing = false);
-    showToast(context, '已替换 $n 处');
+    showToast(context, '替换成功，共 $n 处');
     await _doSearch();
   }
 

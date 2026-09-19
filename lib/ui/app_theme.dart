@@ -63,6 +63,10 @@ ThemeData _minimalTheme(Brightness brightness, String? fontFamily) {
     fontFamilyFallback: _fontFallbacks,
   );
 
+  // 按钮文字统一 14px/w500，从主题派生以携带界面字体。
+  final buttonTextStyle = base.textTheme.labelLarge
+      ?.copyWith(fontSize: 14, fontWeight: FontWeight.w500);
+
   return base.copyWith(
     iconTheme: base.iconTheme.copyWith(size: 18),
     scaffoldBackgroundColor: scheme.surface,
@@ -81,6 +85,7 @@ ThemeData _minimalTheme(Brightness brightness, String? fontFamily) {
           borderRadius: BorderRadius.all(Radius.circular(8)),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        textStyle: buttonTextStyle,
       ).copyWith(mouseCursor: _clickCursor),
     ),
     textButtonTheme: TextButtonThemeData(
@@ -88,6 +93,7 @@ ThemeData _minimalTheme(Brightness brightness, String? fontFamily) {
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(8)),
         ),
+        textStyle: buttonTextStyle,
       ).copyWith(mouseCursor: _clickCursor),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
@@ -151,7 +157,8 @@ ThemeData _minimalTheme(Brightness brightness, String? fontFamily) {
       leadingWidth: 42,
       titleSpacing: 0,
       shape: Border(bottom: BorderSide(color: hairline, width: 0.5)),
-      titleTextStyle: TextStyle(
+      // 从主题派生以携带界面字体（titleTextStyle 不会继承主题字体）。
+      titleTextStyle: base.textTheme.titleLarge?.copyWith(
         fontSize: 18,
         fontWeight: FontWeight.w600,
         color: scheme.onSurface,
@@ -310,13 +317,25 @@ ThemeData _eggPieTheme(String? fontFamily) {
     fontFamilyFallback: _fontFallbacks,
   );
 
+  // 按钮文字统一 14px/w500，从主题派生以携带界面字体。
+  final buttonTextStyle = base.textTheme.labelLarge
+      ?.copyWith(fontSize: 14, fontWeight: FontWeight.w500);
+
   ButtonStyle eggPieButton({
     required Color fill,
     required Color fg,
   }) =>
       ButtonStyle(
-        backgroundColor: WidgetStatePropertyAll(fill),
-        foregroundColor: WidgetStatePropertyAll(fg),
+        // 禁用态置灰：固定色会让 disabled 按钮看起来仍可点击。
+        backgroundColor: WidgetStateProperty.resolveWith((states) =>
+            states.contains(WidgetState.disabled)
+                ? p.panelAlt
+                : fill),
+        foregroundColor: WidgetStateProperty.resolveWith((states) =>
+            states.contains(WidgetState.disabled)
+                ? p.textDim
+                : fg),
+        textStyle: WidgetStatePropertyAll(buttonTextStyle),
         elevation: const WidgetStatePropertyAll(0),
         shape: WidgetStatePropertyAll(
           RoundedRectangleBorder(
@@ -351,6 +370,7 @@ ThemeData _eggPieTheme(String? fontFamily) {
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(8)),
         ),
+        textStyle: buttonTextStyle,
       ).copyWith(mouseCursor: _clickCursor),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
@@ -417,7 +437,7 @@ ThemeData _eggPieTheme(String? fontFamily) {
       leadingWidth: 42,
       titleSpacing: 0,
       shape: Border(bottom: BorderSide(color: p.borderDark, width: 3)),
-      titleTextStyle: TextStyle(
+      titleTextStyle: base.textTheme.titleLarge?.copyWith(
         fontSize: 18,
         fontWeight: FontWeight.w700,
         color: p.text,

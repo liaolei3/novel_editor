@@ -437,4 +437,100 @@ class Character {
       );
 }
 
-enum RecycleType { volume, chapter, note, character }
+enum ForeshadowStatus { undone, done }
+
+class Foreshadow {
+  Foreshadow({
+    required this.id,
+    required this.bookId,
+    this.name = '',
+    this.content = '',
+    this.status = ForeshadowStatus.undone,
+    this.sort = 0,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String bookId;
+  String name;
+
+  /// 伏笔内容（铺垫/回收计划），存 foreshadowings.remark 列，必填。
+  String content;
+  ForeshadowStatus status;
+  int sort;
+  DateTime createdAt;
+  DateTime updatedAt;
+
+  Map<String, Object?> toMap() => {
+        'id': id,
+        'book_id': bookId,
+        'name': name,
+        'remark': content,
+        'status': status.name,
+        'sort': sort,
+        'created_at': createdAt.millisecondsSinceEpoch,
+        'updated_at': updatedAt.millisecondsSinceEpoch,
+      };
+
+  static Foreshadow fromMap(Map<String, Object?> map) => Foreshadow(
+        id: map['id'] as String,
+        bookId: map['book_id'] as String,
+        name: (map['name'] as String?) ?? '',
+        content: (map['remark'] as String?) ?? '',
+        status: ForeshadowStatus.values.firstWhere(
+          (s) => s.name == map['status'],
+          orElse: () => ForeshadowStatus.undone,
+        ),
+        sort: (map['sort'] as int?) ?? 0,
+        createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
+        updatedAt: DateTime.fromMillisecondsSinceEpoch(map['updated_at'] as int),
+      );
+}
+
+/// 伏笔与正文的一次关联（一个剧情片段）。
+/// 正文 Delta 以内联属性 fsid=片段id 标注对应文字。
+class ForeshadowSegment {
+  ForeshadowSegment({
+    required this.id,
+    required this.fsId,
+    required this.chapterId,
+    this.excerpt = '',
+    this.remark = '',
+    required this.createdAt,
+  });
+
+  final String id;
+
+  /// 所属伏笔 id。
+  final String fsId;
+
+  /// 片段所在章节 id；章节被删除后记录保留（失锚状态）。
+  final String chapterId;
+
+  /// 标注文字快照：正文删改后仍可在面板中识别片段内容。
+  String excerpt;
+  String remark;
+  DateTime createdAt;
+
+  Map<String, Object?> toMap() => {
+        'id': id,
+        'fs_id': fsId,
+        'chapter_id': chapterId,
+        'excerpt': excerpt,
+        'remark': remark,
+        'created_at': createdAt.millisecondsSinceEpoch,
+      };
+
+  static ForeshadowSegment fromMap(Map<String, Object?> map) =>
+      ForeshadowSegment(
+        id: map['id'] as String,
+        fsId: map['fs_id'] as String,
+        chapterId: map['chapter_id'] as String,
+        excerpt: (map['excerpt'] as String?) ?? '',
+        remark: (map['remark'] as String?) ?? '',
+        createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
+      );
+}
+
+enum RecycleType { volume, chapter, note, character, foreshadow }

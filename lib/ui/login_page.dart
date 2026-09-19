@@ -107,7 +107,7 @@ class _LoginDialogState extends State<LoginDialog> {
     }
     await context.read<SettingsController>().setSyncEnabled(true);
     if (mounted) {
-      showToast(context, '已${_register ? '注册' : '登录'}：$id（本地模拟），云同步已开启');
+      showToast(context, '${_register ? '注册' : '登录'}成功：$id（本地模拟），云同步已开启');
       Navigator.pop(context);
     }
   }

@@ -256,6 +256,9 @@ class _CharacterPanelState extends State<CharacterPanel> {
                 onSubmitted: (v) {
                   setState(() => _keyword = v.trim());
                 },
+                onChanged: (v) {
+                  setState(() => _keyword = v.trim());
+                },
               ),
             )
           else
@@ -525,10 +528,12 @@ class _CharacterPanelState extends State<CharacterPanel> {
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
+              height: 34,
               child: FilledButton.icon(
                 onPressed: _save,
-                icon: const Icon(Icons.check, size: 16),
-                label: const Text('保存修改'),
+                icon: const Icon(Icons.save_outlined, size: 16),
+                label: const Text('保存修改',
+                    style: TextStyle(fontSize: 13)),
               ),
             ),
           ],
@@ -679,6 +684,9 @@ class _CharacterPanelState extends State<CharacterPanel> {
     _aliasesCtrl.text = _draft.aliases;
     _loadAttrRows(_draft.attrList);
     _tagsCtrl.text = _draft.tags;
+    _searching = false;
+    _searchCtrl.clear();
+    _keyword = '';
     setState(() => _selected = char);
   }
 
@@ -725,8 +733,10 @@ class _CharacterPanelState extends State<CharacterPanel> {
       if (mounted) setState(() {});
     }
     if (mounted) {
-      setState(() => _selected = null);
-      showToast(context, '角色已保存');
+      setState(() {
+        if (_isNew) _selected = null;
+      });
+      showToast(context, '角色保存成功');
     }
   }
 

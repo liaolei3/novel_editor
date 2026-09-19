@@ -63,6 +63,8 @@ Future<void> _bootstrap() async {
   final snapshots = SnapshotRepository();
   final notes = NoteRepository();
   final characters = CharacterRepository();
+  final foreshadows = ForeshadowRepository();
+  final fsSegments = ForeshadowSegmentRepository();
   final stats = StatsRepository();
   final recycle = RecycleRepository();
   await Db.instance();
@@ -88,6 +90,8 @@ Future<void> _bootstrap() async {
     snapshots: snapshots,
     notes: notes,
     characters: characters,
+    foreshadows: foreshadows,
+    fsSegments: fsSegments,
     stats: stats,
     recycle: recycle,
     autosave: autosave,

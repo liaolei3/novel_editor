@@ -577,11 +577,14 @@ class _SettingsDialogState extends State<SettingsDialog> {
             : null,
       ),
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          for (final child in children)
-            Material(type: MaterialType.transparency, child: child),
-        ],
+      child: ListTileTheme.merge(
+        shape: const RoundedRectangleBorder(),
+        child: Column(
+          children: [
+            for (final child in children)
+              Material(type: MaterialType.transparency, child: child),
+          ],
+        ),
       ),
     );
   }
@@ -819,7 +822,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
       builder: (_) => ConflictDialog(conflicts: conflicts),
     );
     if (resolved == true && mounted) {
-      showToast(context, '冲突已解决并完成同步');
+      showToast(context, '冲突解决成功，同步完成');
       await state.reloadTreePublic();
     }
   }
@@ -885,7 +888,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
       '导入词库 ${scanner.words.length} 词',
     );
     if (mounted) {
-      showToast(context, '词库已更新（${scanner.words.length} 词）');
+      showToast(context, '词库更新成功（共 ${scanner.words.length} 词）');
     }
   }
 

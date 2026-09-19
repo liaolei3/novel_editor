@@ -43,6 +43,11 @@ class SettingsController extends ChangeNotifier {
   String get lastBookId => _cfg.getString('lastBookId') ?? '';
   String get dataDir => _cfg.getString('dataDir') ?? '';
 
+  double get workspaceLeftWidth => _cfg.getDouble('workspaceLeftWidth') ?? 280;
+  double get workspaceRightWidth => _cfg.getDouble('workspaceRightWidth') ?? 408;
+  int get workspacePanelIndex => _cfg.getInt('workspacePanelIndex') ?? 0;
+  bool get workspacePanelOpen => _cfg.getBool('workspacePanelOpen') ?? false;
+
   Future<void> setTheme(AppTheme theme) =>
       _set('appTheme', theme.name, () => notifyListeners());
 
@@ -86,6 +91,12 @@ class SettingsController extends ChangeNotifier {
       _set('sensitiveDictVersion', v, null);
 
   Future<void> setLastBookId(String v) => _set('lastBookId', v, null);
+
+  /// 工作区布局：仅落盘，不通知（布局是 WorkspacePage 的本地状态）。
+  Future<void> setWorkspaceLeftWidth(double v) => _cfg.setDouble('workspaceLeftWidth', v);
+  Future<void> setWorkspaceRightWidth(double v) => _cfg.setDouble('workspaceRightWidth', v);
+  Future<void> setWorkspacePanelIndex(int v) => _cfg.setInt('workspacePanelIndex', v);
+  Future<void> setWorkspacePanelOpen(bool v) => _cfg.setBool('workspacePanelOpen', v);
 
   /// 切换数据存储目录（空 = 应用默认目录）；重启应用后生效。
   Future<void> setDataDir(String v) =>

@@ -55,22 +55,25 @@ Future<bool> confirmDangerous(
     context: context,
     barrierDismissible: false,
     builder: (ctx) => DraggableDialog(
-      child: AlertDialog(
-        title: const Text('请确认'),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
+      child: SizedBox(
+        width: 360,
+        child: AlertDialog(
+          title: const Text('请确认'),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
             ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(confirmLabel),
-          ),
-        ],
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(ctx).colorScheme.error,
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(confirmLabel),
+            ),
+          ],
+        ),
       ),
     ),
   );
