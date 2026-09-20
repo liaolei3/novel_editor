@@ -163,7 +163,11 @@ class _CharacterPanelState extends State<CharacterPanel> {
       context: context,
       builder: (ctx) => DraggableDialog(
         child: AlertDialog(
-          title: const Text('添加属性'),
+          titlePadding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
+          contentPadding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
+          actionsPadding: const EdgeInsets.fromLTRB(24, 18, 24, 20),
+          title: const Text('添加属性',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
           content: SizedBox(
             width: 260,
             child: Column(
@@ -189,9 +193,14 @@ class _CharacterPanelState extends State<CharacterPanel> {
               ],
             ),
           ),
+          actionsAlignment: MainAxisAlignment.end,
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
+              style: TextButton.styleFrom(
+                minimumSize: const Size(64, 38),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+              ),
               child: const Text('取消'),
             ),
             FilledButton.tonal(
@@ -200,6 +209,10 @@ class _CharacterPanelState extends State<CharacterPanel> {
                 if (n.isEmpty) return; // 属性名必填
                 Navigator.pop(ctx, (n, valueCtrl.text));
               },
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(72, 38),
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+              ),
               child: const Text('确定'),
             ),
           ],
@@ -367,7 +380,8 @@ class _CharacterPanelState extends State<CharacterPanel> {
   /// 角色网格视图：竖向卡片，高度与大纲网格一致（180px）。
   Widget _buildGrid(ColorScheme scheme) {
     return LayoutBuilder(builder: (ctx, constraints) {
-      final columns = (constraints.maxWidth ~/ 180).clamp(1, 4);
+      // 每列最小 220px，面板过窄时自动减少列数。
+      final columns = (constraints.maxWidth ~/ 220).clamp(1, 4);
       return GridView.builder(
         padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
         itemCount: _filtered.length,
@@ -375,7 +389,7 @@ class _CharacterPanelState extends State<CharacterPanel> {
           crossAxisCount: columns,
           mainAxisSpacing: 6,
           crossAxisSpacing: 6,
-          mainAxisExtent: 240,
+          mainAxisExtent: 280,
         ),
         itemBuilder: (ctx, i) => _CharacterGridCell(
           char: _filtered[i],
@@ -511,15 +525,18 @@ class _CharacterPanelState extends State<CharacterPanel> {
                     selected: _draft.color == _colorToHex(c),
                     onTap: () => setState(() => _draft.color = _colorToHex(c)),
                   ),
-                GestureDetector(
-                  onTap: () => setState(() => _draft.color = ''),
-                  child: Container(
-                    width: 24, height: 24,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: scheme.outlineVariant, width: 1.5),
+                MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () => setState(() => _draft.color = ''),
+                    child: Container(
+                      width: 24, height: 24,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: scheme.outlineVariant, width: 1.5),
+                      ),
+                      child: Center(child: Icon(Icons.close, size: 12, color: scheme.onSurfaceVariant)),
                     ),
-                    child: Center(child: Icon(Icons.close, size: 12, color: scheme.onSurfaceVariant)),
                   ),
                 ),
               ],
@@ -857,7 +874,9 @@ class _ColorSwatch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
       onTap: onTap,
       child: AnimatedScale(
         scale: selected ? 1.12 : 1.0,
@@ -882,6 +901,7 @@ class _ColorSwatch extends StatelessWidget {
             ),
           ),
         ),
+      ),
       ),
     );
   }
@@ -917,12 +937,13 @@ class _CharacterGridCellState extends State<_CharacterGridCell> {
     final scheme = Theme.of(context).colorScheme;
     final char = widget.char;
     return MouseRegion(
+      cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: TintedCard(
         emphasized: false,
         tintIndex: widget.tintIndex,
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
         onTap: widget.onTap,
         child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1113,6 +1134,7 @@ class _CharacterCardState extends State<_CharacterCard> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: MouseRegion(
+        cursor: SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hover = true),
         onExit: (_) => setState(() => _hover = false),
         child: TintedCard(

@@ -326,6 +326,10 @@ class Db {
       if (src.existsSync()) {
         await _copyDirectory(src, Directory(p.join(targetDir, 'backups')));
       }
+      final fonts = Directory(p.join(await supportDir(), 'fonts'));
+      if (fonts.existsSync()) {
+        await _copyDirectory(fonts, Directory(p.join(targetDir, 'fonts')));
+      }
     } catch (_) {
       // 备份迁移尽力而为，失败不影响主库迁移。
     }

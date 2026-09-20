@@ -44,6 +44,15 @@ class FileIO {
     return (dot > 0 ? name.substring(0, dot) : name, content);
   }
 
+  /// 选择二进制文件，返回其路径，取消返回 null。
+  static Future<String?> pickFilePath({List<String> ext = const ['ttf', 'otf']}) async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ext,
+    );
+    return result?.files.single.path;
+  }
+
   static Future<String?> pickDirectory() =>
       FilePicker.platform.getDirectoryPath();
 

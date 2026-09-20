@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../../core/utils/sensitive_words.dart';
 import '../../core/utils/text_stats.dart';
 import '../../data/db.dart';
+import '../../services/font_service.dart';
 import '../../services/logger.dart';
 import '../../state/app_config.dart';
 import '../../state/app_state.dart';
@@ -74,8 +75,9 @@ const _pageDescriptions = [
   '存储、词库与日志',
 ];
 
-/// 滑块行/下拉行共享的标题列宽，保证各滑块左侧起点一致。
-const _rowLabelWidth = 80.0;
+/// 滑块行/下拉行共享的标题列宽，保证各滑块左侧起点一致；
+/// 150% 界面缩放下 4 字标题约需 84px，取 104 留余量防换行。
+const _rowLabelWidth = 104.0;
 
 class SettingsDialog extends StatefulWidget {
   const SettingsDialog({super.key});
@@ -121,6 +123,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsController>();
     final state = context.watch<AppState>();
+    final fontService = context.watch<FontService>();
     final isLight = Theme.of(context).brightness == Brightness.light;
     final hairline = isLight
         ? const Color(0x1A000000)
@@ -142,8 +145,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
       content: ClipRRect(
         borderRadius: BorderRadius.circular(11),
         child: SizedBox(
-          width: 820,
-          height: 620,
+          width: 960,
+          height: 700,
           child: Column(
             children: [
               const Divider(height: 1),
@@ -152,7 +155,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     SizedBox(
-                      width: 168,
+                      width: 200,
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 10,
@@ -180,8 +183,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
                             _pageDescriptions[_current],
                           ),
                           ...switch (_current) {
-                            0 => _appearance(settings, hairline),
-                            1 => _writing(settings, state, hairline),
+                            0 => _appearance(settings, fontService, hairline),
+                            1 => _writing(settings, state, fontService, hairline),
                             2 => _sync(settings, state, hairline),
                             3 => _ai(settings, hairline),
                             _ => _data(settings, hairline),
@@ -199,7 +202,20 @@ class _SettingsDialogState extends State<SettingsDialog> {
     );
   }
 
-  List<Widget> _appearance(SettingsController s, Color hairline) {
+  /// 内置字体 + 已导入字体（family 即显示名）。
+  List<FontOption> _fontOptions(FontService fontService) {
+    return [
+      ...appFontOptions,
+      for (final f in fontService.fonts) FontOption(f.family, f.family),
+    ];
+  }
+
+  List<Widget> _appearance(
+    SettingsController s,
+    FontService fontService,
+    Color hairline,
+  ) {
+    final fontOptions = _fontOptions(fontService);
     return [
       _group(
         hairline,
@@ -219,26 +235,29 @@ class _SettingsDialogState extends State<SettingsDialog> {
             ),
           ),
           // 主题预览：一行横向排列；滚轮上下滚动与按住拖动均转为左右滑动。
-          Listener(
-            onPointerSignal: _themeWheel,
-            child: GestureDetector(
-              onHorizontalDragUpdate: _themeDragUpdate,
-              child: SingleChildScrollView(
-                controller: _themeScroll,
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-                child: Row(
-                  children: [
-                    for (final theme in AppTheme.values)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 12),
-                        child: _ThemePreviewCard(
-                          theme: theme,
-                          selected: s.theme == theme,
-                          onTap: () => s.setTheme(theme),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Listener(
+              onPointerSignal: _themeWheel,
+              child: GestureDetector(
+                onHorizontalDragUpdate: _themeDragUpdate,
+                child: SingleChildScrollView(
+                  controller: _themeScroll,
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                  child: Row(
+                    children: [
+                      for (final theme in AppTheme.values)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 12),
+                          child: _ThemePreviewCard(
+                            theme: theme,
+                            selected: s.theme == theme,
+                            onTap: () => s.setTheme(theme),
+                          ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -247,9 +266,23 @@ class _SettingsDialogState extends State<SettingsDialog> {
       ),
       const SizedBox(height: 12),
       _group(hairline, [
+        ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+          title: const Text('导入字体', style: TextStyle(fontSize: 14)),
+          subtitle: const Text(
+            '导入 ttf / otf 字体文件，界面与正文均可选用',
+            style: TextStyle(fontSize: 12),
+          ),
+          trailing: _actionIcon(Icons.upload_file),
+          onTap: _importFont,
+        ),
+      ]),
+      const SizedBox(height: 12),
+      _group(hairline, [
         _dropdownRow(
           title: '界面字体',
           value: s.uiFontFamily,
+          options: fontOptions,
           onChanged: (v) => s.setUiFontFamily(v),
         ),
         _divider(hairline),
@@ -269,12 +302,18 @@ class _SettingsDialogState extends State<SettingsDialog> {
     ];
   }
 
-  List<Widget> _writing(SettingsController s, AppState state, Color hairline) {
+  List<Widget> _writing(
+    SettingsController s,
+    AppState state,
+    FontService fontService,
+    Color hairline,
+  ) {
     return [
       _group(hairline, [
         _dropdownRow(
           title: '正文字体',
           value: s.editorFontFamily,
+          options: _fontOptions(fontService),
           onChanged: (v) => s.setEditorFontFamily(v),
         ),
         _divider(hairline),
@@ -625,16 +664,24 @@ class _SettingsDialogState extends State<SettingsDialog> {
         children: [
           SizedBox(
             width: _rowLabelWidth,
-            child: Text(title),
+            child: Text(
+              title,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.fade,
+            ),
           ),
           Expanded(
-            child: SizedBox(
-              height: 28,
-              child: SliderTheme(
-                data: SliderTheme.of(
-                  context,
-                ).copyWith(trackShape: const _FullWidthTrackShape()),
-                child: slider,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: SizedBox(
+                height: 28,
+                child: SliderTheme(
+                  data: SliderTheme.of(
+                    context,
+                  ).copyWith(trackShape: const _FullWidthTrackShape()),
+                  child: slider,
+                ),
               ),
             ),
           ),
@@ -667,13 +714,14 @@ class _SettingsDialogState extends State<SettingsDialog> {
   Widget _dropdownRow({
     required String title,
     required String value,
+    required List<FontOption> options,
     required ValueChanged<String> onChanged,
   }) {
     final scheme = Theme.of(context).colorScheme;
     final isLight = Theme.of(context).brightness == Brightness.light;
-    final current = appFontOptions.firstWhere(
+    final current = options.firstWhere(
       (f) => f.family == value,
-      orElse: () => appFontOptions.first,
+      orElse: () => options.first,
     );
     final hairlineStrong = isLight
         ? const Color(0x2E000000)
@@ -699,8 +747,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                     target: box,
                     initialValue: value,
                     entries: [
-                      for (final f in appFontOptions)
-                        AppMenuItem(f.family, f.label),
+                      for (final f in options) AppMenuItem(f.family, f.label),
                     ],
                   );
                   if (picked != null) onChanged(picked);
@@ -708,8 +755,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
                   height: 36,
-                  width: 88,
-                  alignment: Alignment.center,
+                  constraints: const BoxConstraints(minWidth: 88),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: hairlineStrong),
@@ -719,6 +766,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
                     children: [
                       Text(
                         current.label,
+                        maxLines: 1,
+                        softWrap: false,
                         style: const TextStyle(fontSize: 13),
                       ),
                       const SizedBox(width: 4),
@@ -893,6 +942,19 @@ class _SettingsDialogState extends State<SettingsDialog> {
     );
     if (mounted) {
       showToast(context, '词库更新成功（共 ${scanner.words.length} 词）');
+    }
+  }
+
+  /// 导入字体：选文件 → 复制到数据目录并注册，导入后即可在字体下拉中选用。
+  Future<void> _importFont() async {
+    final path = await FileIO.pickFilePath(ext: ['ttf', 'otf']);
+    if (path == null) return;
+    try {
+      await FontService.instance.importFont(path);
+      if (mounted) showToast(context, '字体导入成功');
+    } catch (e) {
+      Logger.error('字体导入失败', error: e, tag: 'Settings');
+      if (mounted) showToast(context, '字体导入失败：$e');
     }
   }
 

@@ -11,6 +11,7 @@ import 'data/db.dart';
 import 'data/repositories.dart';
 import 'services/autosave_service.dart';
 import 'services/durability_service.dart';
+import 'services/font_service.dart';
 import 'services/logger.dart';
 import 'services/session_stats.dart';
 import 'services/sync/sync_engine.dart';
@@ -101,11 +102,14 @@ Future<void> _bootstrap() async {
   );
 
   await appState.purgeExpiredRecycle();
+  await FontService.instance.registerAll();
 
   if (Platform.isWindows) {
     await windowManager.ensureInitialized();
     const options = WindowOptions(titleBarStyle: TitleBarStyle.hidden);
     await windowManager.waitUntilReadyToShow(options, () async {
+      // 统计页宽布局阈值为 960，最小宽取 960；高度不足时统计页内部可滚动。
+      await windowManager.setMinimumSize(const Size(960, 680));
       await windowManager.show();
       await windowManager.focus();
     });
@@ -116,6 +120,7 @@ Future<void> _bootstrap() async {
   runApp(MultiProvider(
     providers: [
       ChangeNotifierProvider<SettingsController>.value(value: settings),
+      ChangeNotifierProvider<FontService>.value(value: FontService.instance),
       ChangeNotifierProvider<AppState>.value(value: appState),
     ],
     child: AppRoot(),

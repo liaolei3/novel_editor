@@ -5,7 +5,7 @@ import '../core/utils/text_stats.dart';
 import '../ui/app_theme.dart';
 
 /// 设置控制器（9.8 设置页）：
-/// 主题（玻璃拟态/黏土拟态/有机自然/活力涂鸦）、字体大小、行距、自动保存频率、每日目标、AI 配置、同步开关。
+/// 主题（玻璃拟态/有机自然/活力涂鸦）、字体大小、行距、自动保存频率、每日目标、AI 配置、同步开关。
 /// 配置持久化在数据目录的 config.json 中，随数据目录一起迁移。
 class SettingsController extends ChangeNotifier {
   SettingsController(this._cfg);

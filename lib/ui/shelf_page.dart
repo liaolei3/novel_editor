@@ -93,7 +93,7 @@ class _ShelfPageState extends State<ShelfPage> {
   }
 }
 
-/// 左侧导航项：悬停浅高亮；选中用品牌色浅底，蛋黄派保持米底木框。
+/// 左侧导航项：悬停浅高亮；选中用品牌色浅底。
 class _SideNavItem extends StatefulWidget {
   const _SideNavItem({
     required this.icon,
@@ -313,31 +313,36 @@ class _ShelfBodyState extends State<_ShelfBody> {
 
   Widget _toolbar(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final scale = context.watch<SettingsController>().uiScale;
+    final btnHeight = 38 * scale;
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 4),
       child: Row(
         children: [
           ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 280),
-            child: TextField(
-              controller: _searchController,
-              onChanged: (_) => setState(() {}),
-              style: const TextStyle(fontSize: 13),
-              decoration: InputDecoration(
-                isDense: true,
-                hintText: '搜索书名或作者',
-                prefixIcon: Icon(Icons.search, size: 18,
-                    color: scheme.onSurfaceVariant),
-                prefixIconConstraints:
-                    const BoxConstraints(minWidth: 38, minHeight: 38),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                filled: true,
-                fillColor: scheme.surfaceContainerHighest
-                    .withValues(alpha: 0.45),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide.none,
+            constraints: BoxConstraints(maxWidth: 280 * scale),
+            child: SizedBox(
+              height: btnHeight,
+              child: TextField(
+                controller: _searchController,
+                onChanged: (_) => setState(() {}),
+                style: const TextStyle(fontSize: 13),
+                decoration: InputDecoration(
+                  isDense: true,
+                  hintText: '搜索书名或作者',
+                  prefixIcon: Icon(Icons.search,
+                      size: 18 * scale, color: scheme.onSurfaceVariant),
+                  prefixIconConstraints: BoxConstraints(
+                      minWidth: 38 * scale, minHeight: btnHeight),
+                  contentPadding: EdgeInsets.symmetric(
+                      horizontal: 12 * scale, vertical: 10 * scale),
+                  filled: true,
+                  fillColor: scheme.surfaceContainerHighest
+                      .withValues(alpha: 0.45),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10 * scale),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
               ),
             ),
@@ -345,21 +350,21 @@ class _ShelfBodyState extends State<_ShelfBody> {
           const SizedBox(width: 12),
           FilledButton.tonalIcon(
             onPressed: () => _importBook(context),
-            icon: const Icon(Icons.file_download_outlined, size: 18),
+            icon: Icon(Icons.file_download_outlined, size: 18 * scale),
             label: const Text('导入书籍', style: TextStyle(fontSize: 13)),
             style: FilledButton.styleFrom(
-              fixedSize: const Size.fromHeight(38),
-              padding: const EdgeInsets.symmetric(horizontal: 14),
+              fixedSize: Size.fromHeight(btnHeight),
+              padding: EdgeInsets.symmetric(horizontal: 14 * scale),
             ),
           ),
           const SizedBox(width: 10),
           FilledButton.icon(
             onPressed: () => _createBook(context),
-            icon: const Icon(Icons.add, size: 18),
+            icon: Icon(Icons.add, size: 18 * scale),
             label: const Text('新增书籍', style: TextStyle(fontSize: 13)),
             style: FilledButton.styleFrom(
-              fixedSize: const Size.fromHeight(38),
-              padding: const EdgeInsets.symmetric(horizontal: 14),
+              fixedSize: Size.fromHeight(btnHeight),
+              padding: EdgeInsets.symmetric(horizontal: 14 * scale),
             ),
           ),
         ],

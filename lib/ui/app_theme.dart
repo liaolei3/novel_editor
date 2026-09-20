@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 
-/// 应用主题（四选一，顺序即设置里的展示顺序）。
-enum AppTheme { nature, glass, clay, chaos }
+/// 应用主题（三选一，顺序即设置里的展示顺序）。
+enum AppTheme { nature, glass, chaos }
 
 /// 主题中文名（设置展示、提示共用）。
 String appThemeLabel(AppTheme theme) => switch (theme) {
       AppTheme.glass => '玻璃拟态',
-      AppTheme.clay => '黏土拟态',
       AppTheme.nature => '有机自然',
       AppTheme.chaos => '活力涂鸦',
     };
@@ -23,10 +22,10 @@ class TintedCardStyle {
     required this.body,
   });
 
-  /// 卡片底色（黏土主题为渐变起点）。
+  /// 卡片底色。
   final Color background;
 
-  /// 底色渐变终点（仅黏土主题使用）。
+  /// 底色渐变终点（仅活力涂鸦主题使用）。
   final Color? backgroundEnd;
 
   /// 角落装饰色块（null 不绘制）。
@@ -148,70 +147,6 @@ AppThemeSpec appThemeSpec(AppTheme theme) => switch (theme) {
           ],
           featureCardRadius: 16,
         ),
-      AppTheme.clay => const AppThemeSpec(
-          brightness: Brightness.light,
-          // #09 黏土拟态：粉蓝奶油底 + 白边黏土面板。
-          background: Color(0xFFFBF7F6),
-          backgroundGradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFFFEF3F2), Color(0xFFF0F9FF)],
-          ),
-          panel: Colors.white,
-          panelAlt: Color(0xFFF6EFEA),
-          surfaceOpaque: Colors.white,
-          inputFill: Color(0xFFF3ECEA),
-          hairline: Color(0xFFEBE0DC),
-          border: Color(0xFFEFE4E0),
-          borderStrong: Color(0xFFE9D5CE),
-          borderWidth: 1.5,
-          cardRadius: 20,
-          buttonRadius: 16,
-          text: Color(0xFF44403C),
-          textDim: Color(0xFF8A8078),
-          primary: Color(0xFFF0988E),
-          onPrimary: Color(0xFF5C2E29),
-          accent: Color(0xFF9BC5D9),
-          onAccent: Color(0xFF223A46),
-          error: Color(0xFFE2574C),
-          onError: Colors.white,
-          // #09 卡片：四色黏土（渐变底 + 厚偏移投影由 TintedCard 绘制）。
-          cardTints: [
-            TintedCardStyle(
-              background: Color(0xFFFDBCB4),
-              backgroundEnd: Color(0xFFF5A69C),
-              chip: Colors.white,
-              onChip: Color(0xFF44403C),
-              title: Color(0xFF44403C),
-              body: Color(0xFF6E655C),
-            ),
-            TintedCardStyle(
-              background: Color(0xFFADD8E6),
-              backgroundEnd: Color(0xFF9BC5D9),
-              chip: Colors.white,
-              onChip: Color(0xFF44403C),
-              title: Color(0xFF44403C),
-              body: Color(0xFF6E655C),
-            ),
-            TintedCardStyle(
-              background: Color(0xFF98FF98),
-              backgroundEnd: Color(0xFF88EF88),
-              chip: Colors.white,
-              onChip: Color(0xFF44403C),
-              title: Color(0xFF44403C),
-              body: Color(0xFF6E655C),
-            ),
-            TintedCardStyle(
-              background: Color(0xFFE6E6FA),
-              backgroundEnd: Color(0xFFD6D6EA),
-              chip: Colors.white,
-              onChip: Color(0xFF44403C),
-              title: Color(0xFF44403C),
-              body: Color(0xFF6E655C),
-            ),
-          ],
-          featureCardRadius: 24,
-        ),
       AppTheme.nature => const AppThemeSpec(
           brightness: Brightness.light,
           // #42 有机自然：米色大地底 + 苔绿主色。
@@ -234,21 +169,95 @@ AppThemeSpec appThemeSpec(AppTheme theme) => switch (theme) {
           onAccent: Color(0xFF24301E),
           error: Color(0xFFB0533C),
           onError: Colors.white,
-          // #42 卡片：米/绿/沙三色 + 角落有机色块 + 叶形图标章。
+          // #42 卡片：莫奈花园浅色系 ×10，色相均匀分布，角落有机色块 + 叶形图标章。
           cardTints: [
             TintedCardStyle(
-              background: Color(0xFFE8E0D0),
-              blob: Color(0x80D4E4C1),
-              chip: Color(0xFF8FBC8F),
+              // 暖沙色
+              background: Color(0xFFEDE2D0),
+              blob: Color(0x4DDCC8A0),
+              chip: Color(0xFFB89A6E),
               onChip: Colors.white,
               title: Color(0xFF3E4A32),
               body: Color(0xFF5D6B4D),
             ),
             TintedCardStyle(
-              background: Color(0xFFD4E4C1),
-              blob: Color(0x4D8FBC8F),
-              chip: Color(0xFF5D6B4D),
-              onChip: Color(0xFFF5F1E8),
+              // 蔷薇粉
+              background: Color(0xFFEED4D8),
+              blob: Color(0x4DDCB0B8),
+              chip: Color(0xFFC07B84),
+              onChip: Colors.white,
+              title: Color(0xFF3E4A32),
+              body: Color(0xFF5D6B4D),
+            ),
+            TintedCardStyle(
+              // 金盏橘
+              background: Color(0xFFF0D8C0),
+              blob: Color(0x4DE0B88A),
+              chip: Color(0xFFC49660),
+              onChip: Colors.white,
+              title: Color(0xFF3E4A32),
+              body: Color(0xFF5D6B4D),
+            ),
+            TintedCardStyle(
+              // 含羞草黄
+              background: Color(0xFFF1EBC4),
+              blob: Color(0x4DE4D68C),
+              chip: Color(0xFFC4B458),
+              onChip: Colors.white,
+              title: Color(0xFF3E4A32),
+              body: Color(0xFF5D6B4D),
+            ),
+            TintedCardStyle(
+              // 睡莲绿
+              background: Color(0xFFD1E6D4),
+              blob: Color(0x4DA3D4A8),
+              chip: Color(0xFF6BA878),
+              onChip: Colors.white,
+              title: Color(0xFF3E4A32),
+              body: Color(0xFF5D6B4D),
+            ),
+            TintedCardStyle(
+              // 薄荷蓝
+              background: Color(0xFFCDE2E8),
+              blob: Color(0x4D9ECCD8),
+              chip: Color(0xFF689CB0),
+              onChip: Colors.white,
+              title: Color(0xFF3E4A32),
+              body: Color(0xFF5D6B4D),
+            ),
+            TintedCardStyle(
+              // 晴空蓝
+              background: Color(0xFFD2DAEF),
+              blob: Color(0x4DA8B4E0),
+              chip: Color(0xFF6E80B8),
+              onChip: Colors.white,
+              title: Color(0xFF3E4A32),
+              body: Color(0xFF5D6B4D),
+            ),
+            TintedCardStyle(
+              // 鸢尾紫
+              background: Color(0xFFDDD2EF),
+              blob: Color(0x4DB8A8E0),
+              chip: Color(0xFF8E78C0),
+              onChip: Colors.white,
+              title: Color(0xFF3E4A32),
+              body: Color(0xFF5D6B4D),
+            ),
+            TintedCardStyle(
+              // 薰衣草粉
+              background: Color(0xFFEDD6F0),
+              blob: Color(0x4DD8B0E4),
+              chip: Color(0xFFB878C0),
+              onChip: Colors.white,
+              title: Color(0xFF3E4A32),
+              body: Color(0xFF5D6B4D),
+            ),
+            TintedCardStyle(
+              // 月白
+              background: Color(0xFFE8E6DA),
+              blob: Color(0x4DD8D4C0),
+              chip: Color(0xFFB0AC8C),
+              onChip: Colors.white,
               title: Color(0xFF3E4A32),
               body: Color(0xFF5D6B4D),
             ),

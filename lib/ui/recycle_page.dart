@@ -9,7 +9,6 @@ import '../../core/utils/text_stats.dart';
 import '../../state/app_state.dart';
 import '../../state/settings_controller.dart';
 import 'app_root.dart';
-import 'app_theme.dart';
 import 'common/book_cover.dart';
 import 'widgets/toast.dart';
 import 'widgets/window_controls.dart';
@@ -200,7 +199,6 @@ class _ShelfRecycleBody extends StatelessWidget {
                   itemCount: items.length,
                   itemBuilder: (ctx, i) => _ShelfRecycleCard(
                     item: items[i],
-                    tintIndex: i,
                     onRestore: () => onRestore(items[i]),
                     onPurge: () => onPurge(items[i]),
                   ),
@@ -211,21 +209,17 @@ class _ShelfRecycleBody extends StatelessWidget {
   }
 }
 
-/// 回收站书籍卡片：复刻书架封面样式（默认封面取主题色板），底部加删除信息条，hover 浮现恢复/彻底删除。
+/// 回收站书籍卡片：复刻书架封面样式，底部加删除信息条，hover 浮现恢复/彻底删除。
 class _ShelfRecycleCard extends StatefulWidget {
   const _ShelfRecycleCard({
     required this.item,
     required this.onRestore,
     required this.onPurge,
-    this.tintIndex = 0,
   });
 
   final RecycleItem item;
   final VoidCallback onRestore;
   final VoidCallback onPurge;
-
-  /// 无自定义封面时按索引轮换主题色板。
-  final int tintIndex;
 
   @override
   State<_ShelfRecycleCard> createState() => _ShelfRecycleCardState();
@@ -253,8 +247,6 @@ class _ShelfRecycleCardState extends State<_ShelfRecycleCard> {
   Widget build(BuildContext context) {
     final item = widget.item;
     final scheme = Theme.of(context).colorScheme;
-    final spec = appThemeSpec(context.watch<SettingsController>().theme);
-    final tint = spec.cardTints[widget.tintIndex % spec.cardTints.length];
     final radius = 8.0;
     final hasCustom = _coverImage != null;
     final daysLeft = item.expireAt
@@ -300,8 +292,8 @@ class _ShelfRecycleCardState extends State<_ShelfRecycleCard> {
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          tint.background,
-                          tint.backgroundEnd ?? tint.background,
+                          scheme.surfaceContainerHighest,
+                          scheme.surfaceContainer,
                         ],
                       ),
                     ),
@@ -429,7 +421,7 @@ class _ShelfRecycleCardState extends State<_ShelfRecycleCard> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 10.5,
+                        fontSize: 9.5,
                         letterSpacing: 0.3,
                         color: hasCustom
                             ? Colors.white.withAlpha(230)

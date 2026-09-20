@@ -225,7 +225,8 @@ class _OutlinePanelState extends State<OutlinePanel> {
   Widget _volumeGrid(List<Chapter> list) {
     return LayoutBuilder(builder: (ctx, constraints) {
       final width = constraints.maxWidth;
-      final columns = (width ~/ 190).clamp(1, 4);
+      // 每列最小 220px，面板过窄时自动减少列数。
+      final columns = (width ~/ 220).clamp(1, 4);
       return GridView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
@@ -235,7 +236,8 @@ class _OutlinePanelState extends State<OutlinePanel> {
           crossAxisCount: columns,
           mainAxisSpacing: 6,
           crossAxisSpacing: 6,
-          mainAxisExtent: 180,
+          // 150% 界面缩放下 16px 内边距 + 标题行 + 5 行大纲约需 211px，取 216 防溢出。
+          mainAxisExtent: 216,
         ),
         itemBuilder: (ctx, i) => _OutlineCard(
           chapter: list[i],
@@ -281,6 +283,7 @@ class _OutlinePanelState extends State<OutlinePanel> {
           borderRadius: BorderRadius.circular(6),
         ),
         padding: const EdgeInsets.fromLTRB(4, 6, 4, 6),
+        margin: const EdgeInsets.only(bottom: 4),
         child: Row(
           children: [
             AnimatedRotation(
@@ -385,7 +388,7 @@ class _OutlineCardState extends State<_OutlineCard> {
       child: TintedCard(
         emphasized: false,
         tintIndex: widget.tintIndex,
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
         onTap: widget.onTap,
         child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

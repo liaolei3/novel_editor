@@ -186,7 +186,7 @@ class _StatsViewState extends State<StatsView> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SizedBox(height: 570, child: _chartCard(context, bundle)),
+                    SizedBox(height: 700, child: _chartCard(context, bundle)),
                     const SizedBox(height: 8),
                     _footnote(context, settings),
                   ],
@@ -194,7 +194,7 @@ class _StatsViewState extends State<StatsView> {
               ),
               const SizedBox(width: 16),
               Expanded(
-                child: SizedBox(height: 570, child: _calendarCard(context)),
+                child: SizedBox(height: 700, child: _calendarCard(context)),
               ),
             ],
           ),
@@ -324,8 +324,11 @@ class _StatsViewState extends State<StatsView> {
               ],
             ),
             const SizedBox(height: 14),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 16,
+              runSpacing: 10,
               children: [bigNumber, ...stats],
             ),
           ],
@@ -1092,7 +1095,7 @@ class _MonthGrid extends StatelessWidget {
   final DateTime month;
   final Map<int, WriteRecord> recordsByDay;
 
-  static const _cellHeight = 62.0;
+  static const _cellHeight = 80.0;
 
   // 数字着色与底色分档：底色极淡，信息靠数字颜色深浅。
   static const _heatAlphas = [0, 20, 40, 65, 95];
@@ -1207,22 +1210,18 @@ class _MonthGrid extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 3),
-          SizedBox(
-            height: 16,
-            // 11px 小字下逗号分隔符渲染不清，日历格直接显示纯数字。
-            child: chars > 0
-                ? Text(
-                    chars >= 10000
-                        ? '${(chars / 10000).toStringAsFixed(1)}万'
-                        : '$chars',
-                    style: textTheme.bodySmall?.copyWith(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: scheme.primary.withAlpha(_numAlphas[level]),
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
-                  )
-                : null,
+          Text(
+            chars > 0 ? _fmtInt(chars) : '',
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.fade,
+            style: textTheme.bodySmall?.copyWith(
+              fontSize: 11,
+              height: 1.1,
+              fontWeight: FontWeight.w600,
+              color: scheme.primary.withAlpha(_numAlphas[level]),
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
           ),
         ],
       ),

@@ -535,7 +535,8 @@ class _ForeshadowPanelState extends State<ForeshadowPanel> {
   /// 伏笔网格视图：竖向卡片，高度与大纲网格一致（180px）。
   Widget _buildGrid(ColorScheme scheme) {
     return LayoutBuilder(builder: (ctx, constraints) {
-      final columns = (constraints.maxWidth ~/ 180).clamp(1, 4);
+      // 每列最小 220px，面板过窄时自动减少列数。
+      final columns = (constraints.maxWidth ~/ 220).clamp(1, 4);
       return GridView.builder(
         padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
         itemCount: _filtered.length,
@@ -543,7 +544,7 @@ class _ForeshadowPanelState extends State<ForeshadowPanel> {
           crossAxisCount: columns,
           mainAxisSpacing: 6,
           crossAxisSpacing: 6,
-          mainAxisExtent: 240,
+          mainAxisExtent: 280,
         ),
         itemBuilder: (ctx, i) => _ForeshadowGridCell(
           foreshadow: _filtered[i],
@@ -824,12 +825,13 @@ class _ForeshadowGridCellState extends State<_ForeshadowGridCell> {
         ? '${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}'
         : '${t.year}-${two(t.month)}-${two(t.day)}';
     return MouseRegion(
+      cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: TintedCard(
         emphasized: false,
         tintIndex: widget.tintIndex,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        padding: const EdgeInsets.all(16),
         onTap: widget.onTap,
         child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -956,6 +958,7 @@ class _ForeshadowCardState extends State<_ForeshadowCard> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: MouseRegion(
+        cursor: SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hover = true),
         onExit: (_) => setState(() => _hover = false),
         child: TintedCard(

@@ -1,3 +1,5 @@
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -5,11 +7,10 @@ import '../../state/settings_controller.dart';
 import '../app_theme.dart';
 
 /// 主题特征卡片：无边框彩底，各主题按其设计稿呈现不同形态——
-/// 有机自然：色底 + 角落有机圆块 + 叶形图标章；
-/// 黏土拟态：四色渐变 + 白描边 + 厚偏移投影；
+/// 有机自然：磨砂色底（半透明 + 背景模糊）+ 角落有机圆块 + 叶形图标章；
 /// 玻璃拟态：半透明白玻璃 + 细白描边；
 /// 活力涂鸦：霓虹纯色 + 轻旋转 + 硬贴纸投影（弱化时转幽灵卡）。
-class TintedCard extends StatelessWidget {
+class TintedCard extends StatefulWidget {
   const TintedCard({
     super.key,
     this.tintIndex = 0,
@@ -45,41 +46,34 @@ class TintedCard extends StatelessWidget {
   }
 
   @override
+  State<TintedCard> createState() => _TintedCardState();
+}
+
+class _TintedCardState extends State<TintedCard> {
+  bool _hovering = false;
+
+  @override
   Widget build(BuildContext context) {
+    final widget = this.widget;
     final theme = context.watch<SettingsController>().theme;
     final spec = appThemeSpec(theme);
-    final tint = spec.cardTints[tintIndex % spec.cardTints.length];
+    final tint = spec.cardTints[widget.tintIndex % spec.cardTints.length];
 
     final BorderRadius radius = BorderRadius.circular(
-      emphasized ? spec.featureCardRadius : spec.cardRadius,
+      widget.emphasized ? spec.featureCardRadius : spec.cardRadius,
     );
 
     BoxDecoration decoration = switch (theme) {
       AppTheme.nature => BoxDecoration(
-          color: tint.background,
+          color: tint.background.withValues(alpha: 0.72),
           borderRadius: radius,
-        ),
-      AppTheme.clay => BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [tint.background, tint.backgroundEnd ?? tint.background],
-          ),
-          borderRadius: radius,
-          border: Border.all(color: const Color(0x80FFFFFF), width: 3),
-          boxShadow: [
-            BoxShadow(
-              offset: emphasized ? const Offset(8, 8) : const Offset(5, 5),
-              color: tint.background.withValues(alpha: emphasized ? 0.5 : 0.35),
-            ),
-          ],
         ),
       AppTheme.glass => BoxDecoration(
           color: tint.background,
           borderRadius: radius,
           border: Border.all(color: const Color(0x33FFFFFF)),
         ),
-      AppTheme.chaos => emphasized
+      AppTheme.chaos => widget.emphasized
           ? BoxDecoration(
               color: tint.background,
               borderRadius: radius,
@@ -99,12 +93,12 @@ class TintedCard extends StatelessWidget {
 
     Widget card = Stack(
       children: [
-        if (emphasized && theme == AppTheme.nature && tint.blob != null)
+        if (widget.emphasized && theme == AppTheme.nature && tint.blob != null)
           Positioned(
-            top: tintIndex.isEven ? -36 : null,
-            left: tintIndex.isEven ? null : -36,
-            right: tintIndex.isEven ? null : -36,
-            bottom: tintIndex.isEven ? null : -36,
+            top: widget.tintIndex.isEven ? -36 : null,
+            left: widget.tintIndex.isEven ? null : -36,
+            right: widget.tintIndex.isEven ? null : -36,
+            bottom: widget.tintIndex.isEven ? null : -36,
             child: Container(
               width: 116,
               height: 116,
@@ -121,29 +115,49 @@ class TintedCard extends StatelessWidget {
             ),
           ),
         Padding(
-          padding: padding,
-          child: child ?? _featureContent(theme, spec, tint),
+          padding: widget.padding,
+          child: widget.child ?? _featureContent(theme, spec, tint),
         ),
       ],
     );
 
-    card = ClipRRect(borderRadius: radius, child: card);
+    // 有机自然磨砂：先模糊卡片下层内容，再叠半透明彩底。
+    card = ClipRRect(
+      borderRadius: radius,
+      child: theme == AppTheme.nature
+          ? BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+              child: card,
+            )
+          : card,
+    );
     card = DecoratedBox(decoration: decoration, child: card);
 
-    // 涂鸦主题特征卡轻旋转（±0.9°），呼应贴纸感。
-    if (emphasized && theme == AppTheme.chaos) {
-      card = Transform.rotate(
-        angle: tintIndex.isEven ? 0.016 : -0.016,
+    // 悬浮时用前景外投影增强层次。
+    // 有机自然卡片底色半透明且经 BackdropFilter 磨砂，BoxShadow 画在卡片
+    // 后面会透出使整卡变暗，因此统一以前景自绘方式绘制，内部抠掉不渗色。
+    if (_hovering) {
+      card = CustomPaint(
+        foregroundPainter: _EdgeShadowPainter(radius: radius),
         child: card,
       );
     }
 
-    if (onTap == null) return card;
+    // 涂鸦主题特征卡轻旋转（±0.9°），呼应贴纸感。
+    if (widget.emphasized && theme == AppTheme.chaos) {
+      card = Transform.rotate(
+        angle: widget.tintIndex.isEven ? 0.016 : -0.016,
+        child: card,
+      );
+    }
+
     return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(borderRadius: radius, onTap: onTap, child: card),
+      cursor: widget.onTap != null ? SystemMouseCursors.click : MouseCursor.defer,
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: card,
       ),
     );
   }
@@ -162,24 +176,11 @@ class TintedCard extends StatelessWidget {
           bottomRight: const Radius.circular(6),
           bottomLeft: Radius.circular(spec.featureCardRadius - 8),
         ),
-      AppTheme.clay => BorderRadius.circular(16),
       AppTheme.glass => BorderRadius.circular(12),
       AppTheme.chaos => BorderRadius.circular(12),
     };
     final chipDecoration = switch (theme) {
       AppTheme.nature => BoxDecoration(color: tint.chip, borderRadius: chipShape),
-      AppTheme.clay => BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Colors.white, Color(0xFFE6E6E6)],
-          ),
-          borderRadius: chipShape,
-          border: Border.all(color: const Color(0xCCFFFFFF), width: 3),
-          boxShadow: const [
-            BoxShadow(offset: Offset(4, 4), color: Color(0x14000000)),
-          ],
-        ),
       AppTheme.glass => BoxDecoration(
           color: tint.chip,
           borderRadius: chipShape,
@@ -192,18 +193,18 @@ class TintedCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (icon != null)
+        if (widget.icon != null)
           Container(
             width: 46,
             height: 46,
             decoration: chipDecoration,
             alignment: Alignment.center,
-            child: Icon(icon, size: 22, color: tint.onChip),
+            child: Icon(widget.icon, size: 22, color: tint.onChip),
           ),
-        if (title != null) ...[
-          SizedBox(height: icon != null ? 14 : 0),
+        if (widget.title != null) ...[
+          SizedBox(height: widget.icon != null ? 14 : 0),
           Text(
-            title!,
+            widget.title!,
             style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w600,
@@ -212,10 +213,10 @@ class TintedCard extends StatelessWidget {
             ),
           ),
         ],
-        if (subtitle != null) ...[
+        if (widget.subtitle != null) ...[
           const SizedBox(height: 6),
           Text(
-            subtitle!,
+            widget.subtitle!,
             style: TextStyle(
               fontSize: 12.5,
               height: 1.5,
@@ -226,4 +227,36 @@ class TintedCard extends StatelessWidget {
       ],
     );
   }
+}
+
+/// 悬浮外投影：先画模糊填充阴影，再抠掉卡片矩形内部，
+/// 阴影只留在卡片外围——与常规 BoxShadow 视觉一致，但不渗入半透明卡底。
+class _EdgeShadowPainter extends CustomPainter {
+  _EdgeShadowPainter({required this.radius});
+
+  final BorderRadius radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final bounds = (Offset.zero & size).inflate(24);
+    final cardRect = (Offset.zero & size).shift(const Offset(0, 2));
+    final shadowRRect = radius.toRRect(cardRect).inflate(3);
+
+    canvas.saveLayer(bounds, Paint());
+    canvas.drawRRect(
+      shadowRRect,
+      Paint()
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7)
+        ..color = const Color(0x33000000),
+    );
+    // 抠掉卡片本体区域，避免阴影透过半透明底。
+    canvas.drawRRect(
+      radius.toRRect(Offset.zero & size),
+      Paint()..blendMode = BlendMode.dstOut,
+    );
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_EdgeShadowPainter oldDelegate) => oldDelegate.radius != radius;
 }
