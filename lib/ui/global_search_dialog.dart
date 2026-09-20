@@ -115,9 +115,9 @@ class _GlobalSearchDialogState extends State<_GlobalSearchDialog> {
     return Dialog(
       insetPadding: const EdgeInsets.all(48),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 680, maxHeight: 620),
+        constraints: const BoxConstraints(maxWidth: 880, maxHeight: 760),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -140,7 +140,9 @@ class _GlobalSearchDialogState extends State<_GlobalSearchDialog> {
 
   Widget _header(BuildContext context) {
     return Row(children: [
-      Text('全局搜索', style: Theme.of(context).textTheme.titleLarge),
+      Text('全局搜索',
+          style: Theme.of(context).textTheme.titleLarge
+              ?.copyWith(fontSize: 16, fontWeight: FontWeight.w600)),
       const Spacer(),
       IconButton(
         tooltip: '关闭 (Esc)',

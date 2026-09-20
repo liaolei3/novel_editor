@@ -13,6 +13,7 @@ import 'common/file_io.dart';
 import 'login_page.dart';
 import 'recycle_page.dart';
 import 'stats_page.dart';
+import 'widgets/tinted_card.dart' show EdgeShadowPainter;
 import 'widgets/app_bar_nav_actions.dart';
 import 'widgets/toast.dart';
 import 'widgets/window_controls.dart';
@@ -119,8 +120,9 @@ class _SideNavItemState extends State<_SideNavItem> {
     final scheme = Theme.of(context).colorScheme;
     final isLight = Theme.of(context).brightness == Brightness.light;
     final selected = widget.selected;
-    final selectedColor =
-        scheme.primary.withValues(alpha: isLight ? 0.10 : 0.18);
+    final selectedColor = scheme.primary.withValues(
+      alpha: isLight ? 0.10 : 0.18,
+    );
     final hoverColor = isLight
         ? const Color(0x08000000)
         : const Color(0x08FFFFFF);
@@ -305,9 +307,11 @@ class _ShelfBodyState extends State<_ShelfBody> {
     final q = _searchController.text.trim().toLowerCase();
     if (q.isEmpty) return state.bookList;
     return state.bookList
-        .where((b) =>
-            b.title.toLowerCase().contains(q) ||
-            b.penName.toLowerCase().contains(q))
+        .where(
+          (b) =>
+              b.title.toLowerCase().contains(q) ||
+              b.penName.toLowerCase().contains(q),
+        )
         .toList();
   }
 
@@ -330,15 +334,23 @@ class _ShelfBodyState extends State<_ShelfBody> {
                 decoration: InputDecoration(
                   isDense: true,
                   hintText: '搜索书名或作者',
-                  prefixIcon: Icon(Icons.search,
-                      size: 18 * scale, color: scheme.onSurfaceVariant),
+                  prefixIcon: Icon(
+                    Icons.search,
+                    size: 18 * scale,
+                    color: scheme.onSurfaceVariant,
+                  ),
                   prefixIconConstraints: BoxConstraints(
-                      minWidth: 38 * scale, minHeight: btnHeight),
+                    minWidth: 38 * scale,
+                    minHeight: btnHeight,
+                  ),
                   contentPadding: EdgeInsets.symmetric(
-                      horizontal: 12 * scale, vertical: 10 * scale),
+                    horizontal: 12 * scale,
+                    vertical: 10 * scale,
+                  ),
                   filled: true,
-                  fillColor: scheme.surfaceContainerHighest
-                      .withValues(alpha: 0.45),
+                  fillColor: scheme.surfaceContainerHighest.withValues(
+                    alpha: 0.45,
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10 * scale),
                     borderSide: BorderSide.none,
@@ -602,165 +614,169 @@ class _BookCardState extends State<_BookCard> {
           scale: _hovered ? 1.04 : 1,
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOutCubic,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(radius),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withAlpha(_hovered ? 72 : 40),
-                  blurRadius: _hovered ? 16 : 6,
-                  offset: Offset(0, _hovered ? 8 : 3),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(radius),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  // 背景：自定义封面图，或主题色渐变（与页面协调）。
-                  if (hasCustom)
-                    Image(image: _coverImage!, fit: BoxFit.cover)
-                  else
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            scheme.surfaceContainerHighest,
-                            scheme.surfaceContainer,
+          // 书封为半透明白玻璃，BoxShadow 会透过卡底使整卡变暗，
+          // 悬浮投影以前景自绘方式只留外围。
+          child: CustomPaint(
+            foregroundPainter: _hovered
+                ? EdgeShadowPainter(radius: BorderRadius.circular(radius))
+                : null,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(radius),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(radius),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // 背景：自定义封面图，或主题色渐变（与页面协调）。
+                    if (hasCustom)
+                      Image(image: _coverImage!, fit: BoxFit.cover)
+                    else
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              scheme.surfaceContainerHighest,
+                              scheme.surfaceContainer,
+                            ],
+                          ),
+                        ),
+                      ),
+                    // 装饰双线框（仅默认封面，经典书封样式）。
+                    if (!hasCustom) ...[
+                      Positioned.fill(
+                        child: Padding(
+                          padding: const EdgeInsets.all(10.0),
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: scheme.onSurface.withAlpha(70),
+                                width: 1,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned.fill(
+                        child: Padding(
+                          padding: const EdgeInsets.all(14.0),
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: scheme.onSurface.withAlpha(38),
+                                width: 1,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                    // 左侧书脊阴影。
+                    Positioned(
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: 12,
+                      child: const DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                            colors: [Color(0x52000000), Color(0x00000000)],
+                          ),
+                        ),
+                      ),
+                    ),
+                    // 居中书名 + 作者。
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              book.title,
+                              textAlign: TextAlign.center,
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                height: 1.4,
+                                color: hasCustom
+                                    ? Colors.white
+                                    : scheme.onSurface.withAlpha(230),
+                                shadows: hasCustom
+                                    ? const [
+                                        Shadow(
+                                          blurRadius: 6,
+                                          color: Colors.black54,
+                                        ),
+                                        Shadow(
+                                          blurRadius: 14,
+                                          color: Colors.black26,
+                                        ),
+                                      ]
+                                    : null,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            if (!hasCustom) ...[
+                              _ornament(scheme.onSurface.withAlpha(90)),
+                              const SizedBox(height: 8),
+                            ],
+                            Text(
+                              book.penName.isEmpty ? '未署名' : book.penName,
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                letterSpacing: 1,
+                                color: hasCustom
+                                    ? Colors.white70
+                                    : scheme.onSurfaceVariant,
+                                shadows: hasCustom
+                                    ? const [
+                                        Shadow(
+                                          blurRadius: 6,
+                                          color: Colors.black54,
+                                        ),
+                                      ]
+                                    : null,
+                              ),
+                            ),
                           ],
                         ),
                       ),
                     ),
-                  // 装饰双线框（仅默认封面，经典书封样式）。
-                  if (!hasCustom) ...[
-                    Positioned.fill(
-                      child: Padding(
-                        padding: const EdgeInsets.all(10.0),
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              color: scheme.onSurface.withAlpha(70),
-                              width: 1,
+                    // hover 浮现操作按钮（右下角）。
+                    Positioned(
+                      bottom: 8,
+                      right: 8,
+                      child: AnimatedOpacity(
+                        opacity: _hovered ? 1 : 0,
+                        duration: const Duration(milliseconds: 150),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _circleAction(Icons.edit_outlined, '编辑信息', _edit),
+                            const SizedBox(width: 4),
+                            _circleAction(
+                              Icons.delete_outline,
+                              '删除作品',
+                              _delete,
                             ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    Positioned.fill(
-                      child: Padding(
-                        padding: const EdgeInsets.all(14.0),
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              color: scheme.onSurface.withAlpha(38),
-                              width: 1,
-                            ),
-                          ),
+                          ],
                         ),
                       ),
                     ),
                   ],
-                  // 左侧书脊阴影。
-                  Positioned(
-                    left: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: 12,
-                    child: const DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                          colors: [Color(0x52000000), Color(0x00000000)],
-                        ),
-                      ),
-                    ),
-                  ),
-                  // 居中书名 + 作者。
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            book.title,
-                            textAlign: TextAlign.center,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              height: 1.4,
-                              color: hasCustom
-                                  ? Colors.white
-                                  : scheme.onSurface.withAlpha(230),
-                              shadows: hasCustom
-                                  ? const [
-                                      Shadow(
-                                        blurRadius: 6,
-                                        color: Colors.black54,
-                                      ),
-                                      Shadow(
-                                        blurRadius: 14,
-                                        color: Colors.black26,
-                                      ),
-                                    ]
-                                  : null,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          if (!hasCustom) ...[
-                            _ornament(scheme.onSurface.withAlpha(90)),
-                            const SizedBox(height: 8),
-                          ],
-                          Text(
-                            book.penName.isEmpty ? '未署名' : book.penName,
-                            textAlign: TextAlign.center,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 11,
-                              letterSpacing: 1,
-                              color: hasCustom
-                                  ? Colors.white70
-                                  : scheme.onSurfaceVariant,
-                              shadows: hasCustom
-                                  ? const [
-                                      Shadow(
-                                        blurRadius: 6,
-                                        color: Colors.black54,
-                                      ),
-                                    ]
-                                  : null,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  // hover 浮现操作按钮（右下角）。
-                  Positioned(
-                    bottom: 8,
-                    right: 8,
-                    child: AnimatedOpacity(
-                      opacity: _hovered ? 1 : 0,
-                      duration: const Duration(milliseconds: 150),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _circleAction(Icons.edit_outlined, '编辑信息', _edit),
-                          const SizedBox(width: 4),
-                          _circleAction(Icons.delete_outline, '删除作品', _delete),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' show ImageFilter;
 
 import 'package:diff_match_patch/diff_match_patch.dart' as dmp;
 import 'package:flutter/material.dart';
@@ -77,12 +78,28 @@ class _DraggableDialogState extends State<DraggableDialog> {
 
   @override
   Widget build(BuildContext context) {
+    Widget child = KeyedSubtree(key: _childKey, child: widget.child);
+    // 弹窗底色半透明（玻璃拟态）时叠加背景模糊，圆角跟随弹窗 shape。
+    final dialogBg = Theme.of(context).dialogTheme.backgroundColor;
+    if (dialogBg != null && dialogBg.a < 1) {
+      final shape = Theme.of(context).dialogTheme.shape;
+      final radius = shape is RoundedRectangleBorder
+          ? shape.borderRadius
+              .resolve(Directionality.of(context))
+              .topLeft
+              .x
+          : 16.0;
+      child = ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+          child: child,
+        ),
+      );
+    }
     return GestureDetector(
       onPanUpdate: _onPanUpdate,
-      child: Transform.translate(
-        offset: _offset,
-        child: KeyedSubtree(key: _childKey, child: widget.child),
-      ),
+      child: Transform.translate(offset: _offset, child: child),
     );
   }
 }
@@ -610,7 +627,7 @@ class _CompareBodyState extends State<_CompareBody> {
     final insFg = dark ? const Color(0xFF86EFAC) : const Color(0xFF1E6B3A);
 
     return Padding(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -631,7 +648,8 @@ class _CompareBodyState extends State<_CompareBody> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(widget.title,
-                      style: textTheme.titleLarge?.copyWith(fontSize: 24)),
+                      style: textTheme.titleLarge
+                          ?.copyWith(fontSize: 16, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 2),
                   Row(children: [
                     Flexible(
@@ -657,12 +675,6 @@ class _CompareBodyState extends State<_CompareBody> {
                   ]),
                 ],
               ),
-            ),
-            const SizedBox(width: 8),
-            IconButton(
-              icon: const Icon(Icons.close),
-              tooltip: '关闭',
-              onPressed: () => Navigator.pop(context),
             ),
           ]),
           const SizedBox(height: 14),

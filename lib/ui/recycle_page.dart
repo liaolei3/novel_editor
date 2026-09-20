@@ -10,6 +10,7 @@ import '../../state/app_state.dart';
 import '../../state/settings_controller.dart';
 import 'app_root.dart';
 import 'common/book_cover.dart';
+import 'widgets/tinted_card.dart' show EdgeShadowPainter;
 import 'widgets/toast.dart';
 import 'widgets/window_controls.dart';
 
@@ -266,196 +267,196 @@ class _ShelfRecycleCardState extends State<_ShelfRecycleCard> {
         scale: _hovered ? 1.04 : 1,
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOutCubic,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(radius),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withAlpha(_hovered ? 72 : 40),
-                blurRadius: _hovered ? 16 : 6,
-                offset: Offset(0, _hovered ? 8 : 3),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(radius),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                if (hasCustom)
-                  Image(image: _coverImage!, fit: BoxFit.cover)
-                else
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          scheme.surfaceContainerHighest,
-                          scheme.surfaceContainer,
+        // 书封为半透明白玻璃，BoxShadow 会透过卡底使整卡变暗，
+        // 悬浮投影以前景自绘方式只留外围。
+        child: CustomPaint(
+          foregroundPainter: _hovered
+              ? EdgeShadowPainter(radius: BorderRadius.circular(radius))
+              : null,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(radius),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(radius),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (hasCustom)
+                    Image(image: _coverImage!, fit: BoxFit.cover)
+                  else
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            scheme.surfaceContainerHighest,
+                            scheme.surfaceContainer,
+                          ],
+                        ),
+                      ),
+                    ),
+                  // 装饰双线框（仅默认封面，经典书封样式）。
+                  if (!hasCustom) ...[
+                    Positioned.fill(
+                      child: Padding(
+                        padding: const EdgeInsets.all(10.0),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: scheme.onSurface.withAlpha(70),
+                              width: 1,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned.fill(
+                      child: Padding(
+                        padding: const EdgeInsets.all(14.0),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: scheme.onSurface.withAlpha(38),
+                              width: 1,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                  // 左侧书脊阴影。
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: 12,
+                    child: const DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: [Color(0x52000000), Color(0x00000000)],
+                        ),
+                      ),
+                    ),
+                  ),
+                  // 居中书名 + 作者。
+                  Center(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        20,
+                        0,
+                        20,
+                        hasCustom ? 22 : 30,
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _titleOf(item),
+                            textAlign: TextAlign.center,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              height: 1.4,
+                              color: fg,
+                              shadows: hasCustom
+                                  ? const [
+                                      Shadow(
+                                        blurRadius: 6,
+                                        color: Colors.black54,
+                                      ),
+                                      Shadow(
+                                        blurRadius: 14,
+                                        color: Colors.black26,
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          if (!hasCustom) ...[
+                            _ornament(scheme.onSurface.withAlpha(90)),
+                            const SizedBox(height: 8),
+                          ],
+                          Text(
+                            _penOf(item),
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              letterSpacing: 1,
+                              color: subFg,
+                              shadows: hasCustom
+                                  ? const [
+                                      Shadow(
+                                        blurRadius: 6,
+                                        color: Colors.black54,
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                          ),
                         ],
                       ),
                     ),
                   ),
-                // 装饰双线框（仅默认封面，经典书封样式）。
-                if (!hasCustom) ...[
-                  Positioned.fill(
-                    child: Padding(
-                      padding: const EdgeInsets.all(10.0),
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: scheme.onSurface.withAlpha(70),
-                            width: 1,
-                          ),
+                  // 底部删除信息条。
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 5),
+                      color: Colors.black.withAlpha(hasCustom ? 110 : 28),
+                      alignment: Alignment.center,
+                      child: Text(
+                        info,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 9.5,
+                          letterSpacing: 0.3,
+                          color: hasCustom
+                              ? Colors.white.withAlpha(230)
+                              : scheme.onSurfaceVariant,
                         ),
                       ),
                     ),
                   ),
-                  Positioned.fill(
-                    child: Padding(
-                      padding: const EdgeInsets.all(14.0),
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: scheme.onSurface.withAlpha(38),
-                            width: 1,
+                  // hover 浮现操作按钮（右下角，信息条上方）。
+                  Positioned(
+                    bottom: 30,
+                    right: 8,
+                    child: AnimatedOpacity(
+                      opacity: _hovered ? 1 : 0,
+                      duration: const Duration(milliseconds: 150),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _circleAction(
+                            Icons.restore_outlined,
+                            '恢复',
+                            widget.onRestore,
                           ),
-                        ),
+                          const SizedBox(width: 4),
+                          _circleAction(
+                            Icons.delete_forever,
+                            '彻底删除',
+                            widget.onPurge,
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 ],
-                // 左侧书脊阴影。
-                Positioned(
-                  left: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: 12,
-                  child: const DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                        colors: [Color(0x52000000), Color(0x00000000)],
-                      ),
-                    ),
-                  ),
-                ),
-                // 居中书名 + 作者。
-                Center(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      20,
-                      0,
-                      20,
-                      hasCustom ? 22 : 30,
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _titleOf(item),
-                          textAlign: TextAlign.center,
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                            height: 1.4,
-                            color: fg,
-                            shadows: hasCustom
-                                ? const [
-                                    Shadow(
-                                      blurRadius: 6,
-                                      color: Colors.black54,
-                                    ),
-                                    Shadow(
-                                      blurRadius: 14,
-                                      color: Colors.black26,
-                                    ),
-                                  ]
-                                : null,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        if (!hasCustom) ...[
-                          _ornament(scheme.onSurface.withAlpha(90)),
-                          const SizedBox(height: 8),
-                        ],
-                        Text(
-                          _penOf(item),
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11,
-                            letterSpacing: 1,
-                            color: subFg,
-                            shadows: hasCustom
-                                ? const [
-                                    Shadow(
-                                      blurRadius: 6,
-                                      color: Colors.black54,
-                                    ),
-                                  ]
-                                : null,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                // 底部删除信息条。
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 5),
-                    color: Colors.black.withAlpha(hasCustom ? 110 : 28),
-                    alignment: Alignment.center,
-                    child: Text(
-                      info,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 9.5,
-                        letterSpacing: 0.3,
-                        color: hasCustom
-                            ? Colors.white.withAlpha(230)
-                            : scheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                ),
-                // hover 浮现操作按钮（右下角，信息条上方）。
-                Positioned(
-                  bottom: 30,
-                  right: 8,
-                  child: AnimatedOpacity(
-                    opacity: _hovered ? 1 : 0,
-                    duration: const Duration(milliseconds: 150),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _circleAction(
-                          Icons.restore_outlined,
-                          '恢复',
-                          widget.onRestore,
-                        ),
-                        const SizedBox(width: 4),
-                        _circleAction(
-                          Icons.delete_forever,
-                          '彻底删除',
-                          widget.onPurge,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),

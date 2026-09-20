@@ -130,11 +130,12 @@ class _SettingsDialogState extends State<SettingsDialog> {
         : const Color(0x1AFFFFFF);
 
     return AlertDialog(
-      titlePadding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
+      titlePadding: const EdgeInsets.fromLTRB(24, 20, 12, 16),
       contentPadding: EdgeInsets.zero,
       title: Row(
         children: [
-          const Text('设置'),
+          const Text('设置',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
           const Spacer(),
           IconButton(
             icon: const Icon(Icons.close),

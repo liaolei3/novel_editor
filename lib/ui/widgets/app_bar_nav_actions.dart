@@ -13,7 +13,7 @@ class AppBarNavActions extends StatelessWidget {
       children: [
         IconButton(
           tooltip: '设置',
-          icon: const Icon(Icons.settings_outlined),
+          icon: const Icon(Icons.settings_outlined, size: 22),
           onPressed: () => showSettingsDialog(context),
         ),
       ],

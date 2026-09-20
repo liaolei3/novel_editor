@@ -49,6 +49,7 @@ class AppThemeSpec {
     required this.panel,
     required this.panelAlt,
     required this.surfaceOpaque,
+    this.dialogSurface,
     required this.inputFill,
     required this.hairline,
     required this.border,
@@ -84,6 +85,9 @@ class AppThemeSpec {
 
   /// 不透明面板（对话框、菜单——浮在 barrier 上必须自持可读）。
   final Color surfaceOpaque;
+
+  /// 弹窗底色（null 用 surfaceOpaque；半透明时由 DraggableDialog 叠加背景模糊）。
+  final Color? dialogSurface;
   final Color inputFill;
   final Color hairline;
   final Color border;
@@ -109,40 +113,41 @@ class AppThemeSpec {
 
 AppThemeSpec appThemeSpec(AppTheme theme) => switch (theme) {
       AppTheme.glass => const AppThemeSpec(
-          brightness: Brightness.dark,
-          // #03 玻璃拟态：紫粉渐变上的白玻璃。
-          background: Color(0xFF764BA2),
+          brightness: Brightness.light,
+          // #03 玻璃拟态：浅青-米-杏粉渐变上的白玻璃，青灰文字。
+          background: Color(0xFFE4DFD0),
           backgroundGradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF667EEA), Color(0xFF764BA2), Color(0xFFF093FB)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFC5E0E4), Color(0xFFE4DFD0), Color(0xFFFFC8A3)],
           ),
-          panel: Color(0x2EFFFFFF),
-          panelAlt: Color(0x1FFFFFFF),
-          surfaceOpaque: Color(0xFF3E2D63),
-          inputFill: Color(0x26FFFFFF),
-          hairline: Color(0x2EFFFFFF),
-          border: Color(0x33FFFFFF),
-          borderStrong: Color(0x59FFFFFF),
+          panel: Color(0x4DFFFFFF),
+          panelAlt: Color(0x33FFFFFF),
+          surfaceOpaque: Color(0xFFFBF8EF),
+          dialogSurface: Color(0x8CFFFFFF),
+          inputFill: Color(0x40FFFFFF),
+          hairline: Color(0x1F5F898F),
+          border: Color(0x2E5F898F),
+          borderStrong: Color(0x595F898F),
           borderWidth: 1,
           cardRadius: 16,
           buttonRadius: 12,
-          text: Colors.white,
-          textDim: Color(0xB8FFFFFF),
-          primary: Colors.white,
-          onPrimary: Color(0xFF6B3FA0),
-          accent: Color(0xFFF093FB),
-          onAccent: Color(0xFF4A2560),
-          error: Color(0xFFFF8A80),
-          onError: Color(0xFF3B0A0A),
-          // #03 卡片：白玻璃，靠渐变背景透色。
+          text: Color(0xFF5F898F),
+          textDim: Color(0xB85F898F),
+          primary: Color(0xFF5F898F),
+          onPrimary: Colors.white,
+          accent: Color(0xFFFFC8A3),
+          onAccent: Color(0xFF7C4E22),
+          error: Color(0xFFC0564A),
+          onError: Colors.white,
+          // #03 卡片：白玻璃，靠浅色渐变透色。
           cardTints: [
             TintedCardStyle(
-              background: Color(0x26FFFFFF),
-              chip: Color(0x2EFFFFFF),
-              onChip: Colors.white,
-              title: Colors.white,
-              body: Color(0x99FFFFFF),
+              background: Color(0x59FFFFFF),
+              chip: Color(0x4DFFFFFF),
+              onChip: Color(0xFF4E7A80),
+              title: Color(0xFF5F898F),
+              body: Color(0x995F898F),
             ),
           ],
           featureCardRadius: 16,
@@ -381,7 +386,7 @@ ThemeData _buildTheme(AppThemeSpec p, String? fontFamily) {
     error: p.error,
     onError: p.onError,
     // 透明面板下取半透明混合的近似实色，避免下游拿到全透色。
-    surface: isDark ? Color.alphaBlend(p.panel, p.background) : p.panel,
+    surface: Color.alphaBlend(p.panel, p.background),
     onSurface: p.text,
     surfaceContainerHighest: p.panelAlt,
     onSurfaceVariant: p.textDim,
@@ -410,8 +415,14 @@ ThemeData _buildTheme(AppThemeSpec p, String? fontFamily) {
     scaffoldBackgroundColor: scaffoldColor,
     splashFactory: NoSplash.splashFactory,
     dialogTheme: DialogThemeData(
-      backgroundColor: p.surfaceOpaque,
+      backgroundColor: p.dialogSurface ?? p.surfaceOpaque,
       elevation: 6,
+      // 基于 titleLarge 派生以保留 fontFamily，避免弹窗标题回退默认字体。
+      titleTextStyle: base.textTheme.titleLarge?.copyWith(
+        fontSize: 16,
+        fontWeight: FontWeight.w600,
+        color: p.text,
+      ),
       shadowColor: isDark ? const Color(0x66000000) : const Color(0x28000000),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(p.cardRadius),

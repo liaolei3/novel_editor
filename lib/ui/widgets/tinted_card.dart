@@ -138,7 +138,7 @@ class _TintedCardState extends State<TintedCard> {
     // 后面会透出使整卡变暗，因此统一以前景自绘方式绘制，内部抠掉不渗色。
     if (_hovering) {
       card = CustomPaint(
-        foregroundPainter: _EdgeShadowPainter(radius: radius),
+        foregroundPainter: EdgeShadowPainter(radius: radius),
         child: card,
       );
     }
@@ -231,8 +231,8 @@ class _TintedCardState extends State<TintedCard> {
 
 /// 悬浮外投影：先画模糊填充阴影，再抠掉卡片矩形内部，
 /// 阴影只留在卡片外围——与常规 BoxShadow 视觉一致，但不渗入半透明卡底。
-class _EdgeShadowPainter extends CustomPainter {
-  _EdgeShadowPainter({required this.radius});
+class EdgeShadowPainter extends CustomPainter {
+  EdgeShadowPainter({required this.radius});
 
   final BorderRadius radius;
 
@@ -258,5 +258,5 @@ class _EdgeShadowPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_EdgeShadowPainter oldDelegate) => oldDelegate.radius != radius;
+  bool shouldRepaint(EdgeShadowPainter oldDelegate) => oldDelegate.radius != radius;
 }

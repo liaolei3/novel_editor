@@ -1054,7 +1054,7 @@ class _EditorAreaState extends State<EditorArea> {
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 1040, maxHeight: 780),
                 child: Padding(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(24),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -1075,8 +1075,9 @@ class _EditorAreaState extends State<EditorArea> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text('一键排版预览',
-                                  style: textTheme.titleLarge
-                                      ?.copyWith(fontSize: 24)),
+                                  style: textTheme.titleLarge?.copyWith(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600)),
                               const SizedBox(height: 2),
                               Text(
                                 '排版作用于纯文本，应用后富文本格式将被重置；如需撤销请前往「历史快照」。',
@@ -1086,11 +1087,6 @@ class _EditorAreaState extends State<EditorArea> {
                               ),
                             ],
                           ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close),
-                          tooltip: '关闭',
-                          onPressed: () => Navigator.pop(ctx, false),
                         ),
                       ]),
                       const SizedBox(height: 14),
