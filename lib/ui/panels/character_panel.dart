@@ -6,6 +6,7 @@ import '../../state/app_state.dart';
 import '../../state/settings_controller.dart';
 import '../app_root.dart';
 import '../common/dialogs.dart' show DraggableDialog;
+import '../widgets/tinted_card.dart';
 import '../widgets/toast.dart';
 import '../widgets/view_toggle.dart';
 
@@ -357,7 +358,7 @@ class _CharacterPanelState extends State<CharacterPanel> {
                     : ListView.builder(
                         padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
                         itemCount: _filtered.length,
-                        itemBuilder: (ctx, i) => _buildCard(_filtered[i], scheme),
+        itemBuilder: (ctx, i) => _buildCard(_filtered[i], scheme, i),
                       ),
       ),
     ]);
@@ -380,6 +381,7 @@ class _CharacterPanelState extends State<CharacterPanel> {
           char: _filtered[i],
           avatarAsset: _avatarAsset(_filtered[i].gender),
           typeLabel: _typeLabels[_filtered[i].type] ?? '',
+          tintIndex: i,
           onTap: () => _openDetail(_filtered[i]),
           onDelete: () => _deleteFromList(_filtered[i]),
         ),
@@ -387,11 +389,12 @@ class _CharacterPanelState extends State<CharacterPanel> {
     });
   }
 
-  Widget _buildCard(Character char, ColorScheme scheme) {
+  Widget _buildCard(Character char, ColorScheme scheme, int tintIndex) {
     return _CharacterCard(
       char: char,
       avatarAsset: _avatarAsset(char.gender),
       typeLabel: _typeLabels[char.type] ?? '',
+      tintIndex: tintIndex,
       onTap: () => _openDetail(char),
       onDelete: () => _deleteFromList(char),
     );
@@ -892,6 +895,7 @@ class _CharacterGridCell extends StatefulWidget {
     required this.typeLabel,
     required this.onTap,
     required this.onDelete,
+    this.tintIndex = 0,
   });
 
   final Character char;
@@ -899,6 +903,7 @@ class _CharacterGridCell extends StatefulWidget {
   final String typeLabel;
   final VoidCallback onTap;
   final VoidCallback onDelete;
+  final int tintIndex;
 
   @override
   State<_CharacterGridCell> createState() => _CharacterGridCellState();
@@ -914,27 +919,12 @@ class _CharacterGridCellState extends State<_CharacterGridCell> {
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
-      child: Material(
-        color: _hover
-            ? scheme.surfaceContainerHighest.withValues(alpha: 0.4)
-            : scheme.surface,
-        borderRadius: BorderRadius.circular(10),
-        child: InkWell(
-          mouseCursor: SystemMouseCursors.click,
-          borderRadius: BorderRadius.circular(10),
-          onTap: widget.onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: _hover
-                    ? scheme.outlineVariant
-                    : scheme.outlineVariant.withValues(alpha: 0.6),
-              ),
-            ),
-            child: Column(
+      child: TintedCard(
+        emphasized: false,
+        tintIndex: widget.tintIndex,
+        padding: const EdgeInsets.all(12),
+        onTap: widget.onTap,
+        child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(children: [
@@ -1076,9 +1066,7 @@ class _CharacterGridCellState extends State<_CharacterGridCell> {
                   ),
                 ),
               ],
-            ),
           ),
-        ),
       ),
     );
   }
@@ -1093,7 +1081,7 @@ class _CharacterGridCellState extends State<_CharacterGridCell> {
   }
 }
 
-/// 角色列表卡片：头像 + 姓名 + 类型 + 修改时间，悬浮显示删除。
+/// 角色列表卡片：主题色板彩底（无边框），头像 + 姓名 + 类型 + 修改时间，悬浮显示删除。
 class _CharacterCard extends StatefulWidget {
   const _CharacterCard({
     required this.char,
@@ -1101,6 +1089,7 @@ class _CharacterCard extends StatefulWidget {
     required this.typeLabel,
     required this.onTap,
     required this.onDelete,
+    this.tintIndex = 0,
   });
 
   final Character char;
@@ -1108,6 +1097,7 @@ class _CharacterCard extends StatefulWidget {
   final String typeLabel;
   final VoidCallback onTap;
   final VoidCallback onDelete;
+  final int tintIndex;
 
   @override
   State<_CharacterCard> createState() => _CharacterCardState();
@@ -1125,23 +1115,12 @@ class _CharacterCardState extends State<_CharacterCard> {
       child: MouseRegion(
         onEnter: (_) => setState(() => _hover = true),
         onExit: (_) => setState(() => _hover = false),
-        child: Material(
-          color: _hover ? scheme.surfaceContainerHighest.withValues(alpha: 0.4) : scheme.surface,
-          borderRadius: BorderRadius.circular(10),
-          child: InkWell(
-            mouseCursor: SystemMouseCursors.click,
-            borderRadius: BorderRadius.circular(10),
-            onTap: widget.onTap,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 120),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: _hover ? scheme.outlineVariant : scheme.outlineVariant.withValues(alpha: 0.6),
-                ),
-              ),
-              child: Row(children: [
+        child: TintedCard(
+          emphasized: false,
+          tintIndex: widget.tintIndex,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          onTap: widget.onTap,
+          child: Row(children: [
                 CircleAvatar(
                   radius: 18,
                   backgroundImage: AssetImage(widget.avatarAsset),
@@ -1191,8 +1170,6 @@ class _CharacterCardState extends State<_CharacterCard> {
                       : const SizedBox.shrink(),
                 ),
               ]),
-            ),
-          ),
         ),
       ),
     );

@@ -10,6 +10,7 @@ import '../../state/settings_controller.dart';
 import '../common/dialogs.dart' show DraggableDialog;
 import '../common/foreshadow_dialogs.dart';
 import '../widgets/foreshadow_tip.dart' show foreshadowMarkColor;
+import '../widgets/tinted_card.dart';
 import '../widgets/toast.dart';
 import '../widgets/view_toggle.dart';
 
@@ -522,6 +523,7 @@ class _ForeshadowPanelState extends State<ForeshadowPanel> {
                         itemBuilder: (ctx, i) => _ForeshadowCard(
                           foreshadow: _filtered[i],
                           segmentCount: _segCounts[_filtered[i].id] ?? 0,
+                          tintIndex: i,
                           onTap: () => _openDetail(_filtered[i]),
                           onDelete: () => _deleteForeshadow(_filtered[i]),
                         ),
@@ -546,6 +548,7 @@ class _ForeshadowPanelState extends State<ForeshadowPanel> {
         itemBuilder: (ctx, i) => _ForeshadowGridCell(
           foreshadow: _filtered[i],
           segmentCount: _segCounts[_filtered[i].id] ?? 0,
+          tintIndex: i,
           onTap: () => _openDetail(_filtered[i]),
           onDelete: () => _deleteForeshadow(_filtered[i]),
         ),
@@ -787,19 +790,21 @@ class _UnderlineTab extends StatelessWidget {
   }
 }
 
-/// 伏笔网格卡片：竖向布局，图标 + 状态徽章 + 名称 + 描述 + 片段数/时间。
+/// 伏笔网格卡片：主题色板彩底（无边框），图标 + 状态徽章 + 名称 + 描述 + 片段数/时间。
 class _ForeshadowGridCell extends StatefulWidget {
   const _ForeshadowGridCell({
     required this.foreshadow,
     required this.segmentCount,
     required this.onTap,
     required this.onDelete,
+    this.tintIndex = 0,
   });
 
   final Foreshadow foreshadow;
   final int segmentCount;
   final VoidCallback onTap;
   final VoidCallback onDelete;
+  final int tintIndex;
 
   @override
   State<_ForeshadowGridCell> createState() => _ForeshadowGridCellState();
@@ -821,27 +826,12 @@ class _ForeshadowGridCellState extends State<_ForeshadowGridCell> {
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
-      child: Material(
-        color: _hover
-            ? scheme.surfaceContainerHighest.withValues(alpha: 0.4)
-            : scheme.surface,
-        borderRadius: BorderRadius.circular(10),
-        child: InkWell(
-          mouseCursor: SystemMouseCursors.click,
-          borderRadius: BorderRadius.circular(10),
-          onTap: widget.onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: _hover
-                    ? scheme.outlineVariant
-                    : scheme.outlineVariant.withValues(alpha: 0.6),
-              ),
-            ),
-            child: Column(
+      child: TintedCard(
+        emphasized: false,
+        tintIndex: widget.tintIndex,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        onTap: widget.onTap,
+        child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(children: [
@@ -925,9 +915,7 @@ class _ForeshadowGridCellState extends State<_ForeshadowGridCell> {
                               scheme.onSurfaceVariant.withValues(alpha: 0.7))),
                 ]),
               ],
-            ),
-          ),
-        ),
+      ),
       ),
     );
   }
@@ -939,12 +927,14 @@ class _ForeshadowCard extends StatefulWidget {
     required this.segmentCount,
     required this.onTap,
     required this.onDelete,
+    this.tintIndex = 0,
   });
 
   final Foreshadow foreshadow;
   final int segmentCount;
   final VoidCallback onTap;
   final VoidCallback onDelete;
+  final int tintIndex;
 
   @override
   State<_ForeshadowCard> createState() => _ForeshadowCardState();
@@ -968,28 +958,12 @@ class _ForeshadowCardState extends State<_ForeshadowCard> {
       child: MouseRegion(
         onEnter: (_) => setState(() => _hover = true),
         onExit: (_) => setState(() => _hover = false),
-        child: Material(
-          color: _hover
-              ? scheme.surfaceContainerHighest.withValues(alpha: 0.4)
-              : scheme.surface,
-          borderRadius: BorderRadius.circular(10),
-          child: InkWell(
-            mouseCursor: SystemMouseCursors.click,
-            borderRadius: BorderRadius.circular(10),
-            onTap: widget.onTap,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 120),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: _hover
-                      ? scheme.outlineVariant
-                      : scheme.outlineVariant.withValues(alpha: 0.6),
-                ),
-              ),
-              child: Row(children: [
+        child: TintedCard(
+          emphasized: false,
+          tintIndex: widget.tintIndex,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          onTap: widget.onTap,
+          child: Row(children: [
                 Container(
                   width: 32,
                   height: 32,
@@ -1073,8 +1047,6 @@ class _ForeshadowCardState extends State<_ForeshadowCard> {
                       : const SizedBox.shrink(),
                 ),
               ]),
-            ),
-          ),
         ),
       ),
     );

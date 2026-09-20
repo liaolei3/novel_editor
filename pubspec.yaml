@@ -1,5 +1,5 @@
 name: novel_editor
-description: "NovelEditor - 跨平台小说编辑器 MVP（Windows / Android / iOS）"
+description: "NovelEditor - 跨平台小说编辑器（Windows / Android / iOS）"
 publish_to: "none"
 version: 0.1.0
 

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
@@ -86,12 +87,40 @@ class SettingsDialog extends StatefulWidget {
 class _SettingsDialogState extends State<SettingsDialog> {
   int _current = 0;
 
+  final _themeScroll = ScrollController();
+
+  @override
+  void dispose() {
+    _themeScroll.dispose();
+    super.dispose();
+  }
+
+  /// 鼠标滚轮在主题预览行上转为横向滚动。
+  void _themeWheel(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent) return;
+    final position = _themeScroll.position;
+    final delta = event.scrollDelta.dy;
+    if (delta == 0) return;
+    final next = (position.pixels + delta)
+        .clamp(0.0, position.maxScrollExtent)
+        .toDouble();
+    position.jumpTo(next);
+  }
+
+  /// 按住左右拖动预览行（拖动距离超过阈值时不会误触卡片点击）。
+  void _themeDragUpdate(DragUpdateDetails d) {
+    final position = _themeScroll.position;
+    position.jumpTo(
+      (position.pixels - d.delta.dx)
+          .clamp(0.0, position.maxScrollExtent)
+          .toDouble(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsController>();
     final state = context.watch<AppState>();
-    final isEggPie =
-        context.watch<SettingsController>().theme == AppTheme.eggPie;
     final isLight = Theme.of(context).brightness == Brightness.light;
     final hairline = isLight
         ? const Color(0x1A000000)
@@ -117,11 +146,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
           height: 620,
           child: Column(
             children: [
-              Divider(
-                height: 1,
-                thickness: isEggPie ? 2 : 0.5,
-                color: isEggPie ? const Color(0xFF5B2E0E) : hairline,
-              ),
+              const Divider(height: 1),
               Expanded(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -139,18 +164,13 @@ class _SettingsDialogState extends State<SettingsDialog> {
                               _navItem(
                                 category: _categories[i],
                                 selected: i == _current,
-                                isEggPie: isEggPie,
                                 onTap: () => setState(() => _current = i),
                               ),
                           ],
                         ),
                       ),
                     ),
-                    VerticalDivider(
-                      width: 1,
-                      thickness: isEggPie ? 1 : 0.5,
-                      color: isEggPie ? const Color(0x668A5A2A) : hairline,
-                    ),
+                    const VerticalDivider(width: 1),
                     Expanded(
                       child: ListView(
                         padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
@@ -181,44 +201,50 @@ class _SettingsDialogState extends State<SettingsDialog> {
 
   List<Widget> _appearance(SettingsController s, Color hairline) {
     return [
-      _group(hairline, [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          child: Row(
-            children: [
-              const Expanded(child: Text('主题')),
-              SegmentedButton<AppTheme>(
-                segments: const [
-                  ButtonSegment(
-                    value: AppTheme.light,
-                    icon: Tooltip(
-                      message: '浅色',
-                      child: Icon(Icons.light_mode, size: 16),
-                    ),
-                  ),
-                  ButtonSegment(
-                    value: AppTheme.dark,
-                    icon: Tooltip(
-                      message: '暗色',
-                      child: Icon(Icons.dark_mode, size: 16),
-                    ),
-                  ),
-                  ButtonSegment(
-                    value: AppTheme.eggPie,
-                    icon: Tooltip(
-                      message: '蛋黄派',
-                      child: Icon(Icons.pie_chart, size: 16),
-                    ),
-                  ),
-                ],
-                selected: {s.theme},
-                onSelectionChanged: (v) => s.setTheme(v.first),
-                showSelectedIcon: false,
+      _group(
+        hairline,
+        [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '主题',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
-            ],
+            ),
           ),
-        ),
-      ]),
+          // 主题预览：一行横向排列；滚轮上下滚动与按住拖动均转为左右滑动。
+          Listener(
+            onPointerSignal: _themeWheel,
+            child: GestureDetector(
+              onHorizontalDragUpdate: _themeDragUpdate,
+              child: SingleChildScrollView(
+                controller: _themeScroll,
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                child: Row(
+                  children: [
+                    for (final theme in AppTheme.values)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: _ThemePreviewCard(
+                          theme: theme,
+                          selected: s.theme == theme,
+                          onTap: () => s.setTheme(theme),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
       const SizedBox(height: 12),
       _group(hairline, [
         _dropdownRow(
@@ -486,7 +512,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
         const ListTile(
           contentPadding: EdgeInsets.symmetric(horizontal: 16),
           title: Text('关于'),
-          subtitle: Text('NovelEditor MVP 0.1.0'),
+          subtitle: Text('NovelEditor 0.1.0'),
         ),
       ]),
     ];
@@ -547,25 +573,22 @@ class _SettingsDialogState extends State<SettingsDialog> {
   }
 
   /// 卡片与导航选中项的共享底色：选中即「提亮」
-  Color _panelColor(bool isEggPie) {
-    if (isEggPie) return const Color(0xFFFFF6E0);
+  Color _panelColor() {
+    final scheme = Theme.of(context).colorScheme;
     final isLight = Theme.of(context).brightness == Brightness.light;
-    return isLight ? const Color(0xFFF5F5F7) : const Color(0xFF34343A);
+    return isLight
+        ? scheme.surfaceContainerHighest.withValues(alpha: 0.55)
+        : scheme.surfaceContainerHighest;
   }
 
   /// 分组卡片：底色与导航选中项一致 + 组内行间分割线。
   /// 组内行统一包透明 Material：ListTile 的背景与墨水效果绘制在
   /// 最近的 Material 上，避免被卡片的 DecoratedBox 背景遮住。
   Widget _group(Color hairline, List<Widget> children) {
-    final isEggPie =
-        context.read<SettingsController>().theme == AppTheme.eggPie;
     return Container(
       decoration: BoxDecoration(
-        color: _panelColor(isEggPie),
+        color: _panelColor(),
         borderRadius: BorderRadius.circular(12),
-        border: isEggPie
-            ? Border.all(color: const Color(0xFF5B2E0E), width: 2)
-            : null,
       ),
       clipBehavior: Clip.antiAlias,
       child: ListTileTheme.merge(
@@ -580,17 +603,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
     );
   }
 
-  /// 组内分割线：蛋黄派用棕色，极简风用发丝线。
+  /// 组内分割线：粗细与颜色由主题 dividerTheme 决定。
   Widget _divider(Color hairline) {
-    final isEggPie =
-        context.read<SettingsController>().theme == AppTheme.eggPie;
-    return Divider(
-      height: 1,
-      thickness: 1,
-      indent: 16,
-      endIndent: 16,
-      color: isEggPie ? const Color(0x668A5A2A) : hairline,
-    );
+    return const Divider(height: 1, indent: 16, endIndent: 16);
   }
 
   /// 滑块行：标题（固定宽，与下拉行对齐）+ 滑块 + 描边胶囊值同一行。
@@ -726,13 +741,11 @@ class _SettingsDialogState extends State<SettingsDialog> {
   Widget _navItem({
     required _Category category,
     required bool selected,
-    required bool isEggPie,
     required VoidCallback onTap,
   }) {
     return _NavItem(
       category: category,
       selected: selected,
-      isEggPie: isEggPie,
       onTap: onTap,
     );
   }
@@ -897,18 +910,16 @@ class _SettingsDialogState extends State<SettingsDialog> {
   }
 }
 
-/// 左侧导航项：悬停浅高亮；极简风选中用品牌色浅底，蛋黄派保持米底木框。
+/// 左侧导航项：悬停浅高亮，选中用主题色浅底。
 class _NavItem extends StatefulWidget {
   const _NavItem({
     required this.category,
     required this.selected,
-    required this.isEggPie,
     required this.onTap,
   });
 
   final _Category category;
   final bool selected;
-  final bool isEggPie;
   final VoidCallback onTap;
 
   @override
@@ -923,15 +934,10 @@ class _NavItemState extends State<_NavItem> {
     final scheme = Theme.of(context).colorScheme;
     final isLight = Theme.of(context).brightness == Brightness.light;
     final selected = widget.selected;
-    final selectedColor = widget.isEggPie
-        ? const Color(0xFFFFF6E0)
-        : scheme.primary.withValues(alpha: isLight ? 0.10 : 0.18);
-    final hoverColor = widget.isEggPie
-        ? const Color(0xFFFFF6E0).withValues(alpha: 0.55)
-        : (isLight ? const Color(0x08000000) : const Color(0x08FFFFFF));
-    final border = selected && widget.isEggPie
-        ? Border.all(color: const Color(0xFF5B2E0E), width: 2)
-        : null;
+    final selectedColor = scheme.primary.withValues(alpha: isLight ? 0.10 : 0.18);
+    final hoverColor = isLight
+        ? const Color(0x08000000)
+        : const Color(0x08FFFFFF);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: MouseRegion(
@@ -949,7 +955,6 @@ class _NavItemState extends State<_NavItem> {
                   ? selectedColor
                   : (_hover ? hoverColor : Colors.transparent),
               borderRadius: BorderRadius.circular(8),
-              border: border,
             ),
             child: Row(
               children: [
@@ -972,6 +977,164 @@ class _NavItemState extends State<_NavItem> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 主题预览卡：用主题规格画一张迷你界面示意（面板 + 标题行 + 按钮），
+/// 颜色/圆角/渐变与实际主题同源，选中态用主题色描边。
+class _ThemePreviewCard extends StatefulWidget {
+  const _ThemePreviewCard({
+    required this.theme,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final AppTheme theme;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  State<_ThemePreviewCard> createState() => _ThemePreviewCardState();
+}
+
+class _ThemePreviewCardState extends State<_ThemePreviewCard> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final spec = appThemeSpec(widget.theme);
+    final scheme = Theme.of(context).colorScheme;
+    final border = widget.selected
+        ? Border.all(color: scheme.primary, width: 2)
+        : Border.all(
+            color: scheme.onSurfaceVariant.withValues(alpha: _hover ? 0.45 : 0.2),
+            width: 1,
+          );
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Column(
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 120),
+              width: 168,
+              height: 116,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(spec.cardRadius),
+                border: border,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(spec.cardRadius - 2),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: spec.background,
+                    gradient: spec.backgroundGradient,
+                  ),
+                  padding: const EdgeInsets.all(10),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: spec.panel,
+                      borderRadius: BorderRadius.circular(spec.cardRadius - 8),
+                      border: Border.all(
+                        color: spec.borderStrong,
+                        width: spec.borderWidth,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 标题行 + 强调色圆点
+                        Row(
+                          children: [
+                            Container(
+                              width: 56,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: spec.text,
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                            ),
+                            const Spacer(),
+                            Container(
+                              width: 10,
+                              height: 10,
+                              decoration:
+                                  BoxDecoration(color: spec.accent, shape: BoxShape.circle),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        // 正文行
+                        Container(
+                          width: 84,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: spec.textDim.withValues(alpha: 0.7),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Container(
+                          width: 64,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: spec.textDim.withValues(alpha: 0.45),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        const Spacer(),
+                        // 主按钮
+                        Container(
+                          width: 48,
+                          height: 14,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: spec.primary,
+                            borderRadius: BorderRadius.circular(spec.buttonRadius),
+                            border: spec.borderWidth > 1
+                                ? Border.all(
+                                    color: spec.borderStrong,
+                                    width: spec.borderWidth,
+                                  )
+                                : null,
+                          ),
+                          child: Container(
+                            width: 24,
+                            height: 3,
+                            decoration: BoxDecoration(
+                              color: spec.onPrimary,
+                              borderRadius: BorderRadius.circular(1.5),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              appThemeLabel(widget.theme),
+              style: TextStyle(
+                fontSize: 12,
+                color: widget.selected
+                    ? scheme.primary
+                    : scheme.onSurfaceVariant,
+                fontWeight:
+                    widget.selected ? FontWeight.w600 : FontWeight.w400,
+              ),
+            ),
+          ],
         ),
       ),
     );

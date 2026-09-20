@@ -12,7 +12,7 @@ import '../logger.dart';
 /// 设计要点：
 /// - 本地优先，联网自动增量同步（按章节粒度 + 版本号比对）；
 /// - 冲突绝不静默覆盖（NFR-R3），检测到双向修改时进入冲突解决流程；
-/// - MVP 无服务端：[CloudGateway] 为抽象接口，本地以 [MockCloudGateway]
+/// - 当前无服务端：[CloudGateway] 为抽象接口，本地以 [MockCloudGateway]
 ///   模拟云端存储（独立镜像区），后续替换为真实 HTTP 实现即可。
 class SyncEngine {
   SyncEngine(this._chapters, {CloudGateway? gateway})

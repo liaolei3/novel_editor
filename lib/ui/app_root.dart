@@ -26,12 +26,23 @@ class AppRoot extends StatelessWidget {
       themeMode: ThemeMode.light,
       // 界面字体缩放：作用于全部文本（含写死字号的控件）；
       // 编辑器正文单独用 noScaling 覆盖，由正文字号独立控制。
-      builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(
-          context,
-        ).copyWith(textScaler: TextScaler.linear(settings.uiScale)),
-        child: child!,
-      ),
+      // 渐变主题在全局底层垫渐变，各页透明 scaffold 直接透出。
+      builder: (context, child) {
+        final gradient =
+            appThemeSpec(settings.theme).backgroundGradient;
+        final decorated = gradient == null
+            ? child!
+            : DecoratedBox(
+                decoration: BoxDecoration(gradient: gradient),
+                child: child!,
+              );
+        return MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(settings.uiScale)),
+          child: decorated,
+        );
+      },
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,

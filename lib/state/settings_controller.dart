@@ -5,22 +5,20 @@ import '../core/utils/text_stats.dart';
 import '../ui/app_theme.dart';
 
 /// 设置控制器（9.8 设置页）：
-/// 主题（浅色/暗色/蛋黄派）、字体大小、行距、自动保存频率、每日目标、AI 配置、同步开关。
+/// 主题（玻璃拟态/黏土拟态/有机自然/活力涂鸦）、字体大小、行距、自动保存频率、每日目标、AI 配置、同步开关。
 /// 配置持久化在数据目录的 config.json 中，随数据目录一起迁移。
 class SettingsController extends ChangeNotifier {
   SettingsController(this._cfg);
 
   final AppConfig _cfg;
 
+  /// 未知/历史遗留的主题值一律回退默认「有机自然」。
   AppTheme get theme {
-    switch (_cfg.getString('appTheme')) {
-      case 'dark':
-        return AppTheme.dark;
-      case 'eggPie':
-        return AppTheme.eggPie;
-      default:
-        return AppTheme.light;
+    final name = _cfg.getString('appTheme');
+    for (final t in AppTheme.values) {
+      if (t.name == name) return t;
     }
+    return AppTheme.nature;
   }
 
   double get fontSize => _cfg.getDouble('fontSize') ?? 17;

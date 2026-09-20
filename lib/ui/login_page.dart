@@ -7,7 +7,7 @@ import 'widgets/toast.dart';
 
 /// 登录弹窗（FR-12）：手机号/邮箱注册登录。
 ///
-/// MVP 无服务端：本地模拟账号（仅记录登录标识并开启同步开关），
+/// 当前无服务端：本地模拟账号（仅记录登录标识并开启同步开关），
 /// 接入真实服务端时替换 [MockAuthRepository]。
 Future<void> showLoginDialog(BuildContext context) {
   return showDialog<void>(
@@ -89,7 +89,7 @@ class _LoginDialogState extends State<LoginDialog> {
         ),
         const SizedBox(height: 8),
         const Text(
-          '说明：MVP 版本为本地模拟账号；登录后开启云同步开关，'
+          '说明：当前版本为本地模拟账号；登录后开启云同步开关，'
           '断网可写、联网自动增量同步，冲突绝不静默覆盖。',
           style: TextStyle(fontSize: 11),
           textAlign: TextAlign.center,

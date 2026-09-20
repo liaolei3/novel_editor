@@ -200,6 +200,7 @@ class _ShelfRecycleBody extends StatelessWidget {
                   itemCount: items.length,
                   itemBuilder: (ctx, i) => _ShelfRecycleCard(
                     item: items[i],
+                    tintIndex: i,
                     onRestore: () => onRestore(items[i]),
                     onPurge: () => onPurge(items[i]),
                   ),
@@ -210,17 +211,21 @@ class _ShelfRecycleBody extends StatelessWidget {
   }
 }
 
-/// 回收站书籍卡片：复刻书架封面样式，底部加删除信息条，hover 浮现恢复/彻底删除。
+/// 回收站书籍卡片：复刻书架封面样式（默认封面取主题色板），底部加删除信息条，hover 浮现恢复/彻底删除。
 class _ShelfRecycleCard extends StatefulWidget {
   const _ShelfRecycleCard({
     required this.item,
     required this.onRestore,
     required this.onPurge,
+    this.tintIndex = 0,
   });
 
   final RecycleItem item;
   final VoidCallback onRestore;
   final VoidCallback onPurge;
+
+  /// 无自定义封面时按索引轮换主题色板。
+  final int tintIndex;
 
   @override
   State<_ShelfRecycleCard> createState() => _ShelfRecycleCardState();
@@ -248,9 +253,9 @@ class _ShelfRecycleCardState extends State<_ShelfRecycleCard> {
   Widget build(BuildContext context) {
     final item = widget.item;
     final scheme = Theme.of(context).colorScheme;
-    final isEggPie =
-        context.watch<SettingsController>().theme == AppTheme.eggPie;
-    final radius = isEggPie ? 2.0 : 8.0;
+    final spec = appThemeSpec(context.watch<SettingsController>().theme);
+    final tint = spec.cardTints[widget.tintIndex % spec.cardTints.length];
+    final radius = 8.0;
     final hasCustom = _coverImage != null;
     final daysLeft = item.expireAt
         .difference(DateTime.now())
@@ -295,8 +300,8 @@ class _ShelfRecycleCardState extends State<_ShelfRecycleCard> {
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          scheme.surfaceContainerHighest,
-                          scheme.surfaceContainer,
+                          tint.background,
+                          tint.backgroundEnd ?? tint.background,
                         ],
                       ),
                     ),
@@ -305,7 +310,7 @@ class _ShelfRecycleCardState extends State<_ShelfRecycleCard> {
                 if (!hasCustom) ...[
                   Positioned.fill(
                     child: Padding(
-                      padding: EdgeInsets.all(isEggPie ? 6.0 : 10.0),
+                      padding: const EdgeInsets.all(10.0),
                       child: DecoratedBox(
                         decoration: BoxDecoration(
                           border: Border.all(
@@ -318,7 +323,7 @@ class _ShelfRecycleCardState extends State<_ShelfRecycleCard> {
                   ),
                   Positioned.fill(
                     child: Padding(
-                      padding: EdgeInsets.all(isEggPie ? 9.0 : 14.0),
+                      padding: const EdgeInsets.all(14.0),
                       child: DecoratedBox(
                         decoration: BoxDecoration(
                           border: Border.all(
@@ -458,16 +463,6 @@ class _ShelfRecycleCardState extends State<_ShelfRecycleCard> {
                     ),
                   ),
                 ),
-                if (isEggPie)
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          border: Border.all(color: scheme.outline, width: 2),
-                        ),
-                      ),
-                    ),
-                  ),
               ],
             ),
           ),

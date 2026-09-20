@@ -7,6 +7,7 @@ import '../../state/app_state.dart';
 import '../../state/settings_controller.dart';
 import '../common/dialogs.dart';
 import '../common/long_press_drag_listener.dart';
+import '../widgets/tinted_card.dart';
 import '../widgets/view_toggle.dart';
 
 /// 大纲条目：卷分组头或章节卡片。
@@ -163,6 +164,7 @@ class _OutlinePanelState extends State<OutlinePanel> {
             index: i,
             child: _OutlineCard(
               chapter: entry.chapter!,
+              tintIndex: i,
               onTap: () => _editOutline(context, entry.chapter!),
             ),
           );
@@ -237,6 +239,7 @@ class _OutlinePanelState extends State<OutlinePanel> {
         ),
         itemBuilder: (ctx, i) => _OutlineCard(
           chapter: list[i],
+          tintIndex: i,
           outlineMaxLines: 5,
           tightMargin: true,
           onTap: () => _editOutline(context, list[i]),
@@ -344,17 +347,19 @@ class _OutlinePanelState extends State<OutlinePanel> {
   }
 }
 
-/// 章节大纲卡片，样式与伏笔面板列表卡片一致：细边框 + hover 加深。
+/// 章节大纲卡片：主题色板彩底卡（无边框），样式与伏笔面板列表卡片一致。
 class _OutlineCard extends StatefulWidget {
   const _OutlineCard({
     required this.chapter,
     required this.onTap,
+    this.tintIndex = 0,
     this.outlineMaxLines = 3,
     this.tightMargin = false,
   });
 
   final Chapter chapter;
   final VoidCallback onTap;
+  final int tintIndex;
   final int outlineMaxLines;
 
   /// 网格模式下去掉底部外边距（由网格 spacing 控制）。
@@ -365,8 +370,6 @@ class _OutlineCard extends StatefulWidget {
 }
 
 class _OutlineCardState extends State<_OutlineCard> {
-  bool _hover = false;
-
   String _formatTime(DateTime t) {
     String two(int n) => n.toString().padLeft(2, '0');
     return t.year == DateTime.now().year
@@ -379,30 +382,12 @@ class _OutlineCardState extends State<_OutlineCard> {
     final scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: EdgeInsets.only(bottom: widget.tightMargin ? 0 : 6),
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _hover = true),
-        onExit: (_) => setState(() => _hover = false),
-        child: Material(
-          color: _hover
-              ? scheme.surfaceContainerHighest.withValues(alpha: 0.4)
-              : scheme.surface,
-          borderRadius: BorderRadius.circular(10),
-          child: InkWell(
-            mouseCursor: SystemMouseCursors.click,
-            borderRadius: BorderRadius.circular(10),
-            onTap: widget.onTap,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 120),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: _hover
-                      ? scheme.outlineVariant
-                      : scheme.outlineVariant.withValues(alpha: 0.6),
-                ),
-              ),
-              child: Column(
+      child: TintedCard(
+        emphasized: false,
+        tintIndex: widget.tintIndex,
+        padding: const EdgeInsets.all(12),
+        onTap: widget.onTap,
+        child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
@@ -441,9 +426,6 @@ class _OutlineCardState extends State<_OutlineCard> {
                   ),
                 ],
               ),
-            ),
-          ),
-        ),
       ),
     );
   }

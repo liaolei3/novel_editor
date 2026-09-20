@@ -5,6 +5,7 @@ import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../app_root.dart';
 import '../common/dialogs.dart';
+import '../widgets/tinted_card.dart';
 
 /// 素材库（FR-21 / 9.7）：世界观 / 灵感便签两类，支持新建、编辑、删除、搜索。
 class NotesPanel extends StatefulWidget {
@@ -76,7 +77,7 @@ class _NotesPanelState extends State<NotesPanel> {
                 : ListView.builder(
                     padding: const EdgeInsets.all(8),
                     itemCount: notes.length,
-                    itemBuilder: (ctx, i) => _noteCard(context, notes[i]),
+                    itemBuilder: (ctx, i) => _noteCard(context, notes[i], i),
                   ),
           ),
         ]);
@@ -84,18 +85,24 @@ class _NotesPanelState extends State<NotesPanel> {
     );
   }
 
-  Widget _noteCard(BuildContext context, Note note) {
+  Widget _noteCard(BuildContext context, Note note, int tintIndex) {
     final state = context.read<AppState>();
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      child: ListTile(
-        title: Text(note.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Text(
-          note.content.isEmpty ? '（空）' : note.content,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
-        trailing: PopupMenuButton<String>(
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: TintedCard(
+        emphasized: false,
+        tintIndex: tintIndex,
+        padding: EdgeInsets.zero,
+        onTap: () => _edit(context, note),
+        child: ListTile(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: Text(note.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: Text(
+            note.content.isEmpty ? '（空）' : note.content,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: PopupMenuButton<String>(
           onSelected: (action) async {
             if (action == 'edit') {
               await _edit(context, note);
@@ -130,7 +137,7 @@ class _NotesPanelState extends State<NotesPanel> {
             ),
           ],
         ),
-        onTap: () => _edit(context, note),
+        ),
       ),
     );
   }

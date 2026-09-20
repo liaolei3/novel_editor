@@ -118,18 +118,12 @@ class _SideNavItemState extends State<_SideNavItem> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final isLight = Theme.of(context).brightness == Brightness.light;
-    final isEggPie =
-        context.watch<SettingsController>().theme == AppTheme.eggPie;
     final selected = widget.selected;
-    final selectedColor = isEggPie
-        ? const Color(0xFFFFF6E0)
-        : scheme.primary.withValues(alpha: isLight ? 0.10 : 0.18);
-    final hoverColor = isEggPie
-        ? const Color(0xFFFFF6E0).withValues(alpha: 0.55)
-        : (isLight ? const Color(0x08000000) : const Color(0x08FFFFFF));
-    final border = selected && isEggPie
-        ? Border.all(color: const Color(0xFF5B2E0E), width: 2)
-        : null;
+    final selectedColor =
+        scheme.primary.withValues(alpha: isLight ? 0.10 : 0.18);
+    final hoverColor = isLight
+        ? const Color(0x08000000)
+        : const Color(0x08FFFFFF);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: MouseRegion(
@@ -147,7 +141,6 @@ class _SideNavItemState extends State<_SideNavItem> {
                   ? selectedColor
                   : (_hover ? hoverColor : Colors.transparent),
               borderRadius: BorderRadius.circular(10),
-              border: border,
             ),
             child: Row(
               children: [
@@ -191,8 +184,6 @@ class _LoginEntryState extends State<_LoginEntry> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final isLight = Theme.of(context).brightness == Brightness.light;
-    final isEggPie =
-        context.watch<SettingsController>().theme == AppTheme.eggPie;
     final synced = context.watch<SettingsController>().syncEnabled;
     final hoverColor = isLight
         ? const Color(0x0A000000)
@@ -211,9 +202,7 @@ class _LoginEntryState extends State<_LoginEntry> {
             color: _hover ? hoverColor : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: isEggPie
-                  ? const Color(0x668A5A2A)
-                  : scheme.outlineVariant.withValues(alpha: 0.8),
+              color: scheme.outlineVariant.withValues(alpha: 0.8),
             ),
           ),
           child: Row(
@@ -596,8 +585,7 @@ class _BookCardState extends State<_BookCard> {
   Widget build(BuildContext context) {
     final book = widget.book;
     final scheme = Theme.of(context).colorScheme;
-    final isEggPie = widget.theme == AppTheme.eggPie;
-    final radius = isEggPie ? 2.0 : 8.0;
+    final radius = 8.0;
     final hasCustom = _coverImage != null;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -646,7 +634,7 @@ class _BookCardState extends State<_BookCard> {
                   if (!hasCustom) ...[
                     Positioned.fill(
                       child: Padding(
-                        padding: EdgeInsets.all(isEggPie ? 6.0 : 10.0),
+                        padding: const EdgeInsets.all(10.0),
                         child: DecoratedBox(
                           decoration: BoxDecoration(
                             border: Border.all(
@@ -659,7 +647,7 @@ class _BookCardState extends State<_BookCard> {
                     ),
                     Positioned.fill(
                       child: Padding(
-                        padding: EdgeInsets.all(isEggPie ? 9.0 : 14.0),
+                        padding: const EdgeInsets.all(14.0),
                         child: DecoratedBox(
                           decoration: BoxDecoration(
                             border: Border.all(
@@ -767,16 +755,6 @@ class _BookCardState extends State<_BookCard> {
                       ),
                     ),
                   ),
-                  if (isEggPie)
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            border: Border.all(color: scheme.outline, width: 2),
-                          ),
-                        ),
-                      ),
-                    ),
                 ],
               ),
             ),

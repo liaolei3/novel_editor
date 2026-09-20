@@ -1269,7 +1269,7 @@ class _EditorAreaState extends State<EditorArea> {
       if (raw == null) return;
       if (context.mounted) {
         showToast(
-            context, 'docx 导入请在导出对话框中使用 TXT 版本；MVP 暂不解析二进制 docx');
+            context, 'docx 导入暂不支持解析二进制文件，请在导出对话框中使用 TXT 版本');
       }
     }
   }
