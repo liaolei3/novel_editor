@@ -1,4 +1,6 @@
 
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -12,7 +14,6 @@ import '../../core/utils/pair_symbols.dart';
 import '../../core/utils/rich_text_codec.dart';
 import '../../core/utils/text_formatter.dart';
 import '../../core/utils/text_stats.dart';
-import '../../core/utils/txt_importer.dart';
 import '../../data/models.dart';
 import '../../services/autosave_service.dart';
 import '../../state/app_state.dart';
@@ -24,6 +25,7 @@ import '../common/file_io.dart';
 import '../common/foreshadow_dialogs.dart';
 import 'character_tip.dart';
 import 'foreshadow_tip.dart';
+import 'reading_styles.dart';
 import 'search_replace_bar.dart';
 import 'toast.dart';
 
@@ -53,6 +55,18 @@ class _EditorAreaState extends State<EditorArea> {
 
   String? _lastChapterId;
 
+  /// 打字机模式（光标固定打字）：需要 RenderEditor 换算光标在正文中的
+  /// 垂直位置，因此把 GlobalKey 交给 QuillEditorConfig.editorKey。
+  final GlobalKey<EditorState> _editorKey = GlobalKey<EditorState>();
+
+  /// 内容变化订阅。document.changes 只反映内容变化，不含纯选区变化，
+  /// 正好对应「仅输入与换行时居中」。
+  StreamSubscription<DocChange>? _docSubscription;
+  Document? _boundDoc;
+
+  /// 每次 build 同步的开关值，供帧末的居中回调读取。
+  bool _typewriterMode = false;
+
   /// 最近一次右键按下的全局坐标与时间：编辑器右键菜单跟随鼠标位置
   /// 而非选区位置（选区可能在远离点击处）。
   Offset? _secondaryTapPosition;
@@ -80,6 +94,64 @@ class _EditorAreaState extends State<EditorArea> {
     _refreshForeshadowDict();
     _appState.foreshadowVersion.addListener(_refreshForeshadowDict);
     _appState.segmentJumpNonce.addListener(_onSegmentJump);
+    _appState.editorController.addListener(_syncDocSubscription);
+    _syncDocSubscription();
+    _scrollController.typewriterTarget = _typewriterCenterOffset;
+  }
+
+  /// 章节切换会替换 QuillController.document，需跟随重新订阅内容变化流。
+  void _syncDocSubscription() {
+    final doc = _appState.editorController.document;
+    if (identical(doc, _boundDoc)) return;
+    _docSubscription?.cancel();
+    _boundDoc = doc;
+    _docSubscription = doc.changes.listen((_) => _onContentChanged());
+  }
+
+  /// 打字机模式：内容变化后于本帧末把光标行拉回视口中线。
+  /// 放在帧末是为了晚于 flutter_quill 自身的 _showCaretOnScreen，
+  /// 由随后的 jumpTo 取消它的动画滚动。
+  void _onContentChanged() {
+    if (!_typewriterMode) return;
+    _scrollController.typewriterPending = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollController.typewriterPending = false;
+      if (!mounted) return;
+      _centerCaretOnScreen();
+    });
+  }
+
+  void _centerCaretOnScreen() {
+    final target = _typewriterCenterOffset();
+    if (target == null) return;
+    final position = _scrollController.position;
+    _scrollController.jumpTo(
+      target
+          .clamp(position.minScrollExtent, position.maxScrollExtent)
+          .toDouble(),
+    );
+  }
+
+  /// 光标行垂直中心对应的滚动偏移；非折叠选区或坐标不可用时返回 null。
+  double? _typewriterCenterOffset() {
+    if (!_typewriterMode || !_scrollController.hasClients) return null;
+    final render = _editorKey.currentState?.renderEditor;
+    if (render == null) return null;
+    final controller = _appState.editorController;
+    final sel = controller.selection;
+    // 拖选/整段选中时不干预视口。
+    if (!sel.isValid || !sel.isCollapsed) return null;
+    final offset = sel.extentOffset;
+    if (offset < 0 || offset > controller.document.length) return null;
+    try {
+      final rect = render.getLocalRectForCaret(
+        TextPosition(offset: offset, affinity: sel.affinity),
+      );
+      return rect.center.dy - _scrollController.position.viewportDimension / 2;
+    } catch (_) {
+      // 布局未就绪等边界情况：跳过本次居中。
+      return null;
+    }
   }
 
   /// 面板"跳转正文"：聚焦编辑器触发滚动到选区。
@@ -192,6 +264,8 @@ class _EditorAreaState extends State<EditorArea> {
     _appState.characterDictVersion.removeListener(_refreshCharacterDict);
     _appState.foreshadowVersion.removeListener(_refreshForeshadowDict);
     _appState.segmentJumpNonce.removeListener(_onSegmentJump);
+    _appState.editorController.removeListener(_syncDocSubscription);
+    _docSubscription?.cancel();
     _focusNode.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -490,6 +564,8 @@ class _EditorAreaState extends State<EditorArea> {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final settings = context.watch<SettingsController>();
+    // 缓存开关值：帧末居中回调与滚动控制器无法访问 build 局部量。
+    _typewriterMode = settings.typewriterMode;
     final chapter = state.currentChapter;
 
     if (chapter == null) {
@@ -551,7 +627,8 @@ class _EditorAreaState extends State<EditorArea> {
             actions: [TextButton(onPressed: () {}, child: const Text('知道了'))],
           ),
         Expanded(
-          child: Listener(
+          // 打字机模式需按编辑器视口高度留半屏底部空白，故在此测量高度。
+          child: LayoutBuilder(builder: (context, constraints) => Listener(
             // 鼠标拖选期间抑制 flutter_quill 内部 _showCaretOnScreen 触发的
             // animateTo（它会把视口拉回选区起点，与 bringIntoView 的向下
             // jumpTo 互相冲突，导致滚动条反复向上反弹）。
@@ -575,7 +652,13 @@ class _EditorAreaState extends State<EditorArea> {
               focusNode: _focusNode,
               scrollController: _scrollController,
               config: QuillEditorConfig(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                editorKey: _editorKey,
+                padding: EdgeInsets.only(
+                  left: 16,
+                  right: 16,
+                  top: 8,
+                  bottom: 8 + (_typewriterMode ? constraints.maxHeight / 2 : 0),
+                ),
                 textSpanBuilder: _textSpanBuilder,
                 autoPairSymbols: fullWidthPairSymbols,
                 customStyles: _editorStyles(context, settings),
@@ -689,7 +772,7 @@ class _EditorAreaState extends State<EditorArea> {
               ),
               ),
             ),
-          ),
+          )),
         ),
         _statusBar(context, chapter, sessionChars, plain),
       ]),
@@ -708,47 +791,12 @@ class _EditorAreaState extends State<EditorArea> {
 
   /// 编辑器自定义样式：把全局设置的字体/字号/行距/段间距应用到正文相关块。
   DefaultStyles _editorStyles(BuildContext context, SettingsController settings) {
-    final defaults = DefaultStyles.getInstance(context);
-    final fs = settings.fontSize;
-    // family 为空时保持主题字体（copyWith 传 null 不覆盖）。
-    final base = DefaultTextStyle.of(context).style.copyWith(
-          fontSize: fs,
-          height: settings.lineHeight,
-          fontFamily: settings.editorFontFamily.isEmpty
-              ? null
-              : settings.editorFontFamily,
-          decoration: TextDecoration.none,
-        );
-    final vs =
-        VerticalSpacing(0, (fs * settings.paragraphSpacing).toDouble());
-
-    DefaultTextBlockStyle? bodyBlock(DefaultTextBlockStyle? d) =>
-        d?.copyWith(style: base, verticalSpacing: vs);
-
-    DefaultTextBlockStyle? scaledHeading(DefaultTextBlockStyle? d) {
-      if (d == null) return null;
-      final size = d.style.fontSize;
-      return size == null
-          ? d
-          : d.copyWith(style: d.style.copyWith(fontSize: size * fs / 17));
-    }
-
-    return DefaultStyles(
-      paragraph: bodyBlock(defaults.paragraph),
-      indent: bodyBlock(defaults.indent),
-      align: bodyBlock(defaults.align),
-      // 列表序号/圆点样式与正文一致，否则序号字号偏小且垂直位置偏上。
-      leading: defaults.leading?.copyWith(style: base),
-      lists: defaults.lists?.copyWith(style: base, verticalSpacing: vs),
-      quote: defaults.quote?.copyWith(
-        style: base.copyWith(color: base.color?.withValues(alpha: 0.6)),
-      ),
-      h1: scaledHeading(defaults.h1),
-      h2: scaledHeading(defaults.h2),
-      h3: scaledHeading(defaults.h3),
-      h4: scaledHeading(defaults.h4),
-      h5: scaledHeading(defaults.h5),
-      h6: scaledHeading(defaults.h6),
+    return buildReadingStyles(
+      context,
+      fontSize: settings.fontSize,
+      lineHeight: settings.lineHeight,
+      paragraphSpacing: settings.paragraphSpacing,
+      fontFamily: settings.editorFontFamily,
     );
   }
 
@@ -1231,34 +1279,39 @@ class _EditorAreaState extends State<EditorArea> {
   }
 
   Future<void> _import(BuildContext context, AppState state) async {
-    final choice = await showDialog<String>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => DraggableDialog(
-        child: SimpleDialog(
-          title: const Text('导入'),
-          children: [
-            SimpleDialogOption(onPressed: () => Navigator.pop(ctx, 'txt'), child: const Text('批量导入 TXT（按“第X章”自动切分）')),
-            SimpleDialogOption(onPressed: () => Navigator.pop(ctx, 'docx'), child: const Text('导入 docx（单文件 = 单章节）')),
-          ],
+    final choice = await _choiceDialog(
+      context,
+      icon: Icons.file_download_outlined,
+      title: '导入',
+      subtitle: '将外部文本转换为章节内容',
+      choices: const [
+        _ChoiceSpec(
+          value: 'txt',
+          icon: Icons.description_outlined,
+          title: '导入 TXT',
+          subtitle: '整个文件作为单个章节',
         ),
-      ),
+        _ChoiceSpec(
+          value: 'docx',
+          icon: Icons.article_outlined,
+          title: '导入 docx',
+          subtitle: '单文件作为一个章节',
+        ),
+      ],
     );
     if (choice == null) return;
     if (choice == 'txt') {
-      final raw = await FileIO.pickReadText();
-      if (raw == null) return;
-      final parts = TxtImporter.splitChapters(raw);
+      final file = await FileIO.pickReadTextNamed();
+      if (file == null) return;
+      final (name, raw) = file;
       final volumeId = state.volumeTree.isNotEmpty
           ? state.volumeTree.first.id
           : (await state.addVolume('导入卷')).id;
-      for (final part in parts) {
-        final ch = await state.addChapter(volumeId, title: part.key, outline: '');
-        ch.content = RichTextCodec.deltaJsonFromPlainText(part.value);
-        await state.chapters.updateContent(ch);
-      }
+      final ch = await state.addChapter(volumeId, title: name, outline: '');
+      ch.content = RichTextCodec.deltaJsonFromPlainText(raw);
+      await state.chapters.updateContent(ch);
       if (context.mounted) {
-        showToast(context, '导入成功，共 ${parts.length} 个章节');
+        showToast(context, '导入成功，共 1 个章节');
       }
     } else {
       final raw = await FileIO.pickReadText(ext: ['docx']);
@@ -1271,19 +1324,31 @@ class _EditorAreaState extends State<EditorArea> {
   }
 
   Future<void> _export(BuildContext context, AppState state) async {
-    final choice = await showDialog<String>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => DraggableDialog(
-        child: SimpleDialog(
-          title: const Text('导出'),
-          children: [
-            SimpleDialogOption(onPressed: () => Navigator.pop(ctx, 'chapter'), child: const Text('导出本章 TXT')),
-            SimpleDialogOption(onPressed: () => Navigator.pop(ctx, 'book_txt'), child: const Text('导出全书 TXT')),
-            SimpleDialogOption(onPressed: () => Navigator.pop(ctx, 'book_docx'), child: const Text('导出全书 Word (.docx)')),
-          ],
+    final choice = await _choiceDialog(
+      context,
+      icon: Icons.file_upload_outlined,
+      title: '导出',
+      subtitle: '选择导出范围与文件格式',
+      choices: const [
+        _ChoiceSpec(
+          value: 'chapter',
+          icon: Icons.article_outlined,
+          title: '导出本章 TXT',
+          subtitle: '仅导出当前章节的正文',
         ),
-      ),
+        _ChoiceSpec(
+          value: 'book_txt',
+          icon: Icons.menu_book_outlined,
+          title: '导出全书 TXT',
+          subtitle: '导出整本作品，可选择是否含章节名',
+        ),
+        _ChoiceSpec(
+          value: 'book_docx',
+          icon: Icons.description_outlined,
+          title: '导出全书 Word',
+          subtitle: '生成 .docx 文档',
+        ),
+      ],
     );
     if (choice == null || state.currentBook == null) return;
     final bookTitle = state.currentBook!.title;
@@ -1321,25 +1386,266 @@ class _EditorAreaState extends State<EditorArea> {
     }
   }
 
-  Future<bool?> _askIncludeTitle(BuildContext context) {
-    return showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => DraggableDialog(
-        child: AlertDialog(
-          title: const Text('是否包含章节名？'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('不含')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('包含')),
-          ],
+  Future<bool?> _askIncludeTitle(BuildContext context) async {
+    final choice = await _choiceDialog(
+      context,
+      icon: Icons.menu_book_outlined,
+      title: '导出全书 TXT',
+      subtitle: '是否在正文前写入章节名？',
+      choices: const [
+        _ChoiceSpec(
+          value: 'with',
+          icon: Icons.format_list_numbered,
+          title: '包含章节名',
+          subtitle: '每个章节前写入一行标题',
         ),
-      ),
+        _ChoiceSpec(
+          value: 'without',
+          icon: Icons.subject,
+          title: '不含章节名',
+          subtitle: '仅导出正文内容',
+        ),
+      ],
     );
+    if (choice == null) return null;
+    return choice == 'with';
   }
 
   void _toast(BuildContext context, String? path) {
     if (!context.mounted) return;
     showToast(context, path == null ? '已取消导出' : '导出成功：$path');
+  }
+}
+
+/// 选项弹窗的单个条目：值随点击回传。
+class _ChoiceSpec {
+  const _ChoiceSpec({
+    required this.value,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final String value;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+}
+
+/// 编辑区导入 / 导出共用弹窗：图标标题 + 说明 + 选项卡片；右上角关闭、
+/// 底部取消，点击外部不关闭（仅显式按钮关闭），弹窗整体可拖动。
+Future<String?> _choiceDialog(
+  BuildContext context, {
+  required IconData icon,
+  required String title,
+  required String subtitle,
+  required List<_ChoiceSpec> choices,
+}) {
+  return showDialog<String>(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) {
+      final scheme = Theme.of(ctx).colorScheme;
+      return DraggableDialog(
+        child: AlertDialog(
+          constraints: const BoxConstraints(minWidth: 380, maxWidth: 380),
+          backgroundColor: Theme.of(ctx).dialogTheme.backgroundColor,
+          shape: Theme.of(ctx).dialogTheme.shape,
+          titlePadding: EdgeInsets.zero,
+          contentPadding: EdgeInsets.zero,
+          actionsPadding: const EdgeInsets.fromLTRB(16, 2, 16, 14),
+          actionsAlignment: MainAxisAlignment.end,
+          content: SizedBox(
+            width: 380,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _ChoiceHeader(icon: icon, title: title, subtitle: subtitle),
+                Divider(height: 1, color: scheme.outlineVariant),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                  child: Column(
+                    children: [
+                      for (final c in choices)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: _ChoiceTile(
+                            spec: c,
+                            onTap: () => Navigator.pop(ctx, c.value),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              style: TextButton.styleFrom(
+                minimumSize: const Size(72, 38),
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+              ),
+              child: const Text('取消'),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+/// 弹窗头部：图标章 + 标题 + 说明，右上角关闭按钮。
+class _ChoiceHeader extends StatelessWidget {
+  const _ChoiceHeader({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 18, 10, 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: scheme.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            alignment: Alignment.center,
+            child: Icon(icon, size: 20, color: scheme.primary),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: scheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.35,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 4),
+          IconButton(
+            tooltip: '关闭',
+            onPressed: () => Navigator.pop(context),
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.close, size: 18),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 弹窗选项卡片：悬浮时高亮描边与底色，点击回传选项值。
+class _ChoiceTile extends StatefulWidget {
+  const _ChoiceTile({required this.spec, required this.onTap});
+
+  final _ChoiceSpec spec;
+  final VoidCallback onTap;
+
+  @override
+  State<_ChoiceTile> createState() => _ChoiceTileState();
+}
+
+class _ChoiceTileState extends State<_ChoiceTile> {
+  bool _hovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final spec = widget.spec;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          decoration: BoxDecoration(
+            color: _hovering ? scheme.primary.withValues(alpha: 0.08) : null,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: _hovering
+                  ? scheme.primary.withValues(alpha: 0.35)
+                  : scheme.outlineVariant,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: scheme.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                alignment: Alignment.center,
+                child: Icon(spec.icon, size: 18, color: scheme.primary),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      spec.title,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w500,
+                        color: scheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      spec.subtitle,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        height: 1.3,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(Icons.chevron_right,
+                  size: 18, color: scheme.onSurfaceVariant),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -1596,6 +1902,14 @@ class _EditorScrollController extends ScrollController {
 
   set suppressAnimateTo(bool value) => _suppressAnimateTo = value;
 
+  /// 打字机模式：内容变化到帧末之间置位。flutter_quill 只在光标离开视口时
+  /// 才请求滚动，而打字机模式要求每行都停在正中，故期间把它的动画请求改为
+  /// 瞬时对齐到光标中线目标（否则折行时光标会掉出中线）。
+  bool typewriterPending = false;
+
+  /// 计算光标居中偏移的回调，由 State 注入。
+  double? Function()? typewriterTarget;
+
   @override
   Future<void> animateTo(
     double offset, {
@@ -1603,6 +1917,17 @@ class _EditorScrollController extends ScrollController {
     required Curve curve,
   }) {
     if (_suppressAnimateTo) return Future.value();
+    if (typewriterPending && hasClients) {
+      final target = typewriterTarget?.call();
+      if (target != null) {
+        jumpTo(
+          target
+              .clamp(position.minScrollExtent, position.maxScrollExtent)
+              .toDouble(),
+        );
+        return Future.value();
+      }
+    }
     return super.animateTo(offset, duration: duration, curve: curve);
   }
 }

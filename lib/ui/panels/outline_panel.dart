@@ -223,10 +223,12 @@ class _OutlinePanelState extends State<OutlinePanel> {
   }
 
   Widget _volumeGrid(List<Chapter> list) {
+    // 界面缩放（uiScale）作用于全局字号，卡片宽高需同步放大，否则放大字号后溢出。
+    final scale = MediaQuery.textScalerOf(context).scale(1.0);
     return LayoutBuilder(builder: (ctx, constraints) {
       final width = constraints.maxWidth;
-      // 每列最小 220px，面板过窄时自动减少列数。
-      final columns = (width ~/ 220).clamp(1, 4);
+      // 每列最小宽度随缩放增大，面板过窄时自动减少列数。
+      final columns = (width ~/ (220 * scale)).clamp(1, 4);
       return GridView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
@@ -236,8 +238,8 @@ class _OutlinePanelState extends State<OutlinePanel> {
           crossAxisCount: columns,
           mainAxisSpacing: 6,
           crossAxisSpacing: 6,
-          // 150% 界面缩放下 16px 内边距 + 标题行 + 5 行大纲约需 211px，取 216 防溢出。
-          mainAxisExtent: 216,
+          // 固定内边距（44）+ 随缩放的行高（标题行 + 5 行大纲）。
+          mainAxisExtent: 44 + 114 * scale,
         ),
         itemBuilder: (ctx, i) => _OutlineCard(
           chapter: list[i],

@@ -13,6 +13,7 @@ import 'panels/character_panel.dart';
 import 'panels/foreshadow_panel.dart';
 import 'panels/notes_panel.dart';
 import 'panels/outline_panel.dart';
+import 'panels/preview_panel.dart';
 import 'panels/sensitive_panel.dart';
 import 'panels/snapshot_panel.dart';
 
@@ -114,6 +115,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
     '素材库',
     '敏感词',
     '回收站',
+    '预览',
   ];
   static const _panelIcons = [
     Icons.account_tree_outlined,
@@ -124,6 +126,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
     Icons.sticky_note_2_outlined,
     Icons.shield_outlined,
     Icons.delete_outline,
+    Icons.visibility_outlined,
   ];
   static const double _minLeftWidth = 220;
   static const double _minMidWidth = 320;
@@ -357,8 +360,10 @@ class _WorkspacePageState extends State<WorkspacePage> {
         return NotesPanel(book: book);
       case 6:
         return const SensitivePanel();
-      default:
+      case 7:
         return const RecycleView(scope: RecycleScope.workspace);
+      default:
+        return const PreviewPanel();
     }
   }
 }

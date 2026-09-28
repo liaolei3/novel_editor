@@ -265,6 +265,8 @@ Future<(Foreshadow, String)?> showLinkForeshadowDialog(
                               TextField(
                                 controller: searchCtrl,
                                 onChanged: (_) => setDialogState(() {}),
+                                style: TextStyle(
+                                    fontSize: 13, color: scheme.onSurface),
                                 decoration: InputDecoration(
                                   hintText: '搜索伏笔名称',
                                   hintStyle: TextStyle(

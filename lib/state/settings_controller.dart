@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'app_config.dart';
+import '../core/constants.dart';
 import '../core/utils/text_stats.dart';
 import '../ui/app_theme.dart';
 
@@ -27,6 +28,22 @@ class SettingsController extends ChangeNotifier {
   String get uiFontFamily => _cfg.getString('uiFontFamily') ?? '';
   String get editorFontFamily => _cfg.getString('editorFontFamily') ?? '';
   double get paragraphSpacing => _cfg.getDouble('paragraphSpacing') ?? 0.5;
+
+  /// 手机预览（审阅）专用排版：未单独设置过时回落到全局写作排版，
+  /// 面板内调整只影响预览，不回写编辑器。
+  double get reviewFontSize => _cfg.getDouble('reviewFontSize') ?? fontSize;
+  double get reviewLineHeight => _cfg.getDouble('reviewLineHeight') ?? lineHeight;
+  double get reviewParagraphSpacing =>
+      _cfg.getDouble('reviewParagraphSpacing') ?? paragraphSpacing;
+
+  /// 预览机型：预设 id 或 [AppConstants.previewCustomDeviceId]。
+  String get reviewDevice =>
+      _cfg.getString('reviewDevice') ?? AppConstants.previewDefaultDeviceId;
+  double get reviewCustomWidth =>
+      _cfg.getDouble('reviewCustomWidth') ?? AppConstants.defaultPreviewDevice.width;
+  double get reviewCustomHeight =>
+      _cfg.getDouble('reviewCustomHeight') ?? AppConstants.defaultPreviewDevice.height;
+  bool get typewriterMode => _cfg.getBool('typewriterMode') ?? false;
   int get autosaveSeconds => _cfg.getInt('autosaveSeconds') ?? 2;
   int get dailyGoal => _cfg.getInt('dailyGoal') ?? 2000;
   CountStandard get countStandard => CountStandard.values.firstWhere(
@@ -69,6 +86,27 @@ class SettingsController extends ChangeNotifier {
 
   Future<void> setParagraphSpacing(double v) =>
       _set('paragraphSpacing', v, () => notifyListeners());
+
+  Future<void> setTypewriterMode(bool v) =>
+      _set('typewriterMode', v, () => notifyListeners());
+
+  Future<void> setReviewFontSize(double v) =>
+      _set('reviewFontSize', v, () => notifyListeners());
+
+  Future<void> setReviewLineHeight(double v) =>
+      _set('reviewLineHeight', v, () => notifyListeners());
+
+  Future<void> setReviewParagraphSpacing(double v) =>
+      _set('reviewParagraphSpacing', v, () => notifyListeners());
+
+  Future<void> setReviewDevice(String v) =>
+      _set('reviewDevice', v, () => notifyListeners());
+
+  Future<void> setReviewCustomSize(double width, double height) async {
+    await _cfg.setDouble('reviewCustomWidth', width);
+    await _cfg.setDouble('reviewCustomHeight', height);
+    notifyListeners();
+  }
 
   Future<void> setAutosaveSeconds(int v) =>
       _set('autosaveSeconds', v, () => notifyListeners());

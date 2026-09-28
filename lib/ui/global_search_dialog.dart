@@ -170,6 +170,7 @@ class _GlobalSearchDialogState extends State<_GlobalSearchDialog> {
             decoration: InputDecoration(
               isDense: true,
               hintText: '搜索全书…',
+              hintStyle: const TextStyle(fontSize: 14),
               prefixIcon: const Icon(Icons.search, size: 18),
               prefixIconConstraints:
                   const BoxConstraints(minWidth: 36, minHeight: 36),
@@ -334,6 +335,7 @@ class _GlobalSearchDialogState extends State<_GlobalSearchDialog> {
           decoration: InputDecoration(
             isDense: true,
             hintText: '替换为',
+            hintStyle: const TextStyle(fontSize: 14),
             prefixIcon: const Icon(Icons.loop, size: 18),
             prefixIconConstraints:
                 const BoxConstraints(minWidth: 36, minHeight: 36),

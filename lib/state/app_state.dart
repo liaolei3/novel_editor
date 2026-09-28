@@ -129,18 +129,20 @@ class AppState extends ChangeNotifier {
     return book;
   }
 
-  /// 从 TXT 文本导入新书：按"第X章"切分为章节，正文转 Delta JSON 存储。
-  Future<Book> importBookFromText(String title, String raw) async {
+  /// 按导入预览的卷/章结构创建新书，正文转 Delta JSON 存储。
+  Future<Book> importBookFromPreview(
+      String title, ImportPreview preview) async {
     final book = await books.create(title);
-    final vol = await volumes.create(book.id, '第一卷');
-    final parts = TxtImporter.splitChapters(raw);
-    for (final part in parts) {
-      await chapters.create(
-        bookId: book.id,
-        volumeId: vol.id,
-        title: part.key,
-        content: RichTextCodec.deltaJsonFromPlainText(part.value),
-      );
+    for (final volume in preview.volumes) {
+      final vol = await volumes.create(book.id, volume.name);
+      for (final chapter in volume.chapters) {
+        await chapters.create(
+          bookId: book.id,
+          volumeId: vol.id,
+          title: chapter.title,
+          content: RichTextCodec.deltaJsonFromPlainText(chapter.body),
+        );
+      }
     }
     await loadShelf();
     return book;

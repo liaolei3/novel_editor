@@ -355,6 +355,7 @@ class _SearchReplaceBarState extends State<SearchReplaceBar> {
         decoration: InputDecoration(
           isDense: true,
           hintText: '查找',
+          hintStyle: const TextStyle(fontSize: 14),
           filled: true,
           fillColor: cs.surfaceContainerHighest.withAlpha(120),
           prefixIcon: const Icon(Icons.search, size: 18),
@@ -384,6 +385,7 @@ class _SearchReplaceBarState extends State<SearchReplaceBar> {
         decoration: InputDecoration(
           isDense: true,
           hintText: '替换为',
+          hintStyle: const TextStyle(fontSize: 14),
           filled: true,
           fillColor: cs.surfaceContainerHighest.withAlpha(120),
           prefixIcon: const Icon(Icons.loop, size: 18),

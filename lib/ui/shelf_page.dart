@@ -10,6 +10,7 @@ import 'app_theme.dart';
 import 'common/book_cover.dart';
 import 'common/dialogs.dart';
 import 'common/file_io.dart';
+import 'common/import_preview_dialog.dart';
 import 'login_page.dart';
 import 'recycle_page.dart';
 import 'stats_page.dart';
@@ -334,6 +335,7 @@ class _ShelfBodyState extends State<_ShelfBody> {
                 decoration: InputDecoration(
                   isDense: true,
                   hintText: '搜索书名或作者',
+                  hintStyle: const TextStyle(fontSize: 13),
                   prefixIcon: Icon(
                     Icons.search,
                     size: 18 * scale,
@@ -497,16 +499,24 @@ class _ShelfBodyState extends State<_ShelfBody> {
     await state.createBook(values.$1, values.$2, coverPath: values.$3);
   }
 
-  /// 导入 TXT 为新书：文件名作书名，按"第X章"自动切分章节。
+  /// 导入 TXT 为新书：先预览切分出的卷/章，确认后按卷章落库。
   Future<void> _importBook(BuildContext ctx) async {
     final file = await FileIO.pickReadTextNamed();
     if (file == null || ctx.mounted == false) return;
     final (name, raw) = file;
+    if (raw.trim().isEmpty) {
+      showToast(ctx, '导入失败：文件内容为空');
+      return;
+    }
+    final preview = TxtImporter.parse(raw);
+    final title =
+        await importPreviewDialog(ctx, initialTitle: name, preview: preview);
+    if (title == null || ctx.mounted == false) return;
     final state = appState(ctx);
-    final book = await state.importBookFromText(name, raw);
-    final count = TxtImporter.splitChapters(raw).length;
+    await state.importBookFromPreview(title, preview);
     if (ctx.mounted) {
-      showToast(ctx, '《${book.title}》导入成功，共 $count 个章节');
+      showToast(ctx,
+          '《$title》导入成功，共 ${preview.volumeCount} 卷 · ${preview.chapterCount} 章');
     }
   }
 }

@@ -248,60 +248,70 @@ class _CharacterPanelState extends State<CharacterPanel> {
           Text('角色', style: TextStyle(
             fontSize: 15, fontWeight: FontWeight.w600, color: scheme.onSurface,
           )),
-          const Spacer(),
-          if (_searching)
-            SizedBox(
-              width: 180,
-              height: 28,
-              child: TextField(
-                controller: _searchCtrl,
-                autofocus: true,
-                style: TextStyle(fontSize: 12, color: scheme.onSurface),
-                decoration: InputDecoration(
-                  isDense: true,
-                  hintText: '姓名 / 别名 / 标签',
-                  hintStyle: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
-                  prefixIcon: Icon(Icons.search, size: 14),
-                  prefixIconConstraints: const BoxConstraints(minWidth: 26, minHeight: 28),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                  filled: true,
-                  fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(6),
-                    borderSide: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.6)),
-                  ),
-                ),
-                onSubmitted: (v) {
-                  setState(() => _keyword = v.trim());
-                },
-                onChanged: (v) {
-                  setState(() => _keyword = v.trim());
-                },
-              ),
-            )
-          else
-            SizedBox(
-              height: 28,
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  mouseCursor: SystemMouseCursors.click,
-                  borderRadius: BorderRadius.circular(6),
-                  onTap: () {
-                    _searchCtrl.text = _keyword;
-                    setState(() => _searching = true);
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: Icon(
-                      _keyword.isEmpty ? Icons.search : Icons.filter_alt,
-                      size: 18,
-                      color: _keyword.isEmpty ? null : scheme.primary,
+          const SizedBox(width: 8),
+          // 搜索区按可用宽度自适应，面板较窄时随输入框收缩，避免横向溢出。
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: _searching
+                  ? ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 180),
+                      child: SizedBox(
+                        height: 28,
+                        child: TextField(
+                          controller: _searchCtrl,
+                          autofocus: true,
+                          style: TextStyle(fontSize: 12, color: scheme.onSurface),
+                          decoration: InputDecoration(
+                            isDense: true,
+                            hintText: '姓名 / 别名 / 标签',
+                            hintStyle: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+                            prefixIcon: Icon(Icons.search, size: 14),
+                            prefixIconConstraints:
+                                const BoxConstraints(minWidth: 26, minHeight: 28),
+                            contentPadding:
+                                const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                            filled: true,
+                            fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(6),
+                              borderSide: BorderSide(
+                                  color: scheme.outlineVariant.withValues(alpha: 0.6)),
+                            ),
+                          ),
+                          onSubmitted: (v) {
+                            setState(() => _keyword = v.trim());
+                          },
+                          onChanged: (v) {
+                            setState(() => _keyword = v.trim());
+                          },
+                        ),
+                      ),
+                    )
+                  : SizedBox(
+                      height: 28,
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          mouseCursor: SystemMouseCursors.click,
+                          borderRadius: BorderRadius.circular(6),
+                          onTap: () {
+                            _searchCtrl.text = _keyword;
+                            setState(() => _searching = true);
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.all(4),
+                            child: Icon(
+                              _keyword.isEmpty ? Icons.search : Icons.filter_alt,
+                              size: 18,
+                              color: _keyword.isEmpty ? null : scheme.primary,
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-              ),
             ),
+          ),
           const SizedBox(width: 4),
           SizedBox(
             height: 28,
@@ -377,11 +387,13 @@ class _CharacterPanelState extends State<CharacterPanel> {
     ]);
   }
 
-  /// 角色网格视图：竖向卡片，高度与大纲网格一致（180px）。
+  /// 角色网格视图：竖向卡片，宽高随分辨率与界面缩放自适应。
   Widget _buildGrid(ColorScheme scheme) {
+    // 界面缩放（uiScale）作用于全局字号，卡片宽高需同步放大，否则放大字号后拥挤。
+    final scale = MediaQuery.textScalerOf(context).scale(1.0);
     return LayoutBuilder(builder: (ctx, constraints) {
-      // 每列最小 220px，面板过窄时自动减少列数。
-      final columns = (constraints.maxWidth ~/ 220).clamp(1, 4);
+      // 每列最小宽度随缩放增大，面板过窄时自动减少列数。
+      final columns = (constraints.maxWidth ~/ (220 * scale)).clamp(1, 4);
       return GridView.builder(
         padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
         itemCount: _filtered.length,
@@ -389,7 +401,7 @@ class _CharacterPanelState extends State<CharacterPanel> {
           crossAxisCount: columns,
           mainAxisSpacing: 6,
           crossAxisSpacing: 6,
-          mainAxisExtent: 280,
+          mainAxisExtent: 160 + 80 * scale,
         ),
         itemBuilder: (ctx, i) => _CharacterGridCell(
           char: _filtered[i],

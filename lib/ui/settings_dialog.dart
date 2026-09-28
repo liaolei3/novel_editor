@@ -75,9 +75,72 @@ const _pageDescriptions = [
   '存储、词库与日志',
 ];
 
-/// 滑块行/下拉行共享的标题列宽，保证各滑块左侧起点一致；
-/// 150% 界面缩放下 4 字标题约需 84px，取 104 留余量防换行。
-const _rowLabelWidth = 104.0;
+/// 滑块行/下拉行共享的标题列宽（100% 界面缩放下的设计值），
+/// 保证各滑块左侧起点一致；实际使用时按界面缩放同比放大，
+/// 这样既能让标题与滑块贴得紧，又不会在 150% 缩放下裁掉 4 字标题。
+const _rowLabelWidth = 76.0;
+
+/// 紧凑胶囊开关：Material Switch 固定 52×32，比本页的描边控件更窄更高，
+/// 故自绘为更宽更矮的胶囊。配色取自主题 switchTheme，四套主题下与
+/// 原生 Switch 保持一致。
+class _PillSwitch extends StatelessWidget {
+  const _PillSwitch({required this.value, required this.onChanged});
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    // 比原生 52×32 更宽更矮。
+    const width = 64.0;
+    const height = 24.0;
+    final scheme = Theme.of(context).colorScheme;
+    final switchTheme = SwitchTheme.of(context);
+    final states = value ? const {WidgetState.selected} : const <WidgetState>{};
+    final trackColor =
+        switchTheme.trackColor?.resolve(states) ??
+        (value ? scheme.primary : scheme.surfaceContainerHighest);
+    final thumbColor =
+        switchTheme.thumbColor?.resolve(states) ??
+        (value ? scheme.onPrimary : scheme.outline);
+    final outlineColor =
+        switchTheme.trackOutlineColor?.resolve(states) ??
+        scheme.outlineVariant;
+    const borderWidth = 1.5;
+    final inset = borderWidth + 1.5;
+    final thumbSize = height - inset * 2;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => onChanged(!value),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          width: width,
+          height: height,
+          decoration: BoxDecoration(
+            color: trackColor,
+            borderRadius: BorderRadius.circular(height / 2),
+            border: Border.all(color: outlineColor, width: borderWidth),
+          ),
+          padding: EdgeInsets.all(inset),
+          child: AnimatedAlign(
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOut,
+            alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+            child: Container(
+              width: thumbSize,
+              height: thumbSize,
+              decoration: BoxDecoration(
+                color: thumbColor,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class SettingsDialog extends StatefulWidget {
   const SettingsDialog({super.key});
@@ -130,7 +193,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
         : const Color(0x1AFFFFFF);
 
     return AlertDialog(
-      titlePadding: const EdgeInsets.fromLTRB(24, 20, 12, 16),
+      titlePadding: const EdgeInsets.fromLTRB(20, 12, 10, 8),
       contentPadding: EdgeInsets.zero,
       title: Row(
         children: [
@@ -146,8 +209,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
       content: ClipRRect(
         borderRadius: BorderRadius.circular(11),
         child: SizedBox(
-          width: 960,
-          height: 700,
+          width: 800,
+          height: 520,
           child: Column(
             children: [
               const Divider(height: 1),
@@ -156,11 +219,11 @@ class _SettingsDialogState extends State<SettingsDialog> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     SizedBox(
-                      width: 200,
+                      width: 156,
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 12,
+                          horizontal: 8,
+                          vertical: 10,
                         ),
                         child: Column(
                           children: [
@@ -177,7 +240,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                     const VerticalDivider(width: 1),
                     Expanded(
                       child: ListView(
-                        padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                         children: [
                           _pageHeader(
                             _categories[_current].label,
@@ -265,7 +328,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
           ),
         ],
       ),
-      const SizedBox(height: 12),
+      const SizedBox(height: 10),
       _group(hairline, [
         ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 16),
@@ -278,7 +341,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
           onTap: _importFont,
         ),
       ]),
-      const SizedBox(height: 12),
+      const SizedBox(height: 10),
       _group(hairline, [
         _dropdownRow(
           title: '界面字体',
@@ -356,19 +419,45 @@ class _SettingsDialogState extends State<SettingsDialog> {
             padding: EdgeInsets.zero,
           ),
         ),
+        _divider(hairline),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: Row(
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('光标固定打字'),
+                  const SizedBox(width: 4),
+                  _hintIcon('打字机模式：输入时光标停在视口正中，正文随之上滚'),
+                ],
+              ),
+              const Spacer(),
+              SizedBox(
+                height: 36,
+                child: Center(
+                  child: _PillSwitch(
+                    value: s.typewriterMode,
+                    onChanged: s.setTypewriterMode,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ]),
-      const SizedBox(height: 12),
+      const SizedBox(height: 10),
       _group(hairline, [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
           child: Row(
             children: [
               const Expanded(child: Text('字数统计口径')),
               SizedBox(
-                width: 240,
+                width: 200,
                 child: SegmentedButton<CountStandard>(
                   style: const ButtonStyle(
-                    minimumSize: WidgetStatePropertyAll(Size(120, 36)),
+                    minimumSize: WidgetStatePropertyAll(Size(96, 36)),
                   ),
                   segments: const [
                     ButtonSegment(
@@ -393,11 +482,25 @@ class _SettingsDialogState extends State<SettingsDialog> {
             ],
           ),
         ),
+        _divider(hairline),
+        _sliderRow(
+          title: '码字目标',
+          value: '${s.dailyGoal} 字',
+          slider: Slider(
+            min: 500,
+            max: 10000,
+            divisions: 19,
+            label: '${s.dailyGoal}',
+            value: s.dailyGoal.toDouble(),
+            onChanged: (v) => s.setDailyGoal(v.round()),
+            padding: EdgeInsets.zero,
+          ),
+        ),
       ]),
-      const SizedBox(height: 12),
+      const SizedBox(height: 10),
       _group(hairline, [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
           child: Row(
             children: [
               Row(
@@ -405,36 +508,15 @@ class _SettingsDialogState extends State<SettingsDialog> {
                 children: [
                   const Text('自动保存停顿'),
                   const SizedBox(width: 4),
-                  Tooltip(
-                    message: '输入停顿后保存，另有 30 秒兜底自动保存',
-                    triggerMode: TooltipTriggerMode.tap,
-                    showDuration: const Duration(seconds: 3),
-                    constraints: const BoxConstraints(maxWidth: 160),
-                    child: SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 1),
-                        child: Center(
-                          child: Icon(
-                            Icons.help_outline,
-                            size: 16,
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+                  _hintIcon('输入停顿后保存，另有 30 秒兜底自动保存'),
                 ],
               ),
               const Spacer(),
               SizedBox(
-                width: 240,
+                width: 200,
                 child: SegmentedButton<int>(
                   style: const ButtonStyle(
-                    minimumSize: WidgetStatePropertyAll(Size(80, 36)),
+                    minimumSize: WidgetStatePropertyAll(Size(64, 36)),
                   ),
                   segments: const [
                     ButtonSegment(value: 1, label: Text('1s')),
@@ -447,22 +529,6 @@ class _SettingsDialogState extends State<SettingsDialog> {
                 ),
               ),
             ],
-          ),
-        ),
-      ]),
-      const SizedBox(height: 12),
-      _group(hairline, [
-        _sliderRow(
-          title: '码字目标',
-          value: '${s.dailyGoal} 字',
-          slider: Slider(
-            min: 500,
-            max: 10000,
-            divisions: 19,
-            label: '${s.dailyGoal}',
-            value: s.dailyGoal.toDouble(),
-            onChanged: (v) => s.setDailyGoal(v.round()),
-            padding: EdgeInsets.zero,
           ),
         ),
       ]),
@@ -480,7 +546,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
           onChanged: (v) => s.setSyncEnabled(v),
         ),
       ]),
-      const SizedBox(height: 12),
+      const SizedBox(height: 10),
       _group(hairline, [
         ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 16),
@@ -539,7 +605,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
           ),
         ),
       ]),
-      const SizedBox(height: 12),
+      const SizedBox(height: 10),
       _group(hairline, [
         ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 16),
@@ -591,13 +657,13 @@ class _SettingsDialogState extends State<SettingsDialog> {
   Widget _pageHeader(String title, String subtitle) {
     final scheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 2, 4, 14),
+      padding: const EdgeInsets.fromLTRB(2, 0, 2, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             title,
-            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 3),
           Text(
@@ -633,6 +699,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
       clipBehavior: Clip.antiAlias,
       child: ListTileTheme.merge(
         shape: const RoundedRectangleBorder(),
+        // 集中压缩组内 ListTile 行高（两行 tile 72 → 64），
+        // 使仅剩的 tile 行（如数据页的目录项）不显得比相邻行松。
+        visualDensity: VisualDensity.compact,
         child: Column(
           children: [
             for (final child in children)
@@ -648,23 +717,50 @@ class _SettingsDialogState extends State<SettingsDialog> {
     return const Divider(height: 1, indent: 16, endIndent: 16);
   }
 
-  /// 滑块行：标题（固定宽，与下拉行对齐）+ 滑块 + 描边胶囊值同一行。
+  /// 设置项说明图标：点击（而非悬停）弹出提示，避免扫过设置项时反复遮挡。
+  Widget _hintIcon(String message) {
+    return Tooltip(
+      message: message,
+      triggerMode: TooltipTriggerMode.tap,
+      showDuration: const Duration(seconds: 3),
+      constraints: const BoxConstraints(maxWidth: 200),
+      mouseCursor: SystemMouseCursors.click,
+      child: SizedBox(
+        width: 16,
+        height: 16,
+        child: Padding(
+          padding: const EdgeInsets.only(top: 1),
+          child: Center(
+            child: Icon(
+              Icons.help_outline,
+              size: 16,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 标题列宽：随界面缩放同比放大，字号变大时列宽同步变大，
+  /// 标题与右侧控件之间始终保持同一视觉间距。
+  double _labelWidth() =>
+      MediaQuery.textScalerOf(context).scale(_rowLabelWidth);
+
+  /// 滑块行：标题（固定宽，与下拉行对齐）+ 滑块 + 右侧数值同一行。
+  /// 数值列只占数值本身所需宽度，把余量让给滑块。
   Widget _sliderRow({
     required String title,
     required String value,
     required Widget slider,
   }) {
     final scheme = Theme.of(context).colorScheme;
-    final isLight = Theme.of(context).brightness == Brightness.light;
-    final hairlineStrong = isLight
-        ? const Color(0x2E000000)
-        : const Color(0x2EFFFFFF);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
       child: Row(
         children: [
           SizedBox(
-            width: _rowLabelWidth,
+            width: _labelWidth(),
             child: Text(
               title,
               maxLines: 1,
@@ -686,18 +782,15 @@ class _SettingsDialogState extends State<SettingsDialog> {
               ),
             ),
           ),
-          const SizedBox(width: 12),
-          Container(
-            width: 88,
-            height: 28,
-            decoration: BoxDecoration(
-              color: scheme.surface,
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: hairlineStrong),
-            ),
-            alignment: Alignment.center,
+          const SizedBox(width: 10),
+          SizedBox(
+            width: 56,
             child: Text(
               value,
+              textAlign: TextAlign.right,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.fade,
               style: TextStyle(
                 fontSize: 12,
                 color: scheme.onSurfaceVariant,
@@ -728,11 +821,11 @@ class _SettingsDialogState extends State<SettingsDialog> {
         ? const Color(0x2E000000)
         : const Color(0x2EFFFFFF);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
       child: Row(
         children: [
           SizedBox(
-            width: _rowLabelWidth,
+            width: _labelWidth(),
             child: Text(title),
           ),
           const Spacer(),
@@ -756,7 +849,6 @@ class _SettingsDialogState extends State<SettingsDialog> {
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
                   height: 36,
-                  constraints: const BoxConstraints(minWidth: 88),
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
@@ -1012,7 +1104,7 @@ class _NavItemState extends State<_NavItem> {
           behavior: HitTestBehavior.opaque,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 120),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
               color: selected
                   ? selectedColor
