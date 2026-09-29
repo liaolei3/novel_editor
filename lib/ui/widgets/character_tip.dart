@@ -5,16 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../data/models.dart';
 import '../../state/app_state.dart';
-
-/// 角色卡颜色解析：'#RRGGBB' → Color，非法值返回 null。
-Color? parseCharacterColor(String hex) {
-  if (hex.isEmpty) return null;
-  try {
-    return Color(int.parse(hex.replaceFirst('#', '0xFF')));
-  } catch (_) {
-    return null;
-  }
-}
+import '../common/character_marks.dart';
 
 /// 编辑器角色名悬浮 tip：延迟 300ms 弹出。
 /// 单例 OverlayEntry，同一时刻只显示一个。
@@ -158,20 +149,6 @@ class _CharacterTipViewState extends State<_CharacterTipView> {
     }
   }
 
-  static const _typeLabels = <CharacterType, String>{
-    CharacterType.protagonist: '主角',
-    CharacterType.supporting: '配角',
-    CharacterType.antagonist: '反派',
-    CharacterType.minor: '龙套',
-  };
-
-  static const _typeColors = <CharacterType, Color>{
-    CharacterType.protagonist: Color(0xFF4A90D9),
-    CharacterType.supporting: Color(0xFF7CB342),
-    CharacterType.antagonist: Color(0xFFE53935),
-    CharacterType.minor: Color(0xFF9E9E9E),
-  };
-
   String _formatTime(DateTime t) {
     final now = DateTime.now();
     String two(int n) => n.toString().padLeft(2, '0');
@@ -186,7 +163,6 @@ class _CharacterTipViewState extends State<_CharacterTipView> {
     final scheme = Theme.of(context).colorScheme;
     final size = MediaQuery.sizeOf(context);
     final char = _character!;
-    final color = parseCharacterColor(char.color) ?? scheme.primary;
 
     // 位置：与文字左对齐、正下方紧贴（无间隙）；
     // 下方空间不足时按实测高度上翻，屏幕边缘钳制。
@@ -254,8 +230,8 @@ class _CharacterTipViewState extends State<_CharacterTipView> {
                                     color: scheme.onSurface)),
                           ),
                           const SizedBox(width: 4),
-                          _badge(_typeLabels[char.type] ?? '',
-                              _typeColors[char.type] ?? color),
+                          _badge(characterTypeLabel(char.type),
+                              characterTypeColor(char.type)),
                           const SizedBox(width: 4),
                           Text(char.gender == Gender.female ? '女' : '男',
                               style: TextStyle(

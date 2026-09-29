@@ -74,8 +74,6 @@ class _AiPanelState extends State<AiPanel> {
               _actionArea(context, gateway),
               if (_loading) ...[
                 const SizedBox(height: 16),
-                const Center(child: CircularProgressIndicator()),
-                const SizedBox(height: 8),
                 const Center(child: Text('AI 正在生成…（30s 超时）')),
               ],
               if (_error != null) ...[

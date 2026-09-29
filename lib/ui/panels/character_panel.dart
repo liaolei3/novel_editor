@@ -5,9 +5,11 @@ import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../../state/settings_controller.dart';
 import '../app_root.dart';
+import '../common/character_marks.dart';
 import '../common/dialogs.dart' show DraggableDialog;
 import '../widgets/tinted_card.dart';
 import '../widgets/toast.dart';
+import '../widgets/underline_tab.dart';
 import '../widgets/view_toggle.dart';
 
 /// 角色卡面板：收藏卡册风格，角色列表 + 内页详情编辑。
@@ -101,16 +103,9 @@ class _CharacterPanelState extends State<CharacterPanel> {
     return list;
   }
 
-  static const _typeLabels = <CharacterType, String>{
-    CharacterType.protagonist: '主角',
-    CharacterType.supporting: '配角',
-    CharacterType.antagonist: '反派',
-    CharacterType.minor: '龙套',
-  };
-
   static const _filterTypes = <CharacterType?>[null, CharacterType.protagonist,
-      CharacterType.supporting, CharacterType.antagonist, CharacterType.minor];
-  static const _filterLabels = <String>['全部', '主角', '配角', '反派', '龙套'];
+      CharacterType.supporting, CharacterType.antagonist];
+  static const _filterLabels = <String>['全部', '主角', '配角', '反派'];
 
   static const _colorPresets = [
     Color(0xFF4A90D9),
@@ -128,8 +123,6 @@ class _CharacterPanelState extends State<CharacterPanel> {
 
   static String _avatarAsset(Gender g) =>
       g == Gender.female ? _femaleAvatar : _maleAvatar;
-
-  String _colorToHex(Color c) => '#${c.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}';
 
   @override
   void dispose() {
@@ -350,7 +343,7 @@ class _CharacterPanelState extends State<CharacterPanel> {
           padding: const EdgeInsets.symmetric(horizontal: 12),
           children: [
             for (var i = 0; i < _filterTypes.length; i++)
-              _UnderlineTab(
+              UnderlineTab(
                 label: _filterLabels[i],
                 selected: _filter == _filterTypes[i],
                 onTap: () => setState(() => _filter = _filterTypes[i]),
@@ -361,7 +354,7 @@ class _CharacterPanelState extends State<CharacterPanel> {
       const Divider(height: 1),
       Expanded(
         child: _loading
-            ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+            ? const SizedBox.shrink()
             : _filtered.isEmpty
                 ? Center(
                     child: Column(
@@ -406,7 +399,7 @@ class _CharacterPanelState extends State<CharacterPanel> {
         itemBuilder: (ctx, i) => _CharacterGridCell(
           char: _filtered[i],
           avatarAsset: _avatarAsset(_filtered[i].gender),
-          typeLabel: _typeLabels[_filtered[i].type] ?? '',
+          typeLabel: characterTypeLabel(_filtered[i].type),
           tintIndex: i,
           onTap: () => _openDetail(_filtered[i]),
           onDelete: () => _deleteFromList(_filtered[i]),
@@ -419,7 +412,7 @@ class _CharacterPanelState extends State<CharacterPanel> {
     return _CharacterCard(
       char: char,
       avatarAsset: _avatarAsset(char.gender),
-      typeLabel: _typeLabels[char.type] ?? '',
+      typeLabel: characterTypeLabel(char.type),
       tintIndex: tintIndex,
       onTap: () => _openDetail(char),
       onDelete: () => _deleteFromList(char),
@@ -534,23 +527,12 @@ class _CharacterPanelState extends State<CharacterPanel> {
                 for (final c in _colorPresets)
                   _ColorSwatch(
                     color: c,
-                    selected: _draft.color == _colorToHex(c),
-                    onTap: () => setState(() => _draft.color = _colorToHex(c)),
+                    // 空色（历史数据）在色板上按类型默认色显示为已选中，
+                    // 但保存时不补写，等用户真正改色才落盘。
+                    selected: characterMarkColor(_draft) == c,
+                    onTap: () => setState(
+                        () => _draft.color = characterColorToHex(c)),
                   ),
-                MouseRegion(
-                  cursor: SystemMouseCursors.click,
-                  child: GestureDetector(
-                    onTap: () => setState(() => _draft.color = ''),
-                    child: Container(
-                      width: 24, height: 24,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: scheme.outlineVariant, width: 1.5),
-                      ),
-                      child: Center(child: Icon(Icons.close, size: 12, color: scheme.onSurfaceVariant)),
-                    ),
-                  ),
-                ),
               ],
             ),
             const SizedBox(height: 16),
@@ -673,19 +655,19 @@ class _CharacterPanelState extends State<CharacterPanel> {
 
   Widget _typeSegment(CharacterType type, ColorScheme scheme) {
     final selected = _draft.type == type;
-    final color = _typeColor(type, scheme);
+    final color = characterTypeColor(type);
     return Material(
       color: selected ? color.withValues(alpha: 0.12) : Colors.transparent,
       child: InkWell(
         mouseCursor: SystemMouseCursors.click,
         onTap: () => setState(() {
           _draft.type = type;
-          _draft.color = _colorToHex(color);
+          _draft.color = characterColorToHex(color);
         }),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 6),
           alignment: Alignment.center,
-          child: Text(_typeLabels[type] ?? type.name, style: TextStyle(
+          child: Text(characterTypeLabel(type), style: TextStyle(
             fontSize: 12,
             fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
             color: selected ? color : scheme.onSurfaceVariant,
@@ -762,10 +744,12 @@ class _CharacterPanelState extends State<CharacterPanel> {
 
   void _create() {
     final now = DateTime.now();
-    _openDetail(
-      Character(id: '', bookId: widget.book.id, name: '', createdAt: now, updatedAt: now),
-      isNew: true,
-    );
+    final draft = Character(
+        id: '', bookId: widget.book.id, name: '', createdAt: now, updatedAt: now);
+    // 新建即写入类型默认色：此前标记色留空会回退到主题主色，
+    // 在自然主题下与正文几乎同色，角色名在正文里看不出来。
+    draft.color = characterColorToHex(characterTypeColor(draft.type));
+    _openDetail(draft, isNew: true);
     _nameCtrl.clear();
     _aliasesCtrl.clear();
     _disposeAttrRows();
@@ -831,48 +815,6 @@ class _CharacterPanelState extends State<CharacterPanel> {
     state.characterDictVersion.value++;
     _characters.removeWhere((c) => c.id == _draft.id);
     if (mounted) setState(() => _selected = null);
-  }
-
-  Color _typeColor(CharacterType type, ColorScheme scheme) => switch (type) {
-    CharacterType.protagonist => const Color(0xFF4A90D9),
-    CharacterType.supporting => const Color(0xFF7CB342),
-    CharacterType.antagonist => const Color(0xFFE53935),
-    CharacterType.minor => const Color(0xFF9E9E9E),
-  };
-}
-
-/// 下划线式文字 Tab。
-class _UnderlineTab extends StatelessWidget {
-  const _UnderlineTab({required this.label, required this.selected, required this.onTap});
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return InkWell(
-      mouseCursor: SystemMouseCursors.click,
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: selected ? scheme.primary : Colors.transparent,
-              width: 2,
-            ),
-          ),
-        ),
-        alignment: Alignment.center,
-        child: Text(label, style: TextStyle(
-          fontSize: 13,
-          fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-          color: selected ? scheme.onSurface : scheme.onSurfaceVariant,
-        )),
-      ),
-    );
   }
 }
 
@@ -1224,17 +1166,9 @@ class _TypeBadge extends StatelessWidget {
   final String label;
   final CharacterType type;
 
-  Color _colorOf(ColorScheme scheme) => switch (type) {
-    CharacterType.protagonist => const Color(0xFF4A90D9),
-    CharacterType.supporting => const Color(0xFF7CB342),
-    CharacterType.antagonist => const Color(0xFFE53935),
-    CharacterType.minor => const Color(0xFF9E9E9E),
-  };
-
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final color = _colorOf(scheme);
+    final color = characterTypeColor(type);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
       decoration: BoxDecoration(

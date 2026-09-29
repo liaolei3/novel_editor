@@ -21,6 +21,32 @@ class FileIO {
     return file.bytes != null ? String.fromCharCodes(file.bytes!) : null;
   }
 
+  /// 选择可导入的书稿文件（txt / docx），返回 (去扩展名文件名, 小写扩展名,
+  /// 字节内容)，取消返回 null。
+  ///
+  /// 与 [pickReadTextNamed] 不同，这里不做文本解码——docx 需按二进制解析，
+  /// txt 由调用方自行解码，避免二进制被当成字符读取。
+  static Future<(String, String, Uint8List)?> pickImportNamed({
+    List<String> ext = const ['txt', 'docx'],
+  }) async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ext,
+      withData: true,
+    );
+    final file = result?.files.single;
+    if (file == null) return null;
+    final name = file.name;
+    final dot = name.lastIndexOf('.');
+    final base = dot > 0 ? name.substring(0, dot) : name;
+    final suffix = dot > 0 ? name.substring(dot + 1).toLowerCase() : '';
+    final Uint8List? bytes = file.path != null && File(file.path!).existsSync()
+        ? await File(file.path!).readAsBytes()
+        : file.bytes;
+    if (bytes == null) return null;
+    return (base, suffix, bytes);
+  }
+
   /// 选择并读取文本文件，返回 (去扩展名文件名, 内容)，取消返回 null。
   static Future<(String, String)?> pickReadTextNamed({
     List<String> ext = const ['txt'],

@@ -12,6 +12,7 @@ import '../common/foreshadow_dialogs.dart';
 import '../widgets/foreshadow_tip.dart' show foreshadowMarkColor;
 import '../widgets/tinted_card.dart';
 import '../widgets/toast.dart';
+import '../widgets/underline_tab.dart';
 import '../widgets/view_toggle.dart';
 
 /// 伏笔面板：列表态（状态筛选 + 卡片）↔ 详情态（编辑 + 片段列表）。
@@ -483,7 +484,7 @@ class _ForeshadowPanelState extends State<ForeshadowPanel> {
           padding: const EdgeInsets.symmetric(horizontal: 12),
           children: [
             for (var i = 0; i < _filterLabels.length; i++)
-              _UnderlineTab(
+              UnderlineTab(
                 label: _filterLabels[i],
                 selected: _filter ==
                     (i == 0
@@ -505,7 +506,7 @@ class _ForeshadowPanelState extends State<ForeshadowPanel> {
       const Divider(height: 1),
       Expanded(
         child: _loading
-            ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+            ? const SizedBox.shrink()
             : _filtered.isEmpty
                 ? Center(
                     child: Column(
@@ -760,42 +761,6 @@ class _ForeshadowPanelState extends State<ForeshadowPanel> {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _UnderlineTab extends StatelessWidget {
-  const _UnderlineTab(
-      {required this.label, required this.selected, required this.onTap});
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return InkWell(
-      mouseCursor: SystemMouseCursors.click,
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: selected ? scheme.primary : Colors.transparent,
-              width: 2,
-            ),
-          ),
-        ),
-        alignment: Alignment.center,
-        child: Text(label,
-            style: TextStyle(
-                fontSize: 13,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                color:
-                    selected ? scheme.onSurface : scheme.onSurfaceVariant)),
-      ),
     );
   }
 }

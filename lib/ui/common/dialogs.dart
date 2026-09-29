@@ -681,16 +681,9 @@ class _CompareBodyState extends State<_CompareBody> {
           Expanded(
             child: _diffs == null
                 ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const CircularProgressIndicator(),
-                        const SizedBox(height: 12),
-                        Text('正在计算差异…',
-                            style: textTheme.bodySmall?.copyWith(
-                                fontSize: 13, color: scheme.onSurfaceVariant)),
-                      ],
-                    ),
+                    child: Text('正在计算差异…',
+                        style: textTheme.bodySmall?.copyWith(
+                            fontSize: 13, color: scheme.onSurfaceVariant)),
                   )
                 : Row(children: [
                     Expanded(

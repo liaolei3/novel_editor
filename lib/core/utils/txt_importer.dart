@@ -2,14 +2,14 @@ import 'text_stats.dart';
 
 /// TXT 导入切分（FR-24）。
 ///
-/// 行首「第X卷/部/篇/集/册」识别为卷、「第X章/节/回/话」识别为章，切分为
+/// 行首「第X卷/集/册」识别为卷、「第X章/回/话」识别为章，切分为
 /// 卷→章两级结构，供书架导入预览确认后再落库。
 class TxtImporter {
   TxtImporter._();
 
   static const String _numeral = r'[0-9零一二三四五六七八九十百千万两]';
-  static const String _volumeChars = '卷部篇集册';
-  static const String _chapterChars = '章节回话';
+  static const String _volumeChars = '卷集册';
+  static const String _chapterChars = '章回话';
 
   // 标记行须以「第X + 卷/章类字」开头。附加标题部分不得含句末标点、整行不超过
   // 30 字，否则视为正文——挡住「第一章讲的是……」这类整句被误切成标题。

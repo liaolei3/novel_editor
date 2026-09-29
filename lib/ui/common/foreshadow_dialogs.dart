@@ -81,14 +81,16 @@ Future<(String, String, String)?> showCreateForeshadowDialog(
               excerptBlock(excerpt, ctx)!,
               const SizedBox(height: 16),
             ],
-            // 名称即伏笔的标题：无框大字输入，与下方正文区分层。
             TextField(
               controller: nameCtrl,
               autofocus: true,
-              decoration: const InputDecoration(
+              style: TextStyle(fontSize: 13, color: scheme.onSurface),
+              decoration: InputDecoration(
                 labelText: '伏笔名称',
+                labelStyle: TextStyle(
+                    fontSize: 12, color: scheme.onSurfaceVariant),
                 contentPadding:
-                    EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
               ),
             ),
             const SizedBox(height: 14),
@@ -127,8 +129,8 @@ Future<(String, String, String)?> showCreateForeshadowDialog(
               const SizedBox(height: 12),
               TextField(
                 controller: remarkCtrl,
-                minLines: 2,
-                maxLines: 4,
+                minLines: 3,
+                maxLines: 6,
                 style: TextStyle(
                     fontSize: 13, height: 1.5, color: scheme.onSurface),
                 decoration: InputDecoration(
@@ -249,11 +251,7 @@ Future<(Foreshadow, String)?> showLinkForeshadowDialog(
               width: 512,
               height: 340,
               child: !loaded
-                  ? Center(
-                      child: SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(strokeWidth: 2)))
+                  ? const SizedBox.shrink()
                   : Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [

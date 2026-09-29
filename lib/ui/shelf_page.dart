@@ -1,8 +1,15 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:isolate';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/utils/docx_importer.dart';
 import '../core/utils/txt_importer.dart';
 import '../data/models.dart';
+import '../services/logger.dart';
 import '../state/app_state.dart';
 import '../state/settings_controller.dart';
 import 'app_root.dart';
@@ -14,6 +21,7 @@ import 'common/import_preview_dialog.dart';
 import 'login_page.dart';
 import 'recycle_page.dart';
 import 'stats_page.dart';
+import 'widgets/busy_overlay.dart';
 import 'widgets/tinted_card.dart' show EdgeShadowPainter;
 import 'widgets/app_bar_nav_actions.dart';
 import 'widgets/toast.dart';
@@ -44,52 +52,56 @@ class _ShelfPageState extends State<ShelfPage> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final hairline = scheme.outlineVariant.withValues(alpha: 0.5);
-    return Scaffold(
-      appBar: AppTopBar(
-        leading: IconButton(
-          tooltip: '主页',
-          icon: const Icon(Icons.home_outlined, size: 26),
-          onPressed: () => setState(() => _tab = _HomeTab.shelf),
+    // 加载遮罩挂在整页之上，导入时才盖得住顶栏与左侧菜单。
+    return BusyOverlayHost(
+      child: Scaffold(
+        appBar: AppTopBar(
+          leading: IconButton(
+            tooltip: '主页',
+            icon: const Icon(Icons.home_outlined, size: 26),
+            onPressed: () => setState(() => _tab = _HomeTab.shelf),
+          ),
+          title: const Text('主页'),
+          titleSpacing: 4,
+          actions: const [AppBarNavActions()],
         ),
-        title: const Text('主页'),
-        titleSpacing: 4,
-        actions: const [AppBarNavActions()],
-      ),
-      body: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // 侧栏：与设置弹窗左导航同一视觉语言（品牌色浅底选中态）。
-          Container(
-            width: 300,
-            padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
-            decoration: BoxDecoration(
-              border: Border(right: BorderSide(color: hairline)),
-            ),
-            child: Column(
-              children: [
-                for (final (icon, label, tab) in _tabs)
-                  _SideNavItem(
-                    icon: icon,
-                    label: label,
-                    selected: _tab == tab,
-                    onTap: () => setState(() => _tab = tab),
+        body: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // 侧栏：与设置弹窗左导航同一视觉语言（品牌色浅底选中态）。
+            Container(
+              width: 300,
+              padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
+              decoration: BoxDecoration(
+                border: Border(right: BorderSide(color: hairline)),
+              ),
+              child: Column(
+                children: [
+                  for (final (icon, label, tab) in _tabs)
+                    _SideNavItem(
+                      icon: icon,
+                      label: label,
+                      selected: _tab == tab,
+                      onTap: () => setState(() => _tab = tab),
+                    ),
+                  const Spacer(),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: _LoginEntry(),
                   ),
-                const Spacer(),
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: _LoginEntry(),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          Expanded(
-            child: switch (_tab) {
-              _HomeTab.shelf => const _ShelfBody(),
-              _HomeTab.stats => const StatsView(),
-              _HomeTab.recycle => const RecycleView(scope: RecycleScope.shelf),
-            },
-          ),
-        ],
+            Expanded(
+              child: switch (_tab) {
+                _HomeTab.shelf => const _ShelfBody(),
+                _HomeTab.stats => const StatsView(),
+                _HomeTab.recycle =>
+                  const RecycleView(scope: RecycleScope.shelf),
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -289,7 +301,7 @@ class _ShelfBodyState extends State<_ShelfBody> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const SizedBox.shrink()
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -499,26 +511,74 @@ class _ShelfBodyState extends State<_ShelfBody> {
     await state.createBook(values.$1, values.$2, coverPath: values.$3);
   }
 
-  /// 导入 TXT 为新书：先预览切分出的卷/章，确认后按卷章落库。
+  /// 导入入口：兜住流程中任何未预期异常，避免静默失败。
   Future<void> _importBook(BuildContext ctx) async {
-    final file = await FileIO.pickReadTextNamed();
-    if (file == null || ctx.mounted == false) return;
-    final (name, raw) = file;
-    if (raw.trim().isEmpty) {
-      showToast(ctx, '导入失败：文件内容为空');
+    try {
+      await _importBookInner(ctx);
+    } catch (error, stackTrace) {
+      Logger.error('导入书籍失败', error: error, stackTrace: stackTrace);
+      if (ctx.mounted) showToast(ctx, '导入失败');
+    }
+  }
+
+  /// 导入 txt / docx 为新书：先预览切分出的卷/章，确认后按卷章落库。
+  Future<void> _importBookInner(BuildContext ctx) async {
+    final picked = await FileIO.pickImportNamed();
+    if (picked == null || ctx.mounted == false) return;
+    final (name, ext, bytes) = picked;
+
+    final result = await runWithBusy(
+        '正在解析《$name》', (_) => _parseImportInBackground(ext, bytes));
+    if (ctx.mounted == false) return;
+    if (result.error != null) {
+      showToast(ctx, result.error!);
       return;
     }
-    final preview = TxtImporter.parse(raw);
+    final preview = result.preview!;
+
     final title =
         await importPreviewDialog(ctx, initialTitle: name, preview: preview);
     if (title == null || ctx.mounted == false) return;
+
     final state = appState(ctx);
-    await state.importBookFromPreview(title, preview);
+    await runWithBusy(
+      '正在导入《$title》',
+      (report) => state.importBookFromPreview(title, preview,
+          onProgress: report),
+    );
     if (ctx.mounted) {
       showToast(ctx,
           '《$title》导入成功，共 ${preview.volumeCount} 卷 · ${preview.chapterCount} 章');
     }
   }
+}
+
+/// 在后台 isolate 解析导入文件。
+///
+/// 必须是独立作用域：同一方法里的多个闭包会共享捕获上下文，若把
+/// [Isolate.run] 直接写在调用处，发给 isolate 的闭包会连带捕获同作用域的
+/// `AppState`（内含数据库对象，不可发送），发送前就抛
+Future<({ImportPreview? preview, String? error})> _parseImportInBackground(
+        String ext, Uint8List bytes) =>
+    Isolate.run(() => _parseImport(ext, bytes));
+
+/// 解析导入文件（在后台 isolate 执行）：docx 解压抽文本 / txt 解码，再按同一
+/// 套规则切分卷章。返回切分结果，或给用户看的失败文案。
+({ImportPreview? preview, String? error}) _parseImport(
+    String ext, Uint8List bytes) {
+  final String raw;
+  if (ext == 'docx') {
+    try {
+      raw = DocxImporter.extractText(bytes);
+    } on FormatException {
+      return (preview: null, error: '导入失败：无法解析该 docx 文件');
+    }
+  } else {
+    // 非 UTF-8 的 txt（如 GBK）会解出替换字符，但至少能进预览让用户自己判断。
+    raw = utf8.decode(bytes, allowMalformed: true);
+  }
+  if (raw.trim().isEmpty) return (preview: null, error: '导入失败：文件内容为空');
+  return (preview: TxtImporter.parse(raw), error: null);
 }
 
 /// 书籍卡片：立体书脊书封。

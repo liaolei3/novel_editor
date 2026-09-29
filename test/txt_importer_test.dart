@@ -20,10 +20,10 @@ void main() {
     expect(preview.volumes[1].chapters.first.title, '第一章 转折');
   });
 
-  test('部 / 篇 / 集 亦识别为卷', () {
-    final preview = TxtImporter.parse('第一部 启程\n第一章 出发\n正文');
+  test('集 亦识别为卷', () {
+    final preview = TxtImporter.parse('第一集 启程\n第一章 出发\n正文');
     expect(preview.volumeCount, 1);
-    expect(preview.volumes.first.name, '第一部 启程');
+    expect(preview.volumes.first.name, '第一集 启程');
     expect(preview.volumes.first.chapters.single.title, '第一章 出发');
   });
 

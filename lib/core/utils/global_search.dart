@@ -2,8 +2,8 @@ import 'dart:convert';
 
 import '../../data/models.dart';
 
-/// 全局搜索范围。
-enum SearchScope { content, outline, character, title }
+/// 全局搜索结果分类（弹窗内以 tab 切换）。
+enum SearchScope { content, outline, character, foreshadow }
 
 /// 单个字段内的匹配集合。
 class GlobalSearchFieldHit {
@@ -13,7 +13,7 @@ class GlobalSearchFieldHit {
     required this.starts,
   });
 
-  /// 字段名，如「正文」「章纲」「名字」「外貌」「卷名」「章名」。
+  /// 字段名，如「正文」「章纲」「名字」「外貌」。
   final String fieldLabel;
 
   /// 字段完整文本（替换与摘要均基于它）。
@@ -25,25 +25,29 @@ class GlobalSearchFieldHit {
   int get count => starts.length;
 }
 
-/// 一条全局搜索命中：正文/章纲/标题为单字段；角色为一个角色聚合多字段。
+/// 一条全局搜索命中：正文/章纲为单字段；角色/伏笔为一个对象聚合多字段。
 class GlobalSearchHit {
   const GlobalSearchHit({
     required this.scope,
     required this.label,
     required this.fields,
     this.chapterId,
+    this.volumeId,
   });
 
   final SearchScope scope;
 
-  /// 位置标签，如「第一卷 / 第一章」「林晚」「第一卷」。
+  /// 命中对象名称：正文/章纲为章名，角色/伏笔为名称。
   final String label;
 
   /// 命中字段列表（均至少含一处命中）。
   final List<GlobalSearchFieldHit> fields;
 
-  /// 可跳转的章节 id（正文 / 章纲 / 章名命中）。
+  /// 可跳转的章节 id（正文 / 章纲命中）。
   final String? chapterId;
+
+  /// 命中所属卷 id（正文 / 章纲命中），供结果按卷分组；其余为 null。
+  final String? volumeId;
 
   int get count =>
       fields.fold(0, (sum, f) => sum + f.count);
@@ -58,111 +62,109 @@ class GlobalSearchHit {
 class GlobalSearch {
   GlobalSearch._();
 
-  /// 遍历全书执行搜索，返回按 正文 → 章纲 → 角色 → 标题 排序的命中列表。
+  /// 遍历全书执行搜索，返回 正文 → 章纲 → 角色 → 伏笔 的命中列表。
+  /// 正文 / 章纲按「卷序 → 章序」排列（忽略置顶），便于结果按卷分组。
   static List<GlobalSearchHit> search({
     required String query,
-    required Set<SearchScope> scopes,
     required List<Chapter> chapters,
     required List<Volume> volumes,
     required List<Character> characters,
+    required List<Foreshadow> foreshadows,
   }) {
     final hits = <GlobalSearchHit>[];
     if (query.isEmpty) return hits;
-    final volName = {for (final v in volumes) v.id: v.name};
-    String loc(Chapter c) {
-      final v = volName[c.volumeId];
-      return v == null ? c.title : '$v / ${c.title}';
-    }
 
-    if (scopes.contains(SearchScope.content)) {
-      for (final c in chapters) {
-        final plain = deltaPlainText(c.content);
-        final starts = matchStarts(plain, query);
-        if (starts.isNotEmpty) {
-          hits.add(GlobalSearchHit(
-            scope: SearchScope.content,
-            label: loc(c),
-            fields: [
-              GlobalSearchFieldHit(
-                  fieldLabel: '正文', source: plain, starts: starts)
-            ],
-            chapterId: c.id,
-          ));
-        }
+    // 卷序由卷的 sort 决定；卷内按章节 sort 升序，置顶不影响搜索结果顺序。
+    final orderedVolumes = List<Volume>.of(volumes)
+      ..sort((a, b) => a.sort.compareTo(b.sort));
+    final volIndex = {
+      for (var i = 0; i < orderedVolumes.length; i++) orderedVolumes[i].id: i,
+    };
+    final ordered = List<Chapter>.of(chapters)
+      ..sort((a, b) {
+        final va = volIndex[a.volumeId] ?? 1 << 30;
+        final vb = volIndex[b.volumeId] ?? 1 << 30;
+        return va != vb ? va.compareTo(vb) : a.sort.compareTo(b.sort);
+      });
+
+    for (final c in ordered) {
+      final plain = deltaPlainText(c.content);
+      final starts = matchStarts(plain, query);
+      if (starts.isNotEmpty) {
+        hits.add(GlobalSearchHit(
+          scope: SearchScope.content,
+          label: c.title,
+          fields: [
+            GlobalSearchFieldHit(
+                fieldLabel: '正文', source: plain, starts: starts)
+          ],
+          chapterId: c.id,
+          volumeId: c.volumeId,
+        ));
       }
     }
-    if (scopes.contains(SearchScope.outline)) {
-      for (final c in chapters) {
-        final starts = matchStarts(c.outline, query);
-        if (starts.isNotEmpty) {
-          hits.add(GlobalSearchHit(
-            scope: SearchScope.outline,
-            label: loc(c),
-            fields: [
-              GlobalSearchFieldHit(
-                  fieldLabel: '章纲', source: c.outline, starts: starts)
-            ],
-            chapterId: c.id,
-          ));
-        }
+    for (final c in ordered) {
+      final starts = matchStarts(c.outline, query);
+      if (starts.isNotEmpty) {
+        hits.add(GlobalSearchHit(
+          scope: SearchScope.outline,
+          label: c.title,
+          fields: [
+            GlobalSearchFieldHit(
+                fieldLabel: '章纲', source: c.outline, starts: starts)
+          ],
+          chapterId: c.id,
+          volumeId: c.volumeId,
+        ));
       }
     }
-    if (scopes.contains(SearchScope.character)) {
-      // 以角色为单位聚合：一个角色一条命中，合并全部命中的字段。
-      // 固定字段 + 自定义属性（属性名与属性值均参与匹配）。
-      for (final c in characters) {
-        final fieldHits = <GlobalSearchFieldHit>[];
-        final fixed = <String, String>{
-          '名字': c.name,
-          '别名': c.aliases,
-          '标签': c.tags,
-        };
-        for (final a in c.attrList) {
-          fixed[a.name] = a.value;
+    // 以角色为单位聚合：一个角色一条命中，合并全部命中的字段。
+    // 固定字段 + 自定义属性（属性名与属性值均参与匹配）。
+    for (final c in characters) {
+      final fieldHits = <GlobalSearchFieldHit>[];
+      final fixed = <String, String>{
+        '名字': c.name,
+        '别名': c.aliases,
+        '标签': c.tags,
+      };
+      for (final a in c.attrList) {
+        fixed[a.name] = a.value;
+      }
+      for (final entry in fixed.entries) {
+        final starts = matchStarts(entry.value, query);
+        if (starts.isNotEmpty) {
+          fieldHits.add(GlobalSearchFieldHit(
+              fieldLabel: entry.key, source: entry.value, starts: starts));
         }
-        for (final entry in fixed.entries) {
-          final starts = matchStarts(entry.value, query);
-          if (starts.isNotEmpty) {
-            fieldHits.add(GlobalSearchFieldHit(
-                fieldLabel: entry.key, source: entry.value, starts: starts));
-          }
-        }
-        if (fieldHits.isNotEmpty) {
-          hits.add(GlobalSearchHit(
-            scope: SearchScope.character,
-            label: c.name,
-            fields: fieldHits,
-          ));
-        }
+      }
+      if (fieldHits.isNotEmpty) {
+        hits.add(GlobalSearchHit(
+          scope: SearchScope.character,
+          label: c.name,
+          fields: fieldHits,
+        ));
       }
     }
-    if (scopes.contains(SearchScope.title)) {
-      for (final v in volumes) {
-        final starts = matchStarts(v.name, query);
+    // 伏笔只看名称与内容；关联片段是正文标注的镜像，不重复计入。
+    for (final f in foreshadows) {
+      final fieldHits = <GlobalSearchFieldHit>[];
+      final fixed = <String, String>{
+        '名称': f.name,
+        '内容': f.content,
+      };
+      for (final entry in fixed.entries) {
+        final starts = matchStarts(entry.value, query);
         if (starts.isNotEmpty) {
-          hits.add(GlobalSearchHit(
-            scope: SearchScope.title,
-            label: v.name,
-            fields: [
-              GlobalSearchFieldHit(
-                  fieldLabel: '卷名', source: v.name, starts: starts)
-            ],
-          ));
+          fieldHits.add(GlobalSearchFieldHit(
+              fieldLabel: entry.key, source: entry.value, starts: starts));
         }
       }
-      for (final c in chapters) {
-        final starts = matchStarts(c.title, query);
-        if (starts.isNotEmpty) {
-          hits.add(GlobalSearchHit(
-            scope: SearchScope.title,
-            label: loc(c),
-            fields: [
-              GlobalSearchFieldHit(
-                  fieldLabel: '章名', source: c.title, starts: starts)
-            ],
-            chapterId: c.id,
-          ));
-        }
+      if (fieldHits.isNotEmpty) {
+        hits.add(GlobalSearchHit(
+          scope: SearchScope.foreshadow,
+          label: f.name.isEmpty ? '未命名伏笔' : f.name,
+          fields: fieldHits,
+        ));
       }
     }
     return hits;

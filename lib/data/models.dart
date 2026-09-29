@@ -335,7 +335,7 @@ class RecycleItem {
       );
 }
 
-enum CharacterType { protagonist, supporting, antagonist, minor }
+enum CharacterType { protagonist, supporting, antagonist }
 
 enum Gender { male, female }
 

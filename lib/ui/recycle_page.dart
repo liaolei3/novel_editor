@@ -684,7 +684,6 @@ const _characterLabels = {
   'protagonist': '主角',
   'supporting': '配角',
   'antagonist': '反派',
-  'minor': '龙套',
 };
 
 const _noteLabels = {'role': '角色卡', 'world': '世界观', 'idea': '灵感便签'};

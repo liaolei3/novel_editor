@@ -263,7 +263,8 @@ class _ForeshadowTipViewState extends State<_ForeshadowTipView> {
     final seg = _segment;
     final color = foreshadowMarkColor(fs.status, scheme.brightness);
 
-    const tipWidth = 300.0;
+    // 与角色 tip 同宽，避免悬浮卡过宽遮挡正文。
+    const tipWidth = 240.0;
     final tipHeight = _measuredHeight ?? 200.0;
     final measured = _measuredHeight != null;
     var left = widget.position.dx;

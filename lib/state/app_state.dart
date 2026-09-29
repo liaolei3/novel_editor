@@ -129,19 +129,30 @@ class AppState extends ChangeNotifier {
     return book;
   }
 
-  /// 按导入预览的卷/章结构创建新书，正文转 Delta JSON 存储。
+  /// 按导入预览的卷/章结构创建新书，正文转 Delta JSON 存储；
+  /// [onProgress] 回报已写入章节数 / 总章节数。
   Future<Book> importBookFromPreview(
-      String title, ImportPreview preview) async {
+    String title,
+    ImportPreview preview, {
+    void Function(int done, int total)? onProgress,
+  }) async {
+    final total = preview.chapterCount;
+    var done = 0;
+    onProgress?.call(done, total);
     final book = await books.create(title);
     for (final volume in preview.volumes) {
       final vol = await volumes.create(book.id, volume.name);
-      for (final chapter in volume.chapters) {
+      for (var i = 0; i < volume.chapters.length; i++) {
+        final chapter = volume.chapters[i];
         await chapters.create(
           bookId: book.id,
           volumeId: vol.id,
           title: chapter.title,
+          // 导入顺序即章序号，避免每章再查一次库里已有章数。
+          sort: i,
           content: RichTextCodec.deltaJsonFromPlainText(chapter.body),
         );
+        onProgress?.call(++done, total);
       }
     }
     await loadShelf();
@@ -254,28 +265,25 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 全书搜索（正文 / 章纲 / 角色 / 标题）。
-  Future<List<GlobalSearchHit>> globalSearch(
-      String query, Set<SearchScope> scopes) async {
+  /// 全书搜索（正文 / 章纲 / 角色 / 伏笔）。
+  Future<List<GlobalSearchHit>> globalSearch(String query) async {
     if (currentBook == null || query.isEmpty) return const [];
-    final chars = scopes.contains(SearchScope.character)
-        ? await characters.listByBook(currentBook!.id)
-        : const <Character>[];
+    final chars = await characters.listByBook(currentBook!.id);
+    final fsList = await foreshadows.listByBook(currentBook!.id);
     return GlobalSearch.search(
       query: query,
-      scopes: scopes,
       chapters: chapterList,
       volumes: volumeTree,
       characters: chars,
+      foreshadows: fsList,
     );
   }
 
-  /// 全书替换：命中处统一直接写回（不做撤销），
+  /// 全书替换：命中处统一直接写回（不做撤销），覆盖正文 / 章纲 / 角色 / 伏笔；
   /// 正文替换保留富文本格式；执行前为每个被修改的章节自动创建快照。
   Future<int> globalReplace({
     required String query,
     required String replacement,
-    required Set<SearchScope> scopes,
   }) async {
     if (currentBook == null || query.isEmpty) return 0;
     await autosave.flush();
@@ -283,7 +291,7 @@ class AppState extends ChangeNotifier {
     var contentChanged = false;
 
     for (final ch in List<Chapter>.of(chapterList)) {
-      if (scopes.contains(SearchScope.content) && ch.content.isNotEmpty) {
+      if (ch.content.isNotEmpty) {
         final (newJson, n) =
             GlobalSearch.replaceInDeltaJson(ch.content, query, replacement);
         if (n > 0) {
@@ -294,33 +302,16 @@ class AppState extends ChangeNotifier {
           if (currentChapter?.id == ch.id) contentChanged = true;
         }
       }
-      if (scopes.contains(SearchScope.outline) && ch.outline.contains(query)) {
+      if (ch.outline.contains(query)) {
         final n = GlobalSearch.matchStarts(ch.outline, query).length;
         ch.outline = ch.outline.replaceAll(query, replacement);
         await chapters.updateOutline(ch, ch.outline);
         total += n;
       }
-      if (scopes.contains(SearchScope.title) && ch.title.contains(query)) {
-        final n = GlobalSearch.matchStarts(ch.title, query).length;
-        ch.title = ch.title.replaceAll(query, replacement);
-        await chapters.updateTitle(ch.id, ch.title);
-        total += n;
-      }
-    }
-
-    if (scopes.contains(SearchScope.title)) {
-      for (final v in volumeTree) {
-        if (v.name.contains(query)) {
-          final n = GlobalSearch.matchStarts(v.name, query).length;
-          v.name = v.name.replaceAll(query, replacement);
-          await volumes.rename(v.id, v.name);
-          total += n;
-        }
-      }
     }
 
     var characterChanged = false;
-    if (scopes.contains(SearchScope.character)) {
+    {
       final list = await characters.listByBook(currentBook!.id);
       for (final c in list) {
         var changed = false;
@@ -352,6 +343,29 @@ class AppState extends ChangeNotifier {
         }
       }
       if (characterChanged) characterDictVersion.value++;
+    }
+
+    var foreshadowChanged = false;
+    {
+      final list = await foreshadows.listByBook(currentBook!.id);
+      for (final f in list) {
+        var changed = false;
+        if (f.name.contains(query)) {
+          total += GlobalSearch.matchStarts(f.name, query).length;
+          f.name = f.name.replaceAll(query, replacement);
+          changed = true;
+        }
+        if (f.content.contains(query)) {
+          total += GlobalSearch.matchStarts(f.content, query).length;
+          f.content = f.content.replaceAll(query, replacement);
+          changed = true;
+        }
+        if (changed) {
+          await foreshadows.update(f);
+          foreshadowChanged = true;
+        }
+      }
+      if (foreshadowChanged) foreshadowVersion.value++;
     }
 
     if (total > 0) {
@@ -428,6 +442,10 @@ class AppState extends ChangeNotifier {
       session.addChars(delta);
       bookCharTotal += delta;
       chapter.charCount = nowChars;
+      // 作品树直接读 chapterList 的 char_count，需同步同 id 项，
+      // 以免 currentChapter 与 chapterList 为不同实例时字数显示滞后。
+      final idx = chapterList.indexWhere((c) => c.id == chapter.id);
+      if (idx >= 0) chapterList[idx].charCount = nowChars;
     }
     notifyListeners();
   }

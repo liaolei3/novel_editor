@@ -19,6 +19,7 @@ import '../../services/autosave_service.dart';
 import '../../state/app_state.dart';
 import '../../state/settings_controller.dart';
 
+import '../common/character_marks.dart';
 import '../common/context_menu.dart';
 import '../common/dialogs.dart';
 import '../common/file_io.dart';
@@ -410,7 +411,6 @@ class _EditorAreaState extends State<EditorArea> {
           context, node, nodeOffset, text, style, recognizer);
     }
 
-    final scheme = Theme.of(context).colorScheme;
     InlineSpan plain(int from, int to) {
       return _searchHighlightSpanBuilder(context, node, nodeOffset + from,
           text.substring(from, to), style, recognizer);
@@ -423,7 +423,7 @@ class _EditorAreaState extends State<EditorArea> {
       final char = _nameToChar[text.substring(m.start, m.end)];
       if (char != null) {
         // 文字颜色与下划线用角色标记色；hover 展示信息卡。
-        final color = parseCharacterColor(char.color) ?? scheme.primary;
+        final color = characterMarkColor(char);
         children.add(TextSpan(
           text: text.substring(m.start, m.end),
           style: (style ?? const TextStyle()).copyWith(
@@ -584,8 +584,6 @@ class _EditorAreaState extends State<EditorArea> {
 
     final sessionChars = state.session.sessionChars;
     final savingHint = _saveIndicator(context);
-    final plain = state.editorController.document.toPlainText();
-    final std = settings.countStandard;
 
     return CallbackShortcuts(
       bindings: {
@@ -620,7 +618,7 @@ class _EditorAreaState extends State<EditorArea> {
               _searchQuery = '';
             }),
           ),
-        if (TextStats.count(plain, std) > AppConstants.longChapterThreshold)
+        if (chapter.charCount > AppConstants.longChapterThreshold)
           MaterialBanner(
             backgroundColor: Theme.of(context).colorScheme.errorContainer,
             content: const Text('本章超过 5 万字，建议拆分为多章以保证编辑流畅度。'),
@@ -774,7 +772,7 @@ class _EditorAreaState extends State<EditorArea> {
             ),
           )),
         ),
-        _statusBar(context, chapter, sessionChars, plain),
+        _statusBar(context, chapter, sessionChars),
       ]),
     );
   }
@@ -999,7 +997,7 @@ class _EditorAreaState extends State<EditorArea> {
     );
   }
 
-  Widget _statusBar(BuildContext context, Chapter chapter, int sessionChars, String plain) {
+  Widget _statusBar(BuildContext context, Chapter chapter, int sessionChars) {
     final state = context.watch<AppState>();
     final std = context.watch<SettingsController>().countStandard;
     return Container(
@@ -1016,7 +1014,7 @@ class _EditorAreaState extends State<EditorArea> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Flexible(
-                  child: Text('本章 ${TextStats.count(plain, std)} 字',
+                  child: Text('本章 ${chapter.charCount} 字',
                       style: TextStyle(fontSize: 11),
                       overflow: TextOverflow.ellipsis),
                 ),
