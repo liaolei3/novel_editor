@@ -25,6 +25,24 @@ void main() {
     expect(TextStats.readingMinutes(1200), 3);
   });
 
+  group('TextStats.speedPerHour 时速口径', () {
+    test('不足 1 小时按 1 小时算，数值等于字数', () {
+      expect(TextStats.speedPerHour(500, 0), 500);
+      expect(TextStats.speedPerHour(500, 60000), 500);
+      expect(TextStats.speedPerHour(500, 59 * 60000), 500);
+    });
+
+    test('满 1 小时按实际小时均摊', () {
+      expect(TextStats.speedPerHour(1500, 90 * 60000), 1000);
+      expect(TextStats.speedPerHour(3000, 120 * 60000), 1500);
+    });
+
+    test('未码字为 0', () {
+      expect(TextStats.speedPerHour(0, 0), 0);
+      expect(TextStats.speedPerHour(0, 120 * 60000), 0);
+    });
+  });
+
   group('CountStandard.count', () {
     const text = '你好，world！\n 66 ';
 

@@ -28,4 +28,22 @@ void main() {
     expect(xml, contains('正文一'));
     expect(xml, contains('正文二'));
   });
+
+  test('保留空行与段首全角空格缩进', () {
+    final bytes = DocxExporter.build(
+      bookTitle: '书',
+      penName: '佚名',
+      chapters: const [MapEntry('第一章', '　　缩进段\n\n　　第二段')],
+    );
+
+    final archive = ZipDecoder().decodeBytes(bytes);
+    final xml = utf8.decode(
+      archive.findFile('word/document.xml')!.content as List<int>,
+    );
+    expect(xml, contains('<w:t xml:space="preserve">　　缩进段</w:t>'));
+    expect(xml, contains('<w:t xml:space="preserve">　　第二段</w:t>'));
+    expect(xml, contains('<w:p/>'));
+    // 书名 + 作者 + 章节标题 + 两段 + 一个空段落
+    expect('<w:p'.allMatches(xml).length, 6);
+  });
 }

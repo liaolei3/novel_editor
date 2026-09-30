@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 /// 字数统计工具。
 enum CountStandard {
   withPunctuation,
@@ -30,6 +32,12 @@ class TextStats {
 
   /// 预估阅读时长（按每分钟 500 字）。
   static int readingMinutes(int charCount) => (charCount / 500).ceil();
+
+  /// 码字时速口径（字/时）：不足 1 小时按 1 小时算，数值上就等于字数；
+  /// 满 1 小时才按实际小时均摊。时长按整分钟累加，若用几分钟的样本
+  /// 直接外推会得到几千上万的假数字，故设 1 小时下限。
+  static double speedPerHour(int chars, int durationMs) =>
+      chars / math.max(1.0, durationMs / 3600000.0);
 
   static int _countIf(String text, bool Function(int rune) test) {
     var n = 0;

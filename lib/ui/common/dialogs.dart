@@ -502,6 +502,224 @@ Future<void> showCompareDialog(
   );
 }
 
+/// 选项弹窗的单个条目：值随点击回传。
+class ChoiceSpec {
+  const ChoiceSpec({
+    required this.value,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final String value;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+}
+
+/// 选项弹窗（导入 / 导出等共用）：图标标题 + 选项卡片；右上角关闭、
+/// 底部取消，点击外部不关闭（仅显式按钮关闭），弹窗整体可拖动。
+///
+/// 返回被点击条目的 [ChoiceSpec.value]，取消返回 null。
+Future<String?> choiceDialog(
+  BuildContext context, {
+  required IconData icon,
+  required String title,
+  required List<ChoiceSpec> choices,
+}) {
+  return showDialog<String>(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) {
+      final scheme = Theme.of(ctx).colorScheme;
+      return DraggableDialog(
+        child: AlertDialog(
+          constraints: const BoxConstraints(minWidth: 380, maxWidth: 380),
+          backgroundColor: Theme.of(ctx).dialogTheme.backgroundColor,
+          shape: Theme.of(ctx).dialogTheme.shape,
+          titlePadding: EdgeInsets.zero,
+          contentPadding: EdgeInsets.zero,
+          actionsPadding: const EdgeInsets.fromLTRB(16, 2, 16, 14),
+          actionsAlignment: MainAxisAlignment.end,
+          content: SizedBox(
+            width: 380,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _ChoiceHeader(icon: icon, title: title),
+                Divider(height: 1, color: scheme.outlineVariant),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                  child: Column(
+                    children: [
+                      for (final c in choices)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: _ChoiceTile(
+                            spec: c,
+                            onTap: () => Navigator.pop(ctx, c.value),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              style: TextButton.styleFrom(
+                minimumSize: const Size(72, 38),
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+              ),
+              child: const Text('取消'),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+/// 弹窗头部：图标章 + 标题，右上角关闭按钮。
+class _ChoiceHeader extends StatelessWidget {
+  const _ChoiceHeader({required this.icon, required this.title});
+
+  final IconData icon;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 18, 10, 14),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: scheme.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            alignment: Alignment.center,
+            child: Icon(icon, size: 20, color: scheme.primary),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: scheme.onSurface,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 4),
+          IconButton(
+            tooltip: '关闭',
+            onPressed: () => Navigator.pop(context),
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.close, size: 18),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 弹窗选项卡片：悬浮时高亮描边与底色，点击回传选项值。
+class _ChoiceTile extends StatefulWidget {
+  const _ChoiceTile({required this.spec, required this.onTap});
+
+  final ChoiceSpec spec;
+  final VoidCallback onTap;
+
+  @override
+  State<_ChoiceTile> createState() => _ChoiceTileState();
+}
+
+class _ChoiceTileState extends State<_ChoiceTile> {
+  bool _hovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final spec = widget.spec;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          decoration: BoxDecoration(
+            color: _hovering ? scheme.primary.withValues(alpha: 0.08) : null,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: _hovering
+                  ? scheme.primary.withValues(alpha: 0.35)
+                  : scheme.outlineVariant,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: scheme.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                alignment: Alignment.center,
+                child: Icon(spec.icon, size: 18, color: scheme.primary),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      spec.title,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w500,
+                        color: scheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      spec.subtitle,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        height: 1.3,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(Icons.chevron_right,
+                  size: 18, color: scheme.onSurfaceVariant),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _CompareBody extends StatefulWidget {
   const _CompareBody({
     required this.title,

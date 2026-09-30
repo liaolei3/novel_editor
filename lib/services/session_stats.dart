@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 import '../core/constants.dart';
 import '../data/repositories.dart';
 
@@ -23,6 +25,9 @@ class SessionStats {
   int sessionChars = 0;
   final DateTime sessionStart = DateTime.now();
   final _changes = StreamController<int>.broadcast();
+
+  /// 摸鱼状态：距最后一次键入超过 [idleThreshold] 置 true，恢复键入置 false。
+  final ValueNotifier<bool> idle = ValueNotifier<bool>(false);
 
   Stream<int> get changes => _changes.stream;
 
@@ -57,6 +62,7 @@ class SessionStats {
   void _onUserInput() {
     final now = DateTime.now();
     _lastInputAt = now;
+    idle.value = false;
     // 结束当前摸鱼段：累计摸鱼时长，一段计 1 次。
     if (_idleStart != null) {
       _pendingIdleMs += now.difference(_idleStart!).inMilliseconds;
@@ -69,11 +75,13 @@ class SessionStats {
     _idleTimer = Timer(idleThreshold, () {
       // 超时未键入，进入摸鱼状态。
       _idleStart = DateTime.now();
+      idle.value = true;
     });
   }
 
   void _stopIdle() {
     _idleTimer?.cancel();
+    idle.value = false;
     // 应用退出时若处于摸鱼中，把未结算的摸鱼段落库（不计次数，避免半段凑数）。
     if (_idleStart != null) {
       final ms = DateTime.now().difference(_idleStart!).inMilliseconds;

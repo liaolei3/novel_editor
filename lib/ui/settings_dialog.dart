@@ -80,6 +80,16 @@ const _pageDescriptions = [
 /// 这样既能让标题与滑块贴得紧，又不会在 150% 缩放下裁掉 4 字标题。
 const _rowLabelWidth = 76.0;
 
+/// 滑块行右侧数值列宽（100% 界面缩放下的设计值），
+/// 同样按界面缩放同比放大，否则「10000 字」这类较长数值在 150% 缩放下会被裁切。
+const _sliderValueWidth = 56.0;
+
+/// 导航列宽（100% 界面缩放下的设计值）。列内文字随界面缩放放大，
+/// 而图标与内边距不变，故列宽只按文字部分同比放宽，
+/// 否则 150% 下最长标题「同步与账号」会溢出。
+const _navWidth = 156.0;
+const _navTextWidth = 65.0;
+
 /// 紧凑胶囊开关：Material Switch 固定 52×32，比本页的描边控件更窄更高，
 /// 故自绘为更宽更矮的胶囊。配色取自主题 switchTheme，四套主题下与
 /// 原生 Switch 保持一致。
@@ -191,6 +201,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
     final hairline = isLight
         ? const Color(0x1A000000)
         : const Color(0x1AFFFFFF);
+    final navScale = MediaQuery.textScalerOf(context).scale(1.0);
 
     return AlertDialog(
       titlePadding: const EdgeInsets.fromLTRB(20, 12, 10, 8),
@@ -219,7 +230,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     SizedBox(
-                      width: 156,
+                      width: _navWidth + (navScale - 1) * _navTextWidth,
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 8,
@@ -747,6 +758,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
   double _labelWidth() =>
       MediaQuery.textScalerOf(context).scale(_rowLabelWidth);
 
+  double _valueWidth() =>
+      MediaQuery.textScalerOf(context).scale(_sliderValueWidth);
+
   /// 滑块行：标题（固定宽，与下拉行对齐）+ 滑块 + 右侧数值同一行。
   /// 数值列只占数值本身所需宽度，把余量让给滑块。
   Widget _sliderRow({
@@ -784,7 +798,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
           ),
           const SizedBox(width: 10),
           SizedBox(
-            width: 56,
+            width: _valueWidth(),
             child: Text(
               value,
               textAlign: TextAlign.right,

@@ -284,9 +284,11 @@ class _StatsViewState extends State<StatsView> {
       ],
     );
 
-    // 平均时速 = 区间总字数 / 区间总时长（小时），不足 1 字/时显示占位。
-    final hours = bundle.totalDurationMs / 3600000.0;
-    final avgSpeed = hours >= 1 / 60 ? bundle.totalChars / hours : 0.0;
+    // 时速口径见 TextStats.speedPerHour（不足 1 小时按 1 小时算）。
+    final avgSpeed = TextStats.speedPerHour(
+      bundle.totalChars,
+      bundle.totalDurationMs,
+    );
     final stats = [
       _smallStat(context, '码字时长', '$durationMin 分钟'),
       _smallStat(
@@ -394,8 +396,9 @@ class _StatsViewState extends State<StatsView> {
           builder: (ctx, snap) {
             final today = snap.data;
             final todayChars = today?.chars ?? 0;
-            final todayMin = (today?.durationMs ?? 0) / 60000.0;
-            final speed = todayMin >= 1 ? todayChars / (todayMin / 60) : 0.0;
+            // 与码字面板同一口径：不足 1 小时按 1 小时算（数值上等于字数），
+            // 超过 1 小时才真正按小时均摊。
+            final speed = TextStats.speedPerHour(todayChars, today?.durationMs ?? 0);
             final progress = (todayChars / settings.dailyGoal).clamp(0.0, 1.0);
             final reached = progress >= 1.0;
 
@@ -823,7 +826,7 @@ class _StatsViewState extends State<StatsView> {
           case _TrendMetric.speed:
             values = [
               for (var i = 0; i < daysInRange; i++)
-                minutes[i] >= 1 ? chars[i] / (minutes[i] / 60) : 0.0,
+                TextStats.speedPerHour(chars[i], (minutes[i] * 60000).round()),
             ];
         }
         final unit = switch (_trendMetric) {
@@ -1557,7 +1560,7 @@ class _DayTip extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final labelColor = scheme.onInverseSurface.withAlpha(150);
     final minutes = record.durationMs ~/ 60000;
-    final speed = minutes >= 1 ? record.chars / (minutes / 60) : 0.0;
+    final speed = TextStats.speedPerHour(record.chars, record.durationMs);
     final rows = [
       ('字数', '${_fmtInt(record.chars)} 字'),
       ('时长', '$minutes 分钟'),

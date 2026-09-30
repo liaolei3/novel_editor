@@ -11,23 +11,33 @@ class DocxExporter {
   DocxExporter._();
 
   /// [chapters]：(标题, 正文) 列表；正文按 \n 分段。
+  ///
+  /// [includeBookHeader] 为 false 时不写书名与作者（单章导出场景）。
   static Uint8List build({
     required String bookTitle,
     required String penName,
     required List<MapEntry<String, String>> chapters,
     bool includeChapterTitle = true,
+    bool includeBookHeader = true,
   }) {
     final body = StringBuffer();
-    body.write(_paragraph(_escape(bookTitle), bold: true, size: 36));
-    body.write(_paragraph(_escape('作者：$penName'), size: 24));
+    if (includeBookHeader) {
+      body.write(_paragraph(_escape(bookTitle), bold: true, size: 36));
+      body.write(_paragraph(_escape('作者：$penName'), size: 24));
+    }
     for (final chapter in chapters) {
       if (includeChapterTitle) {
         body.write(_paragraph(_escape(chapter.key), bold: true, size: 28));
       }
-      for (final line in chapter.value.split('\n')) {
-        final t = line.trim();
-        if (t.isEmpty) continue;
-        body.write(_paragraph(_escape(t)));
+      // 末尾的 \n 只是行终止符，不当成新的空段落。
+      var text = chapter.value;
+      if (text.endsWith('\n')) text = text.substring(0, text.length - 1);
+      for (final raw in text.split('\n')) {
+        // 不 trim：段首缩进就是两个全角空格（U+3000），trim 会把它一并吃掉；
+        // 空行也必须保留为独立空段落，否则段间距丢失。
+        final line =
+            raw.endsWith('\r') ? raw.substring(0, raw.length - 1) : raw;
+        body.write(_paragraph(_escape(line)));
       }
     }
 
@@ -75,6 +85,7 @@ class DocxExporter {
 ''';
 
   static String _paragraph(String text, {bool bold = false, int size = 24}) {
+    if (text.isEmpty) return '<w:p/>';
     final rPr = bold || size != 24
         ? '<w:rPr>${bold ? '<w:b/>' : ''}${size != 24 ? '<w:sz w:val="$size"/>' : ''}</w:rPr>'
         : '';

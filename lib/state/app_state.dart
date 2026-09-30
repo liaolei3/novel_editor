@@ -479,12 +479,16 @@ class AppState extends ChangeNotifier {
     return vol;
   }
 
-  Future<Chapter> addChapter(String volumeId, {String? title, String? outline}) async {
+  /// 新建章节。[content] 为初始正文（Delta JSON）。带上初值建章，可让随后
+  /// 的 [_reloadTree] 直接读到完整数据，避免树里留下空 content 的旧实例。
+  Future<Chapter> addChapter(String volumeId,
+      {String? title, String? outline, String? content}) async {
     final ch = await chapters.create(
       bookId: currentBook!.id,
       volumeId: volumeId,
       title: title ?? '新章节',
       outline: outline ?? '',
+      content: content ?? '',
     );
     await _reloadTree();
     bookCharTotal = chapterList.fold(0, (sum, c) => sum + c.charCount);

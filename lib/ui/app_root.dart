@@ -8,6 +8,7 @@ import '../state/settings_controller.dart';
 import 'app_theme.dart';
 import 'common/dialogs.dart';
 import 'shelf_page.dart';
+import 'widgets/busy_overlay.dart';
 
 class AppRoot extends StatelessWidget {
   const AppRoot({super.key});
@@ -27,6 +28,7 @@ class AppRoot extends StatelessWidget {
       // 界面字体缩放：作用于全部文本（含写死字号的控件）；
       // 编辑器正文单独用 noScaling 覆盖，由正文字号独立控制。
       // 渐变主题在全局底层垫渐变，各页透明 scaffold 直接透出。
+      // 遮罩挂在 Navigator 之上，才能盖住任意路由（含 push 出的工作区）。
       builder: (context, child) {
         final gradient =
             appThemeSpec(settings.theme).backgroundGradient;
@@ -40,7 +42,7 @@ class AppRoot extends StatelessWidget {
           data: MediaQuery.of(
             context,
           ).copyWith(textScaler: TextScaler.linear(settings.uiScale)),
-          child: decorated,
+          child: BusyOverlayHost(child: decorated),
         );
       },
       localizationsDelegates: const [

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -82,25 +83,53 @@ class FileIO {
   static Future<String?> pickDirectory() =>
       FilePicker.platform.getDirectoryPath();
 
+  /// 保存二进制文件，返回实际写入的路径，取消返回 null。
+  ///
+  /// [fileName] 需带扩展名。保存对话框不保证扩展名：Windows 的 GetSaveFileName
+  /// 只在声明了默认扩展名时才补，file_picker 未设该项，用户在对话框里改成不带
+  /// 后缀的名字就会原样落盘（表现为「无后缀的文件」）。故这里显式声明文件类型，
+  /// 并在写盘前补回缺失的扩展名。
   static Future<String?> saveBytes({
     required String fileName,
     required List<int> bytes,
   }) async {
     if (kIsWeb) return null;
-    final path = await FilePicker.platform.saveFile(fileName: fileName);
+    final ext = _extensionOf(fileName);
+    final path = await FilePicker.platform.saveFile(
+      fileName: fileName,
+      type: ext.isEmpty ? FileType.any : FileType.custom,
+      allowedExtensions: ext.isEmpty ? null : <String>[ext],
+    );
     if (path == null) return null;
-    if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
-      final file = File(path);
-      await file.writeAsBytes(bytes, flush: true);
-      return path;
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      final target = _withExtension(path, ext);
+      await File(target).writeAsBytes(bytes, flush: true);
+      return target;
     }
     // 移动端：saveFile(Android 19+/iOS) 已写入指定 uri。
     return path;
   }
 
+  /// 取文件名的扩展名（不含点），没有扩展名返回空串。
+  static String _extensionOf(String fileName) {
+    final dot = fileName.lastIndexOf('.');
+    return dot > 0 ? fileName.substring(dot + 1) : '';
+  }
+
+  /// 路径的文件名部分没有扩展名时补上 [ext]；已有扩展名则尊重用户输入。
+  static String _withExtension(String path, String ext) {
+    if (ext.isEmpty) return path;
+    final lastSlash = path.lastIndexOf('/');
+    final lastBackslash = path.lastIndexOf(r'\');
+    final sep = lastSlash > lastBackslash ? lastSlash : lastBackslash;
+    return path.lastIndexOf('.') > sep ? path : '$path.$ext';
+  }
+
+  /// 写文本文件：按 UTF-8 编码。不能用 [String.codeUnits]——那是 UTF-16
+  /// 码元，汉字会被截成单字节而乱码。
   static Future<String?> saveText({
     required String fileName,
     required String content,
   }) =>
-      saveBytes(fileName: fileName, bytes: content.codeUnits);
+      saveBytes(fileName: fileName, bytes: utf8.encode(content));
 }

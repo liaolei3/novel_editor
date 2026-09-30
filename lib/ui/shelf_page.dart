@@ -6,7 +6,9 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/utils/docx_exporter.dart';
 import '../core/utils/docx_importer.dart';
+import '../core/utils/rich_text_codec.dart';
 import '../core/utils/txt_importer.dart';
 import '../data/models.dart';
 import '../services/logger.dart';
@@ -52,56 +54,53 @@ class _ShelfPageState extends State<ShelfPage> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final hairline = scheme.outlineVariant.withValues(alpha: 0.5);
-    // 加载遮罩挂在整页之上，导入时才盖得住顶栏与左侧菜单。
-    return BusyOverlayHost(
-      child: Scaffold(
-        appBar: AppTopBar(
-          leading: IconButton(
-            tooltip: '主页',
-            icon: const Icon(Icons.home_outlined, size: 26),
-            onPressed: () => setState(() => _tab = _HomeTab.shelf),
-          ),
-          title: const Text('主页'),
-          titleSpacing: 4,
-          actions: const [AppBarNavActions()],
+    return Scaffold(
+      appBar: AppTopBar(
+        leading: IconButton(
+          tooltip: '主页',
+          icon: const Icon(Icons.home_outlined, size: 26),
+          onPressed: () => setState(() => _tab = _HomeTab.shelf),
         ),
-        body: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // 侧栏：与设置弹窗左导航同一视觉语言（品牌色浅底选中态）。
-            Container(
-              width: 300,
-              padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
-              decoration: BoxDecoration(
-                border: Border(right: BorderSide(color: hairline)),
-              ),
-              child: Column(
-                children: [
-                  for (final (icon, label, tab) in _tabs)
-                    _SideNavItem(
-                      icon: icon,
-                      label: label,
-                      selected: _tab == tab,
-                      onTap: () => setState(() => _tab = tab),
-                    ),
-                  const Spacer(),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: _LoginEntry(),
+        title: const Text('主页'),
+        titleSpacing: 4,
+        actions: const [AppBarNavActions()],
+      ),
+      body: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 侧栏：与设置弹窗左导航同一视觉语言（品牌色浅底选中态）。
+          Container(
+            width: 300,
+            padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
+            decoration: BoxDecoration(
+              border: Border(right: BorderSide(color: hairline)),
+            ),
+            child: Column(
+              children: [
+                for (final (icon, label, tab) in _tabs)
+                  _SideNavItem(
+                    icon: icon,
+                    label: label,
+                    selected: _tab == tab,
+                    onTap: () => setState(() => _tab = tab),
                   ),
-                ],
-              ),
+                const Spacer(),
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: _LoginEntry(),
+                ),
+              ],
             ),
-            Expanded(
-              child: switch (_tab) {
-                _HomeTab.shelf => const _ShelfBody(),
-                _HomeTab.stats => const StatsView(),
-                _HomeTab.recycle =>
-                  const RecycleView(scope: RecycleScope.shelf),
-              },
-            ),
-          ],
-        ),
+          ),
+          Expanded(
+            child: switch (_tab) {
+              _HomeTab.shelf => const _ShelfBody(),
+              _HomeTab.stats => const StatsView(),
+              _HomeTab.recycle =>
+                const RecycleView(scope: RecycleScope.shelf),
+            },
+          ),
+        ],
       ),
     );
   }
@@ -668,6 +667,69 @@ class _BookCardState extends State<_BookCard> {
     }
   }
 
+  /// 导出整本作品：TXT 与 Word 均逐章写入章节名。
+  ///
+  /// 章节内容按 id 单独查询——书架里 [AppState.chapterList] 是「当前打开」
+  /// 那本书的，不能代表卡片对应的作品。
+  Future<void> _export() async {
+    final book = widget.book;
+    final choice = await choiceDialog(
+      context,
+      icon: Icons.file_upload_outlined,
+      title: '导出《${book.title}》',
+      choices: const [
+        ChoiceSpec(
+          value: 'txt',
+          icon: Icons.description_outlined,
+          title: 'TXT',
+          subtitle: '纯文本',
+        ),
+        ChoiceSpec(
+          value: 'docx',
+          icon: Icons.article_outlined,
+          title: 'Word',
+          subtitle: '.docx 文档',
+        ),
+      ],
+    );
+    if (choice == null || !mounted) return;
+
+    final chapters = await appState(context).chapters.listByBook(book.id);
+    if (!mounted) return;
+
+    // 遍历全书与生成 docx 都是 O(全书) 操作，遮罩期间禁止交互。
+    String? text;
+    Uint8List? bytes;
+    await runWithBusy('正在导出《${book.title}》', (_) async {
+      if (choice == 'txt') {
+        final sb = StringBuffer();
+        for (final ch in chapters) {
+          sb.writeln(ch.title);
+          sb.writeln(RichTextCodec.plainTextFromDeltaJson(ch.content));
+          sb.writeln();
+        }
+        text = sb.toString();
+      } else {
+        bytes = DocxExporter.build(
+          bookTitle: book.title,
+          penName: book.penName,
+          chapters: chapters
+              .map((c) =>
+                  MapEntry(c.title, RichTextCodec.plainTextFromDeltaJson(c.content)))
+              .toList(),
+        );
+      }
+    });
+    if (!mounted) return;
+
+    final path = text != null
+        ? await FileIO.saveText(fileName: '${book.title}.txt', content: text!)
+        : await FileIO.saveBytes(
+            fileName: '${book.title}.docx', bytes: bytes!);
+    if (!mounted) return;
+    showToast(context, path == null ? '已取消导出' : '导出成功：$path');
+  }
+
   @override
   Widget build(BuildContext context) {
     final book = widget.book;
@@ -835,6 +897,12 @@ class _BookCardState extends State<_BookCard> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             _circleAction(Icons.edit_outlined, '编辑信息', _edit),
+                            const SizedBox(width: 4),
+                            _circleAction(
+                              Icons.file_upload_outlined,
+                              '导出作品',
+                              _export,
+                            ),
                             const SizedBox(width: 4),
                             _circleAction(
                               Icons.delete_outline,

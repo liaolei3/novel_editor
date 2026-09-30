@@ -1,11 +1,11 @@
 {
-    "name": "novel_editor",
-    "short_name": "novel_editor",
+    "name": "NovelEditor 小说编辑器",
+    "short_name": "NovelEditor",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#F0E9D3",
+    "theme_color": "#5D6B4D",
+    "description": "NovelEditor - 跨平台小说编辑器",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
