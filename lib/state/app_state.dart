@@ -11,6 +11,7 @@ import '../core/utils/chapter_title_suggest.dart';
 import '../core/utils/foreshadow_delta.dart';
 import '../core/utils/global_search.dart';
 import '../core/utils/rich_text_codec.dart';
+import '../core/utils/sensitive_words.dart';
 import '../core/utils/text_stats.dart';
 import '../core/utils/txt_importer.dart';
 import '../data/db.dart';
@@ -34,6 +35,7 @@ class AppState extends ChangeNotifier {
     required this.characters,
     required this.foreshadows,
     required this.fsSegments,
+    required this.sensitiveWords,
     required this.stats,
     required this.recycle,
     required this.autosave,
@@ -56,6 +58,7 @@ class AppState extends ChangeNotifier {
   final CharacterRepository characters;
   final ForeshadowRepository foreshadows;
   final ForeshadowSegmentRepository fsSegments;
+  final SensitiveWordRepository sensitiveWords;
   final StatsRepository stats;
   final RecycleRepository recycle;
   final AutosaveService autosave;
@@ -394,6 +397,118 @@ class AppState extends ChangeNotifier {
     return total;
   }
 
+  /// 供敏感词检测：取章节正文纯文本（embed 记 1，与编辑器坐标一致）。
+  String sensitiveTextOf(Chapter ch) =>
+      RichTextCodec.plainTextFromDeltaJson(ch.content);
+
+  /// 全书敏感词检测：逐章扫描正文，只返回有命中的章节（按章节顺序）。
+  Future<List<SensitiveChapterScan>> scanSensitiveBook(
+    List<SensitiveEntry> entries, {
+    void Function(int done, int total)? onProgress,
+  }) async {
+    if (currentBook == null || entries.isEmpty) return const [];
+    await autosave.flush();
+    final scanner = SensitiveWordScanner(entries);
+    final out = <SensitiveChapterScan>[];
+    final list = List<Chapter>.of(chapterList);
+    var done = 0;
+    for (final ch in list) {
+      final matches = scanner.scan(sensitiveTextOf(ch));
+      if (matches.isNotEmpty) {
+        out.add(SensitiveChapterScan(chapter: ch, matches: matches));
+      }
+      onProgress?.call(++done, list.length);
+    }
+    return out;
+  }
+
+  /// 检测当前章节正文，返回命中（无词条或无命中返回空列表）。
+  List<SensitiveMatch> scanSensitiveChapter(List<SensitiveEntry> entries) {
+    final ch = currentChapter;
+    if (ch == null || entries.isEmpty) return const [];
+    return SensitiveWordScanner(entries).scan(sensitiveTextOf(ch));
+  }
+
+  /// 替换指定章节命中：建议词为空的词跳过。返回 (替换处数, 跳过词)。
+  Future<(int, Set<String>)> replaceSensitiveChapter(
+      Chapter ch, List<SensitiveEntry> entries) async {
+    if (entries.isEmpty) return (0, const <String>{});
+    await autosave.flush();
+    final (n, skipped) =
+        await _replaceSensitiveChapter(ch, SensitiveWordScanner(entries));
+    if (n > 0) {
+      await _reloadTree();
+      bookCharTotal = chapterList.fold(0, (sum, c) => sum + c.charCount);
+      _reloadCurrentDocIfNeeded(ch.id);
+      notifyListeners();
+    }
+    return (n, skipped);
+  }
+
+  /// 全书敏感词替换：逐章先建快照再替换（保留富文本）。返回 (替换处数, 跳过词)。
+  Future<(int, Set<String>)> replaceSensitiveBook(
+    List<SensitiveEntry> entries, {
+    void Function(int done, int total)? onProgress,
+  }) async {
+    if (currentBook == null || entries.isEmpty) return (0, const <String>{});
+    await autosave.flush();
+    final scanner = SensitiveWordScanner(entries);
+    final skipped = <String>{};
+    final list = List<Chapter>.of(chapterList);
+    var total = 0;
+    var done = 0;
+    var contentChanged = false;
+    for (final ch in list) {
+      final (n, sk) = await _replaceSensitiveChapter(ch, scanner);
+      total += n;
+      skipped.addAll(sk);
+      if (n > 0 && currentChapter?.id == ch.id) contentChanged = true;
+      onProgress?.call(++done, list.length);
+    }
+    if (total > 0) {
+      await _reloadTree();
+      bookCharTotal = chapterList.fold(0, (sum, c) => sum + c.charCount);
+      if (contentChanged && currentChapter != null) {
+        _reloadCurrentDocIfNeeded(currentChapter!.id);
+      }
+      notifyListeners();
+    }
+    return (total, skipped);
+  }
+
+  /// 单章替换实现（不负责刷新/通知）：建议词为空的词只统计、不替换。
+  Future<(int, Set<String>)> _replaceSensitiveChapter(
+      Chapter ch, SensitiveWordScanner scanner) async {
+    final skipped = <String>{};
+    if (ch.content.isEmpty) return (0, skipped);
+    for (final m in scanner.scan(sensitiveTextOf(ch))) {
+      if (m.suggestion.isEmpty) skipped.add(m.word);
+    }
+    final (newJson, n) = scanner.replaceInDeltaJson(ch.content);
+    if (n > 0) {
+      await durability.manualSnapshot(ch);
+      ch.content = newJson;
+      await chapters.updateContent(ch);
+    }
+    return (n, skipped);
+  }
+
+  /// 替换后重载指定章（仅当它正是当前章）的编辑器文档。
+  void _reloadCurrentDocIfNeeded(String chapterId) {
+    if (currentChapter?.id != chapterId) return;
+    final fresh = chapterList.where((c) => c.id == chapterId).firstOrNull;
+    if (fresh == null) return;
+    currentChapter = fresh;
+    _loadingDoc = true;
+    try {
+      replaceDocument(RichTextCodec.documentFromContent(fresh.content),
+          fireChange: false);
+    } finally {
+      _loadingDoc = false;
+      _lastDocJson = jsonEncode(editorController.document.toDelta().toJson());
+    }
+  }
+
   /// 打开章节（≤300ms 预算：单次查询 + 控制器赋值）。
   Future<void> openChapter(Chapter chapter) async {
     if (currentChapter?.id == chapter.id) return;
@@ -690,6 +805,22 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
+  /// 跳转并选中指定章节的正文区间（敏感词结果点击定位）。
+  Future<bool> jumpToTextRange(String chapterId, int start, int end) async {
+    if (currentChapter?.id != chapterId) {
+      final target = chapterList.where((c) => c.id == chapterId).firstOrNull;
+      if (target == null) return false;
+      await openChapter(target);
+    }
+    final docLen = editorController.document.length;
+    final s = start.clamp(0, docLen);
+    final e = end.clamp(s, docLen);
+    editorController.updateSelection(
+        TextSelection(baseOffset: s, extentOffset: e), ChangeSource.local);
+    segmentJumpNonce.value++;
+    return true;
+  }
+
   /// 删除章节 → 回收站（FR-6 / NFR-R5）。
   Future<void> deleteChapter(String id) async {
     final ch = await chapters.get(id);
@@ -869,4 +1000,14 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
   }
+}
+
+/// 全书敏感词检测的单章结果。
+class SensitiveChapterScan {
+  SensitiveChapterScan({required this.chapter, required this.matches});
+
+  final Chapter chapter;
+  final List<SensitiveMatch> matches;
+
+  int get count => matches.fold(0, (sum, m) => sum + m.count);
 }

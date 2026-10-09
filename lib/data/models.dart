@@ -551,3 +551,42 @@ class ForeshadowSegment {
 }
 
 enum RecycleType { volume, chapter, note, character, foreshadow, book }
+
+/// 敏感词词条（全局共享，不隶属单本书）。
+class SensitiveWord {
+  SensitiveWord({
+    required this.id,
+    required this.word,
+    this.suggestion = '',
+    this.enabled = true,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final String id;
+  String word;
+
+  /// 一键替换的目标词；空串表示仅提示、不参与自动替换。
+  String suggestion;
+  bool enabled;
+  DateTime createdAt;
+  DateTime updatedAt;
+
+  Map<String, Object?> toMap() => {
+        'id': id,
+        'word': word,
+        'suggestion': suggestion,
+        'enabled': enabled ? 1 : 0,
+        'created_at': createdAt.millisecondsSinceEpoch,
+        'updated_at': updatedAt.millisecondsSinceEpoch,
+      };
+
+  static SensitiveWord fromMap(Map<String, Object?> map) => SensitiveWord(
+        id: map['id'] as String,
+        word: (map['word'] as String?) ?? '',
+        suggestion: (map['suggestion'] as String?) ?? '',
+        enabled: (map['enabled'] as int? ?? 1) == 1,
+        createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
+        updatedAt: DateTime.fromMillisecondsSinceEpoch(map['updated_at'] as int),
+      );
+}

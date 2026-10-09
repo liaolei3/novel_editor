@@ -66,6 +66,7 @@ Future<void> _bootstrap() async {
   final characters = CharacterRepository();
   final foreshadows = ForeshadowRepository();
   final fsSegments = ForeshadowSegmentRepository();
+  final sensitiveWords = SensitiveWordRepository();
   final stats = StatsRepository();
   final recycle = RecycleRepository();
   await Db.instance();
@@ -92,6 +93,7 @@ Future<void> _bootstrap() async {
     characters: characters,
     foreshadows: foreshadows,
     fsSegments: fsSegments,
+    sensitiveWords: sensitiveWords,
     stats: stats,
     recycle: recycle,
     autosave: autosave,

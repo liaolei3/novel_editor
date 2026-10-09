@@ -156,13 +156,14 @@ class _CharacterPanelState extends State<CharacterPanel> {
       context: context,
       builder: (ctx) => DraggableDialog(
         child: AlertDialog(
+          constraints: const BoxConstraints(minWidth: 320, maxWidth: 320),
           titlePadding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
           contentPadding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
           actionsPadding: const EdgeInsets.fromLTRB(24, 18, 24, 20),
           title: const Text('添加属性',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
           content: SizedBox(
-            width: 260,
+            width: 272,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,

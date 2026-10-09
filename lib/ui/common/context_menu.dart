@@ -53,6 +53,7 @@ Future<T?> showAppAnchoredMenu<T>({
   T? initialValue,
 }) {
   final overlay = Overlay.of(context, rootOverlay: true);
+  final overlayBox = overlay.context.findRenderObject() as RenderBox;
   final rect = target.localToGlobal(Offset.zero) & target.size;
   final popup = PopupMenuTheme.of(context);
   final completer = Completer<T?>();
@@ -78,10 +79,25 @@ Future<T?> showAppAnchoredMenu<T>({
     builder: (_) {
       const width = 176.0;
       const margin = 8.0;
-      final left = (rect.right - width).clamp(margin, double.infinity);
+      final size = overlayBox.size;
+      final menuHeight = entries.length * 44.0;
+      final maxLeft = (size.width - width - margin).clamp(margin, double.infinity);
+      final left = (rect.right - width).clamp(margin, maxLeft).toDouble();
+      // 默认在按钮下方展开；下方空间不足时向上翻转，上下都放不下则贴底，
+      // 避免菜单超出窗口被裁切（如设置页字体下拉位于内容区底部）。
+      var top = rect.bottom + 4;
+      final below = size.height - top - margin;
+      final above = rect.top - margin;
+      if (below < menuHeight) {
+        top = above >= menuHeight
+            ? rect.top - menuHeight - 4
+            : (size.height - menuHeight - margin)
+                .clamp(margin, double.infinity)
+                .toDouble();
+      }
       return Positioned(
         left: left,
-        top: rect.bottom + 4,
+        top: top,
         child: Material(
           color: popup.color ?? Theme.of(context).colorScheme.surface,
           elevation: popup.elevation ?? 6,

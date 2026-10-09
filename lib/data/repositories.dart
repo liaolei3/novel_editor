@@ -6,6 +6,7 @@ import 'dart:math';
 
 import '../core/constants.dart';
 import '../core/utils/rich_text_codec.dart';
+import '../core/utils/sensitive_words.dart';
 import '../core/utils/text_stats.dart';
 import 'db.dart';
 import 'models.dart';
@@ -616,5 +617,99 @@ class RecycleRepository {
   Future<void> remove(String id) async {
     final db = await Db.instance();
     await db.delete('recycle_bin', where: 'id = ?', whereArgs: [id]);
+  }
+}
+
+/// 敏感词词库（全局共享，不隶属单本书）。
+class SensitiveWordRepository {
+  Future<List<SensitiveWord>> listAll() async {
+    final db = await Db.instance();
+    final rows =
+        await db.query('sensitive_words', orderBy: 'created_at ASC');
+    return rows.map(SensitiveWord.fromMap).toList();
+  }
+
+  Future<SensitiveWord> create({
+    required String word,
+    String suggestion = '',
+  }) async {
+    final now = DateTime.now();
+    final w = SensitiveWord(
+        id: newId(),
+        word: word,
+        suggestion: suggestion,
+        createdAt: now,
+        updatedAt: now);
+    final db = await Db.instance();
+    await db.insert('sensitive_words', w.toMap());
+    return w;
+  }
+
+  Future<void> update(SensitiveWord w) async {
+    w.updatedAt = DateTime.now();
+    final db = await Db.instance();
+    await db.update('sensitive_words', w.toMap(),
+        where: 'id = ?', whereArgs: [w.id]);
+  }
+
+  Future<void> setEnabled(String id, bool enabled) async {
+    final db = await Db.instance();
+    await db.update(
+        'sensitive_words',
+        {'enabled': enabled ? 1 : 0, 'updated_at': DateTime.now().millisecondsSinceEpoch},
+        where: 'id = ?',
+        whereArgs: [id]);
+  }
+
+  Future<void> delete(String id) async {
+    final db = await Db.instance();
+    await db.delete('sensitive_words', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> clear() async {
+    final db = await Db.instance();
+    await db.delete('sensitive_words');
+  }
+
+  /// 合并导入：按词（忽略大小写）去重，已存在则更新建议词，不存在则新增。
+  /// 返回 (新增数, 更新数)。
+  Future<(int, int)> mergeImport(List<SensitiveEntry> entries) async {
+    if (entries.isEmpty) return (0, 0);
+    final db = await Db.instance();
+    final existing = await listAll();
+    final byKey = {for (final w in existing) w.word.toLowerCase(): w};
+    final now = DateTime.now();
+    final batch = db.batch();
+    var added = 0;
+    var updated = 0;
+    for (final e in entries) {
+      final found = byKey[e.word.toLowerCase()];
+      if (found != null) {
+        if (found.suggestion != e.suggestion) {
+          batch.update(
+              'sensitive_words',
+              {
+                'suggestion': e.suggestion,
+                'updated_at': now.millisecondsSinceEpoch,
+              },
+              where: 'id = ?',
+              whereArgs: [found.id]);
+          updated++;
+        }
+      } else {
+        batch.insert(
+            'sensitive_words',
+            SensitiveWord(
+                    id: newId(),
+                    word: e.word,
+                    suggestion: e.suggestion,
+                    createdAt: now,
+                    updatedAt: now)
+                .toMap());
+        added++;
+      }
+    }
+    await batch.commit(noResult: true);
+    return (added, updated);
   }
 }

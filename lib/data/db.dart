@@ -23,7 +23,7 @@ class Db {
     _db = await databaseFactory.openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 8,
+        version: 9,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
       ),
@@ -180,6 +180,16 @@ class Db {
       )
     ''');
     await db.execute('CREATE INDEX idx_fsseg_fs ON fs_segments(fs_id)');
+    await db.execute('''
+      CREATE TABLE sensitive_words (
+        id TEXT PRIMARY KEY,
+        word TEXT NOT NULL,
+        suggestion TEXT NOT NULL DEFAULT '',
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
   }
 
   /// 增量迁移。
@@ -244,6 +254,18 @@ class Db {
       if (!hasCol) {
         await db.execute('ALTER TABLE chapters ADD COLUMN outline_edited_at INTEGER');
       }
+    }
+    if (oldVersion < 9) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS sensitive_words (
+          id TEXT PRIMARY KEY,
+          word TEXT NOT NULL,
+          suggestion TEXT NOT NULL DEFAULT '',
+          enabled INTEGER NOT NULL DEFAULT 1,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )
+      ''');
     }
   }
 

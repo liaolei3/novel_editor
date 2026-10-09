@@ -5,7 +5,6 @@ import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
 import '../../core/constants.dart';
-import '../../core/utils/sensitive_words.dart';
 import '../../core/utils/text_stats.dart';
 import '../../data/db.dart';
 import '../../services/font_service.dart';
@@ -76,24 +75,13 @@ const _pageDescriptions = [
   '存储、词库与日志',
 ];
 
-/// 滑块行/下拉行共享的标题列宽（100% 界面缩放下的设计值），
-/// 保证各滑块左侧起点一致；实际使用时按界面缩放同比放大，
-/// 这样既能让标题与滑块贴得紧，又不会在 150% 缩放下裁掉 4 字标题。
 const _rowLabelWidth = 76.0;
-
-/// 滑块行右侧数值列宽（100% 界面缩放下的设计值），
-/// 同样按界面缩放同比放大，否则「10000 字」这类较长数值在 150% 缩放下会被裁切。
 const _sliderValueWidth = 56.0;
-
-/// 导航列宽（100% 界面缩放下的设计值）。列内文字随界面缩放放大，
-/// 而图标与内边距不变，故列宽只按文字部分同比放宽，
-/// 否则 150% 下最长标题「同步与账号」会溢出。
 const _navWidth = 156.0;
 const _navTextWidth = 65.0;
 
-/// 紧凑胶囊开关：Material Switch 固定 52×32，比本页的描边控件更窄更高，
-/// 故自绘为更宽更矮的胶囊。配色取自主题 switchTheme，四套主题下与
-/// 原生 Switch 保持一致。
+/// 全设置页统一开关：自绘胶囊（56×32），配色取自主题 switchTheme，
+/// 四套主题下与原生 Switch 保持一致，圆角取高度一半形成胶囊形。
 class _PillSwitch extends StatelessWidget {
   const _PillSwitch({required this.value, required this.onChanged});
 
@@ -102,9 +90,8 @@ class _PillSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 比原生 52×32 更宽更矮。
-    const width = 64.0;
-    const height = 24.0;
+    const width = 60.0;
+    const height = 28.0;
     final scheme = Theme.of(context).colorScheme;
     final switchTheme = SwitchTheme.of(context);
     final states = value ? const {WidgetState.selected} : const <WidgetState>{};
@@ -351,12 +338,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
       _group(hairline, [
         ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-          title: const Text('导入字体', style: TextStyle(fontSize: 14)),
-          subtitle: const Text(
-            '导入 ttf / otf 字体文件，界面与正文均可选用',
-            style: TextStyle(fontSize: 12),
-          ),
-          trailing: _actionIcon(Icons.upload_file),
+          title: const Text('导入字体'),
+          subtitle: const Text('导入 ttf / otf 字体文件，界面与正文均可选用'),
+          trailing: _actionLabel(Icons.upload_file, '选择文件'),
           onTap: _importFont,
         ),
       ]),
@@ -595,12 +579,15 @@ class _SettingsDialogState extends State<SettingsDialog> {
   List<Widget> _sync(SettingsController s, AppState state, Color hairline) {
     return [
       _group(hairline, [
-        SwitchListTile(
+        ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 16),
           title: const Text('云同步'),
           subtitle: const Text('本地优先；联网时自动增量同步。\n关闭不影响本地写作。'),
-          value: s.syncEnabled,
-          onChanged: (v) => s.setSyncEnabled(v),
+          trailing: _PillSwitch(
+            value: s.syncEnabled,
+            onChanged: s.setSyncEnabled,
+          ),
+          onTap: () => s.setSyncEnabled(!s.syncEnabled),
         ),
       ]),
       const SizedBox(height: 10),
@@ -637,14 +624,6 @@ class _SettingsDialogState extends State<SettingsDialog> {
   List<Widget> _data(SettingsController s, Color hairline) {
     return [
       _group(hairline, [
-        ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-          title: const Text('敏感词词库'),
-          subtitle: Text('当前词库：${s.sensitiveDictVersion}'),
-          trailing: _actionIcon(Icons.upload_file),
-          onTap: _importDict,
-        ),
-        _divider(hairline),
         FutureBuilder<String>(
           future: s.dataDir.isNotEmpty
               ? Future.value(s.dataDir)
@@ -657,21 +636,28 @@ class _SettingsDialogState extends State<SettingsDialog> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
-            trailing: _actionIcon(Icons.folder_open),
+            trailing: _actionLabel(Icons.drive_file_move, '选择文件夹'),
             onTap: snap.hasData ? () => _changeDataDir(snap.data!) : null,
+          ),
+        ),
+        _divider(hairline),
+        FutureBuilder<String>(
+          future: Logger.logsDir(),
+          builder: (context, snap) => ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+            title: const Text('运行日志'),
+            subtitle: Text(
+              snap.data ?? '读取中…',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: _actionLabel(Icons.folder_open, '打开文件夹'),
+            onTap: _openLogs,
           ),
         ),
       ]),
       const SizedBox(height: 10),
       _group(hairline, [
-        ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-          title: const Text('运行日志'),
-          subtitle: const Text('程序出错会自动记录在此'),
-          trailing: _actionIcon(Icons.description),
-          onTap: _openLogs,
-        ),
-        _divider(hairline),
         const ListTile(
           contentPadding: EdgeInsets.symmetric(horizontal: 16),
           title: Text('关于'),
@@ -679,6 +665,40 @@ class _SettingsDialogState extends State<SettingsDialog> {
         ),
       ]),
     ];
+  }
+
+  /// 动作行 trailing：小描边胶囊，内含图标 + 动作文字，
+  /// 让「选择文件夹」「打开文件夹」等不同行为一眼可辨。
+  Widget _actionLabel(IconData icon, String label) {
+    final scheme = Theme.of(context).colorScheme;
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    return Container(
+      // 全部「选择文件 / 选择文件夹 / 打开文件夹」统一尺寸：高与下拉框一致，
+      // 宽度按最长标签（5 字 + 图标 + 内边距）取固定值。
+      width: 100,
+      height: 32,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(
+          color: isLight
+              ? const Color(0x2E000000)
+              : const Color(0x2EFFFFFF),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
   }
 
   /// 动作行 trailing：小描边容器图标，与下拉按钮/值胶囊同一视觉语言。
@@ -720,7 +740,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
         children: [
           Text(
             title,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 3),
           Text(
@@ -748,6 +768,14 @@ class _SettingsDialogState extends State<SettingsDialog> {
   /// 组内行统一包透明 Material：ListTile 的背景与墨水效果绘制在
   /// 最近的 Material 上，避免被卡片的 DecoratedBox 背景遮住。
   Widget _group(Color hairline, List<Widget> children) {
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    // 统一组内 ListTile 文字规格：标题 14 / 副标题 12，
+    // 与外观、写作页的自定义行（plain Text）保持同一视觉大小。
+    final titleStyle = (text.bodyMedium ?? const TextStyle())
+        .copyWith(fontSize: 14, color: scheme.onSurface);
+    final subtitleStyle = (text.bodySmall ?? const TextStyle())
+        .copyWith(fontSize: 12, color: scheme.onSurfaceVariant);
     return Container(
       decoration: BoxDecoration(
         color: _panelColor(),
@@ -756,6 +784,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
       clipBehavior: Clip.antiAlias,
       child: ListTileTheme.merge(
         shape: const RoundedRectangleBorder(),
+        titleTextStyle: titleStyle,
+        subtitleTextStyle: subtitleStyle,
         // 集中压缩组内 ListTile 行高（两行 tile 72 → 64），
         // 使仅剩的 tile 行（如数据页的目录项）不显得比相邻行松。
         visualDensity: VisualDensity.compact,
@@ -908,7 +938,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                 },
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
-                  height: 36,
+                  height: 32,
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
@@ -1083,18 +1113,6 @@ class _SettingsDialogState extends State<SettingsDialog> {
         keyCtrl.text.trim(),
         modelCtrl.text.trim(),
       );
-    }
-  }
-
-  Future<void> _importDict() async {
-    final raw = await FileIO.pickReadText();
-    if (raw == null) return;
-    final scanner = SensitiveWordScanner.parse(raw);
-    await context.read<SettingsController>().setSensitiveDictVersion(
-      '导入词库 ${scanner.words.length} 词',
-    );
-    if (mounted) {
-      showToast(context, '词库更新成功（共 ${scanner.words.length} 词）');
     }
   }
 

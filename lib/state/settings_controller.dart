@@ -74,7 +74,6 @@ class SettingsController extends ChangeNotifier {
   String get aiBaseUrl => _cfg.getString('aiBaseUrl') ?? '';
   String get aiApiKey => _cfg.getString('aiApiKey') ?? '';
   String get aiModel => _cfg.getString('aiModel') ?? '';
-  String get sensitiveDictVersion => _cfg.getString('sensitiveDictVersion') ?? '内置 v1';
   String get lastBookId => _cfg.getString('lastBookId') ?? '';
   String get dataDir => _cfg.getString('dataDir') ?? '';
 
@@ -154,9 +153,6 @@ class SettingsController extends ChangeNotifier {
     await _cfg.setString('aiModel', model);
     notifyListeners();
   }
-
-  Future<void> setSensitiveDictVersion(String v) =>
-      _set('sensitiveDictVersion', v, null);
 
   Future<void> setLastBookId(String v) => _set('lastBookId', v, null);
 
