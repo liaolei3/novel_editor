@@ -1,10 +1,10 @@
 import 'dart:io';
 
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
+import '../../core/constants.dart';
 import '../../core/utils/sensitive_words.dart';
 import '../../core/utils/text_stats.dart';
 import '../../data/db.dart';
@@ -18,6 +18,7 @@ import 'common/context_menu.dart';
 import 'common/dialogs.dart';
 import 'common/file_io.dart';
 import 'conflict_page.dart';
+import 'widgets/highlight_swatches.dart';
 import 'widgets/toast.dart';
 
 /// 设置弹窗（9.8）：左分类导航 + 右内容区，参考系统设置布局。
@@ -163,28 +164,18 @@ class _SettingsDialogState extends State<SettingsDialog> {
   int _current = 0;
 
   final _themeScroll = ScrollController();
+  final _standeeScroll = ScrollController();
 
   @override
   void dispose() {
     _themeScroll.dispose();
+    _standeeScroll.dispose();
     super.dispose();
   }
 
-  /// 鼠标滚轮在主题预览行上转为横向滚动。
-  void _themeWheel(PointerSignalEvent event) {
-    if (event is! PointerScrollEvent) return;
-    final position = _themeScroll.position;
-    final delta = event.scrollDelta.dy;
-    if (delta == 0) return;
-    final next = (position.pixels + delta)
-        .clamp(0.0, position.maxScrollExtent)
-        .toDouble();
-    position.jumpTo(next);
-  }
-
   /// 按住左右拖动预览行（拖动距离超过阈值时不会误触卡片点击）。
-  void _themeDragUpdate(DragUpdateDetails d) {
-    final position = _themeScroll.position;
+  void _rowDragUpdate(DragUpdateDetails d, ScrollController controller) {
+    final position = controller.position;
     position.jumpTo(
       (position.pixels - d.delta.dx)
           .clamp(0.0, position.maxScrollExtent)
@@ -285,60 +276,77 @@ class _SettingsDialogState extends State<SettingsDialog> {
     ];
   }
 
+  /// 预览行分组：标题 + 一行卡片；仅支持按住左右拖动切换（不接管滚轮，避免与页面上下滚动冲突）。
+  Widget _previewGroup(
+    Color hairline,
+    String title,
+    ScrollController controller,
+    List<Widget> cards,
+  ) {
+    return _group(hairline, [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            title,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: GestureDetector(
+          onHorizontalDragUpdate: (d) => _rowDragUpdate(d, controller),
+          child: SingleChildScrollView(
+            controller: controller,
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+            child: Row(
+              children: [
+                for (final card in cards)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: card,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ]);
+  }
+
   List<Widget> _appearance(
     SettingsController s,
     FontService fontService,
     Color hairline,
   ) {
     final fontOptions = _fontOptions(fontService);
+    final cardRadius = appThemeSpec(s.theme).cardRadius;
     return [
-      _group(
-        hairline,
-        [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                '主题',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
+      _previewGroup(hairline, '主题', _themeScroll, [
+        for (final theme in AppTheme.values)
+          _ThemePreviewCard(
+            theme: theme,
+            selected: s.theme == theme,
+            onTap: () => s.setTheme(theme),
           ),
-          // 主题预览：一行横向排列；滚轮上下滚动与按住拖动均转为左右滑动。
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Listener(
-              onPointerSignal: _themeWheel,
-              child: GestureDetector(
-                onHorizontalDragUpdate: _themeDragUpdate,
-                child: SingleChildScrollView(
-                  controller: _themeScroll,
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-                  child: Row(
-                    children: [
-                      for (final theme in AppTheme.values)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 12),
-                          child: _ThemePreviewCard(
-                            theme: theme,
-                            selected: s.theme == theme,
-                            onTap: () => s.setTheme(theme),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+      ]),
+      const SizedBox(height: 10),
+      _previewGroup(hairline, '萌宠', _standeeScroll, [
+        for (final standee in PetStandee.values)
+          _StandeePreviewCard(
+            standee: standee,
+            selected: s.standee == standee,
+            radius: cardRadius,
+            onTap: () => s.setStandee(standee),
           ),
-        ],
-      ),
+      ]),
       const SizedBox(height: 10),
       _group(hairline, [
         ListTile(
@@ -383,6 +391,10 @@ class _SettingsDialogState extends State<SettingsDialog> {
     FontService fontService,
     Color hairline,
   ) {
+    final dialogueColor = s.dialogueHighlightColor;
+    final dialogueDisplay = dialogueColor == null
+        ? null
+        : themeSwatchOf(dialogueColor, Theme.of(context).brightness);
     return [
       _group(hairline, [
         _dropdownRow(
@@ -452,6 +464,40 @@ class _SettingsDialogState extends State<SettingsDialog> {
                     onChanged: s.setTypewriterMode,
                   ),
                 ),
+              ),
+            ],
+          ),
+        ),
+        _divider(hairline),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: Row(
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('对话高亮'),
+                  const SizedBox(width: 4),
+                  _hintIcon('自动为台词引号内的文字加底色；点右侧色块改色，点末位空心格关闭'),
+                ],
+              ),
+              const Spacer(),
+              Wrap(
+                spacing: 6,
+                children: [
+                  for (final swatch in highlightPaletteFor(context))
+                    HighlightSwatchCell(
+                      size: 22,
+                      color: swatch,
+                      selected: dialogueDisplay == swatch,
+                      onTap: () => s.setDialogueHighlightColor(swatch),
+                    ),
+                  HighlightClearCell(
+                    size: 22,
+                    enabled: dialogueColor != null,
+                    onTap: () => s.setDialogueHighlightColor(null),
+                  ),
+                ],
               ),
             ],
           ),
@@ -1301,6 +1347,87 @@ class _ThemePreviewCardState extends State<_ThemePreviewCard> {
                     : scheme.onSurfaceVariant,
                 fontWeight:
                     widget.selected ? FontWeight.w600 : FontWeight.w400,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 立绘预览卡：与主题预览卡同高，直接展示真实立绘；选中态用主题色描边。
+class _StandeePreviewCard extends StatefulWidget {
+  const _StandeePreviewCard({
+    required this.standee,
+    required this.selected,
+    required this.radius,
+    required this.onTap,
+  });
+
+  final PetStandee standee;
+  final bool selected;
+  final double radius;
+  final VoidCallback onTap;
+
+  @override
+  State<_StandeePreviewCard> createState() => _StandeePreviewCardState();
+}
+
+class _StandeePreviewCardState extends State<_StandeePreviewCard> {
+  static const double _side = 116;
+
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final border = widget.selected
+        ? Border.all(color: scheme.primary, width: 2)
+        : Border.all(
+            color: scheme.onSurfaceVariant.withValues(
+              alpha: _hover ? 0.45 : 0.2,
+            ),
+            width: 1,
+          );
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Column(
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 120),
+              width: _side,
+              height: _side,
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(widget.radius),
+                border: border,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(widget.radius - 2),
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Image.asset(
+                    widget.standee.assetPath,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              widget.standee.label,
+              style: TextStyle(
+                fontSize: 12,
+                color:
+                    widget.selected ? scheme.primary : scheme.onSurfaceVariant,
+                fontWeight: widget.selected ? FontWeight.w600 : FontWeight.w400,
               ),
             ),
           ],

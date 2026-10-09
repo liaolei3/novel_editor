@@ -30,6 +30,7 @@ import '../common/foreshadow_dialogs.dart';
 import 'busy_overlay.dart';
 import 'character_tip.dart';
 import 'foreshadow_tip.dart';
+import 'highlight_swatches.dart';
 import 'reading_styles.dart';
 import 'search_replace_bar.dart';
 import 'toast.dart';
@@ -72,6 +73,9 @@ class _EditorAreaState extends State<EditorArea> {
 
   /// 每次 build 同步的开关值，供帧末的居中回调读取。
   bool _typewriterMode = false;
+
+  /// 对话高亮规范色（null = 关闭），每次 build 从设置同步。
+  Color? _dialogueColor;
 
   /// 最近一次右键按下的全局坐标与时间：编辑器右键菜单跟随鼠标位置
   /// 而非选区位置（选区可能在远离点击处）。
@@ -387,7 +391,46 @@ class _EditorAreaState extends State<EditorArea> {
     return _richSpan(context, node, nodeOffset, text, style, recognizer);
   }
 
+  /// 对话高亮：台词引号内的文字套用高亮底色。
+  /// 优先级低于手工高亮（节点已带 background 属性时不叠加）与搜索命中（搜索
+  /// 命中在 [_richSpanCore] 内以 Paint 覆盖底色）；引号本身不变色。
   InlineSpan _richSpan(
+    BuildContext context,
+    Node node,
+    int nodeOffset,
+    String text,
+    TextStyle? style,
+    GestureRecognizer? recognizer,
+  ) {
+    final dialogue = _dialogueColor;
+    final ranges = dialogue == null || style?.backgroundColor != null
+        ? const <(int, int)>[]
+        : findDialogueRanges(text);
+    if (ranges.isEmpty) {
+      return _richSpanCore(context, node, nodeOffset, text, style, recognizer);
+    }
+    // 传入当前主题显示色；_searchHighlightSpanBuilder 的映射对其为无操作。
+    final dialogueStyle = (style ?? const TextStyle()).copyWith(
+        backgroundColor: themeSwatchOf(dialogue!, Theme.brightnessOf(context)));
+    final children = <InlineSpan>[];
+    var pos = 0;
+    for (final (start, end) in ranges) {
+      if (start > pos) {
+        children.add(_richSpanCore(context, node, nodeOffset + pos,
+            text.substring(pos, start), style, recognizer));
+      }
+      children.add(_richSpanCore(context, node, nodeOffset + start,
+          text.substring(start, end), dialogueStyle, recognizer));
+      pos = end;
+    }
+    if (pos < text.length) {
+      children.add(_richSpanCore(context, node, nodeOffset + pos,
+          text.substring(pos), style, recognizer));
+    }
+    return TextSpan(children: children, style: style);
+  }
+
+  InlineSpan _richSpanCore(
     BuildContext context,
     Node node,
     int nodeOffset,
@@ -494,7 +537,7 @@ class _EditorAreaState extends State<EditorArea> {
     // 暗色主题下渲染为对应深色变体（亮色 i ↔ 暗色 i）。
     final bg = style?.backgroundColor;
     if (bg != null) {
-      final mapped = _themeSwatchOf(bg, Theme.brightnessOf(context));
+      final mapped = themeSwatchOf(bg, Theme.brightnessOf(context));
       if (mapped != bg) {
         style = (style ?? const TextStyle()).copyWith(backgroundColor: mapped);
       }
@@ -571,6 +614,7 @@ class _EditorAreaState extends State<EditorArea> {
     final settings = context.watch<SettingsController>();
     // 缓存开关值：帧末居中回调与滚动控制器无法访问 build 局部量。
     _typewriterMode = settings.typewriterMode;
+    _dialogueColor = settings.dialogueHighlightColor;
     final chapter = state.currentChapter;
 
     if (chapter == null) {
@@ -1851,114 +1895,6 @@ class _JumpButtonState extends State<_JumpButton> {
   }
 }
 
-/// 高亮色板（亮色主题）：精选柔和底色，深色文字下均可读。
-const List<Color> _highlightLightSwatches = [
-  Color(0xFFFFEB3B), // 亮黄
-  Color(0xFFFFB74D), // 橙
-  Color(0xFFE57373), // 红
-  Color(0xFFF48FB1), // 粉
-  Color(0xFFBA68C8), // 紫
-  Color(0xFF64B5F6), // 蓝
-  Color(0xFF4DB6AC), // 青
-  Color(0xFF81C784), // 绿
-  Color(0xFFAED581), // 黄绿
-];
-
-/// 高亮色板（暗色主题）：同色相的深色变体，浅色文字下均可读。
-const List<Color> _highlightDarkSwatches = [
-  Color(0xFFF9A825), // 亮黄
-  Color(0xFFB26A00), // 橙
-  Color(0xFFC62828), // 红
-  Color(0xFFAD1457), // 粉
-  Color(0xFF6A1B9A), // 紫
-  Color(0xFF1565C0), // 蓝
-  Color(0xFF00695C), // 青
-  Color(0xFF2E7D32), // 绿
-  Color(0xFF558B2F), // 黄绿
-];
-
-/// 清除高亮占位格（色板末位）：与色块同尺寸的空心格，无高亮时置灰。
-class _ClearCell extends StatelessWidget {
-  const _ClearCell({required this.enabled, required this.onTap});
-
-  final bool enabled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final onSurface = Theme.of(context).colorScheme.onSurface;
-    return InkWell(
-      borderRadius: BorderRadius.circular(4),
-      onTap: enabled ? onTap : null,
-      child: Container(
-        width: 24,
-        height: 24,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(
-            color: onSurface.withValues(alpha: enabled ? 0.6 : 0.15),
-          ),
-        ),
-        child: Icon(
-          Icons.format_color_reset,
-          size: 16,
-          color: onSurface.withValues(alpha: enabled ? 0.8 : 0.2),
-        ),
-      ),
-    );
-  }
-}
-
-/// 高亮弹窗的色块：紧凑小方块，选中态为主题色描边加对号。
-class _SwatchCell extends StatelessWidget {
-  const _SwatchCell({
-    required this.color,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final Color color;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(4),
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
-        width: 24,
-        height: 24,
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(4),
-          border: selected
-              ? Border.all(
-                  color: Theme.of(context).colorScheme.primary,
-                  width: 2,
-                )
-              : Border.all(color: Colors.black26, width: 0.5),
-        ),
-        child: selected
-            ? Icon(
-                Icons.check,
-                size: 12,
-                color:
-                    color.computeLuminance() > 0.5 ? Colors.black : Colors.white,
-              )
-            : null,
-      ),
-    );
-  }
-}
-
-/// 把颜色编码为 Quill 背景属性使用的 #rrggbb 十六进制字符串。
-String _highlightHex(Color c) {
-  String channel(double v) => (v * 255).round().toRadixString(16).padLeft(2, '0');
-  return '#${channel(c.r)}${channel(c.g)}${channel(c.b)}';
-}
-
 /// 解析选区上的背景色属性，无背景或格式不符时返回 null。
 Color? _selectionBackground(QuillController controller) {
   final value =
@@ -1982,7 +1918,7 @@ class _HighlightToolbarButton extends StatefulWidget {
 
 class _HighlightToolbarButtonState extends State<_HighlightToolbarButton> {
   /// 当前颜色（跨选区记忆，与 Word 行为一致）。
-  Color _current = _highlightLightSwatches.first;
+  Color _current = highlightLightSwatches.first;
 
   final MenuController _menuController = MenuController();
 
@@ -2024,7 +1960,7 @@ class _HighlightToolbarButtonState extends State<_HighlightToolbarButton> {
         Attribute.background,
         color == null
             ? null
-            : _highlightHex(_canonicalSwatchOf(color)),
+            : highlightHex(canonicalSwatchOf(color)),
       ),
     );
   }
@@ -2044,7 +1980,7 @@ class _HighlightToolbarButtonState extends State<_HighlightToolbarButton> {
     final active = _selectionBg != null;
     final activeDisplay = _selectionBg == null
         ? null
-        : _themeSwatchOf(_selectionBg!, Theme.of(context).brightness);
+        : themeSwatchOf(_selectionBg!, Theme.of(context).brightness);
 
     return MenuAnchor(
       controller: _menuController,
@@ -2057,17 +1993,17 @@ class _HighlightToolbarButtonState extends State<_HighlightToolbarButton> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                for (final swatch in _paletteFor(context))
-                  _SwatchCell(
+                for (final swatch in highlightPaletteFor(context))
+                  HighlightSwatchCell(
                     color: swatch,
                     selected: activeDisplay == swatch,
                     onTap: () {
-                      setState(() => _current = _canonicalSwatchOf(swatch));
+                      setState(() => _current = canonicalSwatchOf(swatch));
                       _apply(swatch);
                       _menuController.close();
                     },
                   ),
-                _ClearCell(
+                HighlightClearCell(
                   enabled: _selectionBg != null,
                   onTap: () {
                     _menuController.close();
@@ -2106,7 +2042,7 @@ class _HighlightToolbarButtonState extends State<_HighlightToolbarButton> {
                     width: 16,
                     height: 3,
                     decoration: BoxDecoration(
-                      color: _themeSwatchOf(
+                      color: themeSwatchOf(
                           _current, Theme.of(context).brightness),
                       borderRadius: BorderRadius.circular(1.5),
                     ),
@@ -2135,27 +2071,4 @@ class _HighlightToolbarButtonState extends State<_HighlightToolbarButton> {
       ),
     );
   }
-}
-
-/// 暗色主题下换用深色变体色板，保证主题文字颜色在底色上可读。
-List<Color> _paletteFor(BuildContext context) =>
-    Theme.of(context).brightness == Brightness.dark
-        ? _highlightDarkSwatches
-        : _highlightLightSwatches;
-
-/// 规范存储色 → 当前主题显示色（亮色 i ↔ 暗色 i 双向对应）。
-Color _themeSwatchOf(Color canonical, Brightness brightness) {
-  final i = _highlightLightSwatches.indexOf(canonical);
-  if (i < 0) return canonical;
-  return brightness == Brightness.dark
-      ? _highlightDarkSwatches[i]
-      : _highlightLightSwatches[i];
-}
-
-/// 显示色 → 亮色规范存储值（暗色色板色转对应亮色；非色板色原样返回）。
-Color _canonicalSwatchOf(Color display) {
-  if (_highlightLightSwatches.contains(display)) return display;
-  final i = _highlightDarkSwatches.indexOf(display);
-  if (i >= 0) return _highlightLightSwatches[i];
-  return display;
 }

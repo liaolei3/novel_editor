@@ -40,9 +40,11 @@ void main() {
     }
   });
 
-  test('每档台词非空', () {
+  test('每档台词非空且不超过气泡两行的容量', () {
     for (final tier in WritingQuipTier.values) {
       expect(tier.text.trim(), isNotEmpty);
+      // 气泡文字区 86px 宽、两行封顶，界面缩放 150% 时每行约 5 字。
+      expect(tier.text.length, lessThanOrEqualTo(10));
     }
   });
 }

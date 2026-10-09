@@ -208,6 +208,7 @@ class _CharacterTipViewState extends State<_CharacterTipView> {
                 Row(children: [
                   CircleAvatar(
                     radius: 16,
+                    backgroundColor: Colors.transparent,
                     backgroundImage: AssetImage(
                         char.gender == Gender.female
                             ? 'assets/avatars/female.png'

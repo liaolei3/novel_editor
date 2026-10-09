@@ -4,8 +4,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/constants.dart';
 import '../../core/utils/text_stats.dart';
-import '../../core/utils/writing_quips.dart';
 import '../../state/app_state.dart';
 import '../../state/settings_controller.dart';
 
@@ -90,7 +90,7 @@ class _WriteStatsEntryState extends State<WriteStatsEntry> {
   }
 }
 
-/// 非模态悬浮气泡：立绘 + 今日码字指标 + 角色台词。
+/// 非模态悬浮气泡：萌宠 + 今日码字指标。
 class _WriteStatsBubble extends StatefulWidget {
   const _WriteStatsBubble({required this.anchor});
 
@@ -102,28 +102,22 @@ class _WriteStatsBubble extends StatefulWidget {
 }
 
 class _WriteStatsBubbleState extends State<_WriteStatsBubble> {
-  /// 宽度按最长数值反算：数值可用宽 = 268 - 12*2 - 1 - _columnGap - 96 - 52
-  /// = 79px，足够「12,345 字/时」「10 小时 30 分」不被省略号截断。
-  static const double _width = 268;
+  /// 宽度按最长数值反算：数值可用宽 = 299 - 12*2 - 1 - _columnGap - _figureWidth
+  /// = 132px，足够「12,345 字/时」「10 小时 30 分」不被省略号截断。
+  static const double _width = 299;
 
   /// 高度按内容反算：描边 Border.all(0.5) 会额外吃掉 0.5px/边，
-  /// 故内容高 = 178 - 12*2 - 1 = 153。比立绘列的 45+4+96 多出的 8px
-  /// 让台词气泡能下沉一点，尾巴贴近立绘头顶；这一段由左列行距分摊。
+  /// 故内容高 = 178 - 12*2 - 1 = 153。
   static const double _height = 178;
   static const double _gap = 10;
   static const double _edge = 8;
 
-  /// 数值右对齐后，这个间距就是「数值右端 → 立绘左端」的实际视觉距离。
-  static const double _columnGap = 16;
+  /// 数值右对齐后，这个间距就是「数值右端 → 萌宠左端」的实际视觉距离。
+  static const double _columnGap = 12;
 
-  /// 立绘列（台词气泡 + Q 版立绘）的尺寸口径。
-  static const double _columnWidth = 96;
-  static const double _standeeSide = 96;
-  static const double _bubbleGap = 4;
-  static const double _bubblePad = 5;
-
-  /// 气泡定高：减去内边距与尾巴留白后文字区 29px，够放 10px 字号的两行。
-  static const double _bubbleHeight = 45;
+  /// 萌宠列宽度：资源为 1:1，列高 153，取 130 让萌宠比列高略窄并垂直居中，
+  /// 左右更紧凑且不过度留白。
+  static const double _figureWidth = 130;
 
   /// 相对基准位置的拖动量（写入前已按窗口边界钳制）。
   Offset _drag = Offset.zero;
@@ -191,6 +185,7 @@ class _WriteStatsBubbleState extends State<_WriteStatsBubble> {
     final scheme = Theme.of(context).colorScheme;
     final window = MediaQuery.sizeOf(context);
     final goal = context.watch<SettingsController>().dailyGoal;
+    final standee = context.watch<SettingsController>().standee;
     final progress = goal > 0 ? (_chars / goal).clamp(0.0, 1.0) : 0.0;
     final reached = progress >= 1;
     final pos = _clampToWindow(_base + _drag, window);
@@ -225,7 +220,7 @@ class _WriteStatsBubbleState extends State<_WriteStatsBubble> {
                   child: _metrics(scheme, goal, progress, reached),
                 ),
                 const SizedBox(width: _columnGap),
-                _figureColumn(scheme, progress),
+                _figure(standee),
               ],
             ),
           ),
@@ -234,74 +229,14 @@ class _WriteStatsBubbleState extends State<_WriteStatsBubble> {
     );
   }
 
-  /// 台词气泡：随进度/摸鱼状态变化的角色台词，弱化配色不再抢数据区的视线。
-  /// 摸鱼状态由 SessionStats 直接发出、不经过 AppState 通知，故在此单独监听。
-  /// 高度固定，文字垂直居中。
-  Widget _bubble(ColorScheme scheme, double progress) {
-    final idle = _app.session.idle;
+  /// 萌宠列：列宽固定，萌宠按 BoxFit.contain 缩放并垂直居中。
+  /// 注意不能用 AspectRatio(1)：那会撑成与列等高的正方形，把面板顶宽。
+  Widget _figure(PetStandee standee) {
     return SizedBox(
-      height: _bubbleHeight,
-      child: ValueListenableBuilder<bool>(
-        valueListenable: idle,
-        builder: (_, isIdle, _) => CustomPaint(
-          painter: _SpeechBubblePainter(
-            fill: scheme.surface,
-            // 用 onSurfaceVariant 而非 outlineVariant：后者在四套主题下都太淡，
-            // 气泡轮廓糊在面板底色里看不清。
-            stroke: scheme.onSurfaceVariant,
-          ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(
-              _bubblePad,
-              _bubblePad,
-              _bubblePad,
-              _bubblePad + _bubbleTailHeight,
-            ),
-            child: Center(
-              // 文字宽度写死才能正常折行（FittedBox 会给子节点无界宽度约束，
-              // 若让 Text 自由布局会排成一行再被整体缩小）；FittedBox 只在
-              // uiScale 放大导致两行放不下时等比缩小兜底，不丢内容。
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: SizedBox(
-                  width: _columnWidth - _bubblePad * 2,
-                  child: Text(
-                    resolveWritingQuipTier(progress, idle: isIdle).text,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: _labelStyle(scheme)
-                        .copyWith(fontSize: 10, height: 1.3),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// 立绘列：台词气泡在上、Q 版立绘在下，气泡尾巴向下指向立绘头顶。
-  /// 整列底部对齐（不是顶对齐也不是 spaceBetween）——立绘贴住内容底边，
-  /// 气泡紧挨其上方，面板多出来的高度全部落到列顶，气泡就自然下沉一点，
-  /// 尾巴离立绘头顶更近。
-  Widget _figureColumn(ColorScheme scheme, double progress) {
-    return SizedBox(
-      width: _columnWidth,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          _bubble(scheme, progress),
-          const SizedBox(height: _bubbleGap),
-          SizedBox(
-            width: _standeeSide,
-            height: _standeeSide,
-            child: Image.asset(
-              'assets/branding/pet_standee_chibi.png',
-              fit: BoxFit.contain,
-            ),
-          ),
-        ],
+      width: _figureWidth,
+      child: Image.asset(
+        standee.assetPath,
+        fit: BoxFit.contain,
       ),
     );
   }
@@ -389,61 +324,6 @@ class _WriteStatsBubbleState extends State<_WriteStatsBubble> {
 
   TextStyle _labelStyle(ColorScheme scheme) =>
       TextStyle(fontSize: 12, color: scheme.onSurfaceVariant);
-}
-
-/// 台词气泡尾巴的宽高（高同时用作气泡内容区下方的留白）。
-const double _bubbleTailWidth = 14;
-const double _bubbleTailHeight = 6;
-
-/// 漫画式台词气泡：圆角矩形 + 向下小三角。两者用 Path.combine 求并集后
-/// 一次填充、一次描边，避免分开画时在气泡底边留下接缝。
-class _SpeechBubblePainter extends CustomPainter {
-  const _SpeechBubblePainter({required this.fill, required this.stroke});
-
-  final Color fill;
-  final Color stroke;
-
-  static const double _radius = 10;
-  static const double _strokeWidth = 1.0;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    // 内缩半个线宽，让整条描边都落在画布内不被裁掉。
-    const inset = _strokeWidth / 2;
-    final bodyBottom = size.height - _bubbleTailHeight;
-    final body = Path()
-      ..addRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-            inset,
-            inset,
-            size.width - _strokeWidth,
-            bodyBottom - _strokeWidth,
-          ),
-          const Radius.circular(_radius),
-        ),
-      );
-    final cx = size.width / 2;
-    // 三角底边压进气泡内 2px，保证并集后与矩形连成一体。
-    final tail = Path()
-      ..moveTo(cx - _bubbleTailWidth / 2, bodyBottom - inset - 2)
-      ..lineTo(cx + _bubbleTailWidth / 2, bodyBottom - inset - 2)
-      ..lineTo(cx, size.height - inset)
-      ..close();
-    final path = Path.combine(PathOperation.union, body, tail);
-    canvas.drawPath(path, Paint()..color = fill);
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = stroke
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = _strokeWidth,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_SpeechBubblePainter old) =>
-      old.fill != fill || old.stroke != stroke;
 }
 
 /// 千分位整数格式（与统计页口径一致）。

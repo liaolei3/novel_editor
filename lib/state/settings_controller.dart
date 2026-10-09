@@ -4,6 +4,7 @@ import 'app_config.dart';
 import '../core/constants.dart';
 import '../core/utils/text_stats.dart';
 import '../ui/app_theme.dart';
+import '../ui/widgets/highlight_swatches.dart';
 
 /// 设置控制器（9.8 设置页）：
 /// 主题（玻璃拟态/有机自然/活力涂鸦）、字体大小、行距、自动保存频率、每日目标、AI 配置、同步开关。
@@ -20,6 +21,15 @@ class SettingsController extends ChangeNotifier {
       if (t.name == name) return t;
     }
     return AppTheme.nature;
+  }
+
+  /// 未知/历史遗留的立绘值一律回退默认「英短蓝猫」。
+  PetStandee get standee {
+    final id = _cfg.getString('standee');
+    for (final s in PetStandee.values) {
+      if (s.id == id) return s;
+    }
+    return PetStandee.blue;
   }
 
   double get fontSize => _cfg.getDouble('fontSize') ?? 17;
@@ -44,6 +54,16 @@ class SettingsController extends ChangeNotifier {
   double get reviewCustomHeight =>
       _cfg.getDouble('reviewCustomHeight') ?? AppConstants.defaultPreviewDevice.height;
   bool get typewriterMode => _cfg.getBool('typewriterMode') ?? false;
+
+  /// 对话（台词）高亮颜色（规范亮色值）；null 表示「无色」即关闭。
+  /// 未配置过时默认亮黄（色板首色），因此默认开启。
+  Color? get dialogueHighlightColor {
+    final v = _cfg.getString('dialogueHighlight');
+    if (v == null) return highlightLightSwatches.first;
+    if (v == 'none') return null;
+    return colorFromHex(v) ?? highlightLightSwatches.first;
+  }
+
   int get autosaveSeconds => _cfg.getInt('autosaveSeconds') ?? 2;
   int get dailyGoal => _cfg.getInt('dailyGoal') ?? 2000;
   CountStandard get countStandard => CountStandard.values.firstWhere(
@@ -69,6 +89,9 @@ class SettingsController extends ChangeNotifier {
   Future<void> setTheme(AppTheme theme) =>
       _set('appTheme', theme.name, () => notifyListeners());
 
+  Future<void> setStandee(PetStandee v) =>
+      _set('standee', v.id, () => notifyListeners());
+
   Future<void> setFontSize(double v) =>
       _set('fontSize', v, () => notifyListeners());
 
@@ -89,6 +112,12 @@ class SettingsController extends ChangeNotifier {
 
   Future<void> setTypewriterMode(bool v) =>
       _set('typewriterMode', v, () => notifyListeners());
+
+  Future<void> setDialogueHighlightColor(Color? color) => _set(
+        'dialogueHighlight',
+        color == null ? 'none' : highlightHex(canonicalSwatchOf(color)),
+        () => notifyListeners(),
+      );
 
   Future<void> setReviewFontSize(double v) =>
       _set('reviewFontSize', v, () => notifyListeners());

@@ -8,6 +8,24 @@ class PreviewDevice {
   final double height;
 }
 
+/// 码字面板立绘形象。id 既是配置值也是资源文件名口径
+/// （`assets/branding/pet_standee_<id>.png`）。
+enum PetStandee {
+  blue('blue', '英短蓝猫'),
+  orange('orange', '橘猫'),
+  tuxedo('tuxedo', '奶牛猫'),
+  calico('calico', '三花猫'),
+  tabby('tabby', '狸花猫'),
+  ragdoll('ragdoll', '布偶猫');
+
+  const PetStandee(this.id, this.label);
+
+  final String id;
+  final String label;
+
+  String get assetPath => 'assets/branding/pet_standee_$id.png';
+}
+
 class AppConstants {
   AppConstants._();
 

@@ -497,6 +497,7 @@ class _CharacterPanelState extends State<CharacterPanel> {
               child: Column(children: [
                 CircleAvatar(
                   radius: 30,
+                  backgroundColor: Colors.transparent,
                   backgroundImage: AssetImage(_avatarAsset(_draft.gender)),
                 ),
                 const SizedBox(height: 6),
@@ -905,6 +906,7 @@ class _CharacterGridCellState extends State<_CharacterGridCell> {
                 Row(children: [
                   CircleAvatar(
                     radius: 16,
+                    backgroundColor: Colors.transparent,
                     backgroundImage: AssetImage(widget.avatarAsset),
                   ),
                   const SizedBox(width: 8),
@@ -1099,6 +1101,7 @@ class _CharacterCardState extends State<_CharacterCard> {
           child: Row(children: [
                 CircleAvatar(
                   radius: 18,
+                  backgroundColor: Colors.transparent,
                   backgroundImage: AssetImage(widget.avatarAsset),
                 ),
                 const SizedBox(width: 10),

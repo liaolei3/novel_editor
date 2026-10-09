@@ -354,4 +354,61 @@ void main() {
       expect(controller.selection.start, 4);
     });
   });
+
+  group('findDialogueRanges（对话引号区间扫描）', () {
+    test('全角双引号成对返回内文区间（不含引号本身）', () {
+      expect(findDialogueRanges('他说：“你好。”'), [(4, 7)]);
+    });
+
+    test('半角双引号同字符开闭按开关式配对', () {
+      expect(findDialogueRanges('"甲"和"乙"'), [(1, 2), (5, 6)]);
+    });
+
+    test('全角单引号成对识别', () {
+      expect(findDialogueRanges('‘甲’乙'), [(1, 2)]);
+    });
+
+    test('直角引号成对识别', () {
+      expect(findDialogueRanges('「甲」『乙』'), [(1, 2), (4, 5)]);
+    });
+
+    test('半角单引号/书名号/括号不算对话', () {
+      expect(findDialogueRanges('《丁》【戊】（己）'), isEmpty);
+      expect(findDialogueRanges("it's a 'b'"), isEmpty);
+    });
+
+    test('未闭合引号与孤立闭符都不产出区间', () {
+      expect(findDialogueRanges('“甲'), isEmpty);
+      expect(findDialogueRanges('甲”'), isEmpty);
+      expect(findDialogueRanges('‘甲'), isEmpty);
+      expect(findDialogueRanges('甲’'), isEmpty);
+      expect(findDialogueRanges('"甲'), isEmpty);
+      expect(findDialogueRanges('甲"'), isEmpty);
+      expect(findDialogueRanges('「甲'), isEmpty);
+      expect(findDialogueRanges('甲」'), isEmpty);
+    });
+
+    test('嵌套引号与父区间合并为同一段', () {
+      expect(findDialogueRanges('「他说：“你好”」'), [(1, 8)]);
+      expect(findDialogueRanges('“甲“乙”丙”'), [(1, 6)]);
+    });
+
+    test('一段文本里的多段对话各自成区间', () {
+      expect(findDialogueRanges('“甲”和“乙”'), [(1, 2), (5, 6)]);
+    });
+
+    test('空引号对不产出区间', () {
+      expect(findDialogueRanges('“”'), isEmpty);
+      expect(findDialogueRanges('‘’'), isEmpty);
+      expect(findDialogueRanges('""'), isEmpty);
+      expect(findDialogueRanges('「」'), isEmpty);
+    });
+
+    test('全角/半角/直角/单引号混用互不干扰', () {
+      expect(
+        findDialogueRanges('“甲”‘乙’"丙"「丁」'),
+        [(1, 2), (4, 5), (7, 8), (10, 11)],
+      );
+    });
+  });
 }

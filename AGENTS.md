@@ -6,6 +6,7 @@
 
 - 思考与回复始终使用中文。
 - **执行任何写 SQL（INSERT / UPDATE / DELETE / DDL、修改数据库内容）前，必须先征得用户同意。**
+- **涉及文生图的任务，生图后必须先让用户审批通过，再进行后续操作（如抠图、裁剪、替换资源等）；未审批前不得改动现有资源。**
 - 代码只需要关键注释：仅在逻辑不自明处解释"为什么"，禁止写复述代码的"是什么"注释，禁止给未改动的代码补注释。
 - 禁止擅自 commit / push，仅在用户明确要求时提交。
 - 禁止破坏性 git 操作（force push、reset --hard、clean -f 等），除非用户明确要求。
@@ -18,32 +19,38 @@ lib/
 ├── main.dart                     # 入口（桌面端初始化 sqflite_ffi、window_manager）
 ├── core/
 │   ├── constants.dart
-│   ├── utils/                    # 纯工具层，禁止依赖 UI / DB
-│   │   ├── chapter_title_suggest.dart   # 章节标题建议（含中文数字）
-│   │   ├── rich_text_codec.dart         # Delta 编解码、Delta 拆分工具
-│   │   ├── pair_symbols.dart            # 中文成对符号自动补全
-│   │   ├── global_search.dart           # 全局搜索（Delta 偏移映射）
-│   │   ├── text_formatter.dart / text_stats.dart / sensitive_words.dart
-│   │   └── docx_exporter.dart / txt_importer.dart
-│   ├── data/
-│   │   ├── db.dart                      # 数据库建表与迁移
-│   │   ├── models.dart                  # 数据模型
-│   │   └── repositories.dart            # 仓储层（含章节 sortNumber 移位）
-│   ├── services/                        # autosave、durability、logger、session_stats、ai_gateway、sync_engine
-│   └── state/
-│       ├── app_state.dart               # 核心状态与业务方法
-│       ├── app_config.dart / settings_controller.dart
+│   └── utils/                    # 纯工具层，禁止依赖 UI / DB
+│       ├── chapter_title_suggest.dart   # 章节标题建议（含中文数字）
+│       ├── rich_text_codec.dart         # Delta 编解码、Delta 拆分工具
+│       ├── pair_symbols.dart            # 中文成对符号自动补全
+│       ├── global_search.dart           # 全局搜索（Delta 偏移映射）
+│       ├── foreshadow_delta.dart        # 伏笔内联标注属性（fsid）
+│       ├── writing_quips.dart           # 立绘台词分档
+│       ├── text_formatter.dart / text_stats.dart / sensitive_words.dart
+│       └── docx_exporter.dart / docx_importer.dart / txt_importer.dart
+├── data/
+│   ├── db.dart                      # 数据库建表与迁移
+│   ├── models.dart                  # 数据模型
+│   └── repositories.dart            # 仓储层（含章节 sortNumber 移位）
+├── services/
+│   ├── ai/ai_gateway.dart           # AI 网关（OpenAI 兼容）
+│   ├── sync/sync_engine.dart        # 同步引擎
+│   └── autosave_service.dart / durability_service.dart / font_service.dart / logger.dart / session_stats.dart
+├── state/
+│   ├── app_state.dart               # 核心状态与业务方法
+│   └── app_config.dart / settings_controller.dart
 └── ui/
-    ├── app_theme.dart                   # 三套主题：浅色 / 暗色 / 像素
+    ├── app_theme.dart               # 三套主题：有机自然 / 玻璃拟态 / 活力涂鸦
     ├── app_root.dart / workspace_page.dart / shelf_page.dart / stats_page.dart
     ├── recycle_page.dart / conflict_page.dart / login_page.dart
     ├── settings_dialog.dart / global_search_dialog.dart
-    ├── panels/                          # 右侧面板：character、outline、notes、snapshot、stats、ai、sensitive
-    ├── widgets/                         # book_tree、editor_area、toast、context_menu、search_replace_bar 等
-    └── common/                          # dialogs、file_io、book_cover 等
+    ├── panels/                      # 右侧面板：character、foreshadow、outline、notes、snapshot、preview、sensitive、ai
+    ├── widgets/                     # book_tree、editor_area、toast、search_replace_bar、write_stats_bubble 等
+    └── common/                      # dialogs、context_menu、file_io、book_cover、foreshadow_dialogs、import_preview_dialog 等
 third_party/flutter_quill/       # flutter_quill 11.5.1 本地补丁
 test/                            # 单元测试与 Widget 测试
 assets/avatars/                  # 角色默认头像
+assets/branding/                 # 品牌图标 / 立绘
 prd/                             # 产品需求文档
 ```
 
@@ -63,7 +70,7 @@ flutter analyze          # 静态检查
 ## 四、代码约定
 
 - 通用工具逻辑放 `lib/core/utils/` 并必须配套单元测试。
-- 修改模型字段必须同步 `lib/core/data/db.dart` 写迁移（如 gender 列默认 male）。
+- 修改模型字段必须同步 `lib/data/db.dart` 写迁移（如 gender 列默认 male）。
 - 所有 Delta 操作必须保留内联样式与块属性。
 - 编辑器右键菜单必须通过 `appEditorContextMenuBuilder` 的 `extraEntries` 扩展业务项，禁止硬编码进通用菜单。
 

@@ -1,12 +1,15 @@
 /// 立绘面板的角色台词分档（按今日目标进度 + 摸鱼状态）。
+///
+/// 台词只放在 96px 宽的气泡里，两行封顶：界面缩放 150% 时每行仅容 ~5 字，
+/// 故文案控制在 9 字内，保证最大缩放下也不会被省略号截断。
 enum WritingQuipTier {
-  idle('已经 3 分钟没动笔了，写两句？'),
-  notStarted('今天还没动笔，先写两句热热身？'),
-  opening('刚开了个头，接着往下写吧！'),
-  warming('手感上来了，保持这个节奏！'),
+  idle('摸鱼中，写两句？'),
+  notStarted('今天还没动笔哦'),
+  opening('开头不错，继续！'),
+  warming('手感来了，保持住！'),
   halfway('已经过半，稳着来！'),
   almost('再写一点就达标了！'),
-  completed('今日目标已完成，厉害！');
+  completed('今日目标达成啦！');
 
   const WritingQuipTier(this.text);
 
