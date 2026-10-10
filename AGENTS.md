@@ -7,7 +7,7 @@
 - 思考与回复始终使用中文。
 - **执行任何写 SQL（INSERT / UPDATE / DELETE / DDL、修改数据库内容）前，必须先征得用户同意。**
 - **涉及文生图的任务，生图后必须先让用户审批通过，再进行后续操作（如抠图、裁剪、替换资源等）；未审批前不得改动现有资源。**
-- 代码只需要关键注释：仅在逻辑不自明处解释"为什么"，禁止写复述代码的"是什么"注释，禁止给未改动的代码补注释。
+- 代码注释要简洁明了：只阐述代码干了什么，不解释"为什么"，不举例；禁止给未改动的代码补注释。
 - 禁止擅自 commit / push，仅在用户明确要求时提交。
 - 禁止破坏性 git 操作（force push、reset --hard、clean -f 等），除非用户明确要求。
 - 新增依赖、资源前先确认必要性，避免过度工程；优先编辑现有文件而非新建文件。
@@ -80,6 +80,7 @@ flutter analyze          # 静态检查
 
 - **所有弹窗（每一个 showDialog 调用）点击外部永不关闭，只能通过显式按钮 / 图标关闭，且必须支持拖动。**
 - **编写弹窗时默认指定宽度为 320px，并添加** **`actionsAlignment: MainAxisAlignment.end`。** 特殊尺寸（如全宽列表弹窗）需用户明确同意后方可偏离。
+- **弹窗输入框的高度与字体大小必须统一**：一律复用 `lib/ui/common/dialogs.dart` 的 `dialogFieldDecoration`（浮动 label、正文 13px、label/hint 12px、单行内边距 (14,13)、多行 (12,12)），禁止在弹窗内手写字号 / 内边距；字段必须带 `labelText`，禁止只写 `hintText` 导致输入后无标识。
 - 提示统一使用 `lib/ui/widgets/toast.dart` 的 `showToast`（顶部滑动通知），禁止使用 SnackBar 等其他形式。
 - **操作成功 / 失败提示统一为「xxx + 成功 / 失败」格式**（如「保存成功」「名称修改成功」「删除失败」），禁止使用「已 xxx」「xxx 已修改」等过去式描述开头。
 - **所有可点击的地方鼠标必须为手型**：`InkWell` / `GestureDetector` 等可点击组件需设置 `mouseCursor: SystemMouseCursors.click`（`IconButton`、`ListTile` 等自带手型的除外）。

@@ -641,6 +641,7 @@ class QuillRawEditorState extends EditorState
 
   EditableTextLine _getEditableTextLineFromNode(
       Line node, BuildContext context, Map<String, Attribute<dynamic>> attrs) {
+    final highlights = TextLineHighlights();
     final textLine = TextLine(
       line: node,
       textDirection: _textDirection,
@@ -655,6 +656,7 @@ class QuillRawEditorState extends EditorState
       onLaunchUrl: widget.config.onLaunchUrl,
       customLinkPrefixes: widget.config.customLinkPrefixes,
       composingRange: composingRange.value,
+      highlights: highlights,
     );
     final editableTextLine = EditableTextLine(
         node,
@@ -670,7 +672,8 @@ class QuillRawEditorState extends EditorState
         MediaQuery.devicePixelRatioOf(context),
         _cursorCont,
         _styles!.inlineCode!,
-        _getDecoration(node, _styles, attrs));
+        _getDecoration(node, _styles, attrs),
+        highlights);
     return editableTextLine;
   }
 

@@ -76,6 +76,23 @@ class AppState extends ChangeNotifier {
   QuillController editorController = QuillController.basic();
   int bookCharTotal = 0;
 
+  /// 今日累计新增字数（内存维护，供状态栏与达成检测实时读取）。
+  int todayChars = 0;
+  String? _todayDateKey;
+  bool _todayGoalNotified = false;
+
+  /// 目标达成播报流：UI 层订阅后以 toast 呈现。
+  final StreamController<String> _goalToasts = StreamController<String>.broadcast();
+  Stream<String> get goalToasts => _goalToasts.stream;
+
+  /// 当前章节生效的单章目标（三态解析）；0 = 未设置/关闭。
+  int get resolvedChapterGoal {
+    final book = currentBook;
+    final chapter = currentChapter;
+    if (book == null || chapter == null) return 0;
+    return chapter.goal ?? book.chapterGoal;
+  }
+
   /// 角色词典版本号：角色增删改后自增，编辑器据此重建名字高亮词典。
   final ValueNotifier<int> characterDictVersion = ValueNotifier(0);
 
@@ -244,6 +261,7 @@ class AppState extends ChangeNotifier {
     await _reloadTree();
     bookCharTotal =
         chapterList.fold(0, (sum, c) => sum + c.charCount);
+    await _loadTodayStats();
     await settings.setLastBookId(book.id);
     final targetId = startChapterId ??
         book.lastChapterId ??
@@ -555,13 +573,110 @@ class AppState extends ChangeNotifier {
     autosave.onContentChanged(chapter, content);
     if (delta != 0) {
       session.addChars(delta);
+      _onCharsDelta(delta);
       bookCharTotal += delta;
       chapter.charCount = nowChars;
       // 作品树直接读 chapterList 的 char_count，需同步同 id 项，
       // 以免 currentChapter 与 chapterList 为不同实例时字数显示滞后。
       final idx = chapterList.indexWhere((c) => c.id == chapter.id);
       if (idx >= 0) chapterList[idx].charCount = nowChars;
+      _checkGoals();
     }
+    notifyListeners();
+  }
+
+  /// 读取当日写作记录，初始化今日字数与「已提示」标记。
+  Future<void> _loadTodayStats() async {
+    final rec = await stats.today();
+    todayChars = rec.chars;
+    _todayDateKey = WriteRecord.dateKeyOf(DateTime.now());
+    _todayGoalNotified = rec.goalNotified;
+  }
+
+  /// 维护今日字数内存累计：仅新增推进；跨天自动归零。
+  void _onCharsDelta(int delta) {
+    if (delta <= 0) return;
+    final key = WriteRecord.dateKeyOf(DateTime.now());
+    if (key != _todayDateKey) {
+      _todayDateKey = key;
+      todayChars = 0;
+      _todayGoalNotified = false;
+    }
+    todayChars += delta;
+  }
+
+  /// 编辑跨越目标时播报达成：每种目标只提示一次（标记落库）。
+  void _checkGoals() {
+    final book = currentBook;
+    final chapter = currentChapter;
+    if (book == null || chapter == null) return;
+
+    final chGoal = resolvedChapterGoal;
+    if (chGoal > 0 && chapter.charCount >= chGoal && !chapter.goalNotified) {
+      chapter.goalNotified = true;
+      final idx = chapterList.indexWhere((c) => c.id == chapter.id);
+      if (idx >= 0) chapterList[idx].goalNotified = true;
+      chapters.setGoalNotified(chapter.id, true);
+      _goalToasts.add('本章目标达成');
+    }
+
+    if (book.goal > 0 && bookCharTotal >= book.goal && !book.goalNotified) {
+      book.goalNotified = true;
+      final idx = bookList.indexWhere((b) => b.id == book.id);
+      if (idx >= 0) bookList[idx].goalNotified = true;
+      books.setGoalNotified(book.id, true);
+      _goalToasts.add('全书目标达成');
+    }
+
+    final dailyGoal = settings.dailyGoal;
+    if (dailyGoal > 0 && todayChars >= dailyGoal && !_todayGoalNotified) {
+      _todayGoalNotified = true;
+      stats.setGoalNotified(true);
+      _goalToasts.add('今日目标达成');
+    }
+  }
+
+  /// 设置整书目标与全书单章默认目标；目标值变化时重置「已提示」以便重新播报。
+  Future<void> setBookGoals({int? goal, int? chapterGoal}) async {
+    final book = currentBook;
+    if (book == null) return;
+    var resetNotified = false;
+    if (goal != null && goal != book.goal) {
+      book.goal = goal;
+      resetNotified = true;
+    }
+    if (chapterGoal != null) book.chapterGoal = chapterGoal;
+    await books.updateGoals(book.id,
+        goal: book.goal, chapterGoal: book.chapterGoal);
+    if (resetNotified) {
+      book.goalNotified = false;
+      await books.setGoalNotified(book.id, false);
+    }
+    final idx = bookList.indexWhere((b) => b.id == book.id);
+    if (idx >= 0) {
+      bookList[idx]
+        ..goal = book.goal
+        ..chapterGoal = book.chapterGoal
+        ..goalNotified = book.goalNotified;
+    }
+    notifyListeners();
+  }
+
+  /// 设置单章目标三态：null = 跟随全书默认、0 = 关闭、>0 = 自定义。
+  Future<void> setChapterGoal(String chapterId, int? goal) async {
+    final chapter = chapterList.where((c) => c.id == chapterId).firstOrNull ??
+        (currentChapter?.id == chapterId ? currentChapter : null);
+    if (chapter == null) return;
+    final changed = goal != chapter.goal;
+    chapter.goal = goal;
+    if (changed) chapter.goalNotified = false;
+    if (currentChapter?.id == chapterId && !identical(currentChapter, chapter)) {
+      currentChapter!
+        ..goal = goal
+        ..goalNotified = chapter.goalNotified;
+    }
+    await chapters.updateGoal(chapterId, goal);
+    if (changed) await chapters.setGoalNotified(chapterId, false);
     notifyListeners();
   }
 
@@ -982,6 +1097,7 @@ class AppState extends ChangeNotifier {
   void dispose() {
     _syncSub?.cancel();
     _docSub?.cancel();
+    _goalToasts.close();
     editorController.dispose();
     autosave.dispose();
     super.dispose();

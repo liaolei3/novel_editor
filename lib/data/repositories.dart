@@ -48,6 +48,14 @@ class BookRepository {
   Future<void> saveLocation(String id, String? chapterId, int? cursor) =>
       _update(id, {'last_chapter_id': chapterId, 'last_cursor': cursor});
 
+  /// 更新整书目标与全书单章默认目标。
+  Future<void> updateGoals(String id,
+          {required int goal, required int chapterGoal}) =>
+      _update(id, {'goal': goal, 'chapter_goal': chapterGoal});
+
+  Future<void> setGoalNotified(String id, bool notified) =>
+      _update(id, {'goal_notified': notified ? 1 : 0});
+
   Future<void> touch(String id) =>
       _update(id, {'updated_at': DateTime.now().millisecondsSinceEpoch});
 
@@ -192,6 +200,12 @@ class ChapterRepository {
 
   Future<void> setPinned(String id, bool pinned) =>
       _patch(id, {'pinned': pinned ? 1 : 0});
+
+  /// 设置单章目标三态：null = 跟随全书默认、0 = 关闭、>0 = 自定义。
+  Future<void> updateGoal(String id, int? goal) => _patch(id, {'goal': goal});
+
+  Future<void> setGoalNotified(String id, bool notified) =>
+      _patch(id, {'goal_notified': notified ? 1 : 0});
 
   Future<void> reorder(String volumeId, List<String> orderedIds) async {
     final db = await Db.instance();
@@ -549,6 +563,14 @@ class StatsRepository {
     final rec = await today();
     rec.idleMs += durationMs;
     rec.idleCount += count;
+    final db = await Db.instance();
+    await db.update('write_records', rec.toMap(),
+        where: 'id = ?', whereArgs: [rec.id]);
+  }
+
+  Future<void> setGoalNotified(bool notified) async {
+    final rec = await today();
+    rec.goalNotified = notified;
     final db = await Db.instance();
     await db.update('write_records', rec.toMap(),
         where: 'id = ?', whereArgs: [rec.id]);

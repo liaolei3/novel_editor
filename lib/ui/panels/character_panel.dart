@@ -6,7 +6,7 @@ import '../../state/app_state.dart';
 import '../../state/settings_controller.dart';
 import '../app_root.dart';
 import '../common/character_marks.dart';
-import '../common/dialogs.dart' show DraggableDialog;
+import '../common/dialogs.dart' show DraggableDialog, dialogFieldDecoration;
 import '../widgets/tinted_card.dart';
 import '../widgets/toast.dart';
 import '../widgets/underline_tab.dart';
@@ -154,6 +154,7 @@ class _CharacterPanelState extends State<CharacterPanel> {
     final valueCtrl = TextEditingController();
     final result = await showDialog<(String, String)>(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => DraggableDialog(
         child: AlertDialog(
           constraints: const BoxConstraints(minWidth: 320, maxWidth: 320),
@@ -171,8 +172,11 @@ class _CharacterPanelState extends State<CharacterPanel> {
                 TextField(
                   controller: nameCtrl,
                   autofocus: true,
-                  decoration: const InputDecoration(
-                      hintText: '属性名，如：外貌、年龄', isDense: true),
+                  decoration: dialogFieldDecoration(
+                    Theme.of(ctx).colorScheme,
+                    label: '属性名',
+                    hint: '如：外貌、年龄',
+                  ),
                   style: const TextStyle(fontSize: 13),
                 ),
                 const SizedBox(height: 10),
@@ -180,8 +184,11 @@ class _CharacterPanelState extends State<CharacterPanel> {
                   controller: valueCtrl,
                   minLines: 3,
                   maxLines: 5,
-                  decoration:
-                      const InputDecoration(hintText: '属性值', isDense: true),
+                  decoration: dialogFieldDecoration(
+                    Theme.of(ctx).colorScheme,
+                    label: '属性值',
+                    multiline: true,
+                  ),
                   style: const TextStyle(fontSize: 13),
                 ),
               ],

@@ -175,6 +175,7 @@ class EditableTextBlock extends StatelessWidget {
     var index = 0;
     for (final line in Iterable.castFrom<dynamic, Line>(block.children)) {
       index++;
+      final highlights = TextLineHighlights();
       final editableTextLine = EditableTextLine(
           line,
           _buildLeading(
@@ -198,6 +199,7 @@ class EditableTextBlock extends StatelessWidget {
             customLinkPrefixes: customLinkPrefixes,
             customRecognizerBuilder: customRecognizerBuilder,
             composingRange: composingRange,
+            highlights: highlights,
           ),
           indentWidthBuilder(block, context, count, numberPointWidthBuilder),
           _getSpacingForLine(line, index, count, defaultStyles),
@@ -209,7 +211,8 @@ class EditableTextBlock extends StatelessWidget {
           MediaQuery.devicePixelRatioOf(context),
           cursorCont,
           styles!.inlineCode!,
-          null);
+          null,
+          highlights);
       final nodeTextDirection = getDirectionOfNode(line, textDirection);
       children.add(
         Directionality(

@@ -1079,18 +1079,30 @@ class _SettingsDialogState extends State<SettingsDialog> {
             children: [
               TextField(
                 controller: urlCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Base URL（如 https://api.xxx.com/v1）',
+                style: TextStyle(
+                    fontSize: 13, color: Theme.of(ctx).colorScheme.onSurface),
+                decoration: dialogFieldDecoration(
+                  Theme.of(ctx).colorScheme,
+                  label: 'Base URL',
+                  hint: '如 https://api.xxx.com/v1',
                 ),
               ),
+              const SizedBox(height: 12),
               TextField(
                 controller: keyCtrl,
                 obscureText: true,
-                decoration: const InputDecoration(labelText: 'API Key'),
+                style: TextStyle(
+                    fontSize: 13, color: Theme.of(ctx).colorScheme.onSurface),
+                decoration: dialogFieldDecoration(
+                    Theme.of(ctx).colorScheme, label: 'API Key'),
               ),
+              const SizedBox(height: 12),
               TextField(
                 controller: modelCtrl,
-                decoration: const InputDecoration(labelText: '模型名'),
+                style: TextStyle(
+                    fontSize: 13, color: Theme.of(ctx).colorScheme.onSurface),
+                decoration: dialogFieldDecoration(
+                    Theme.of(ctx).colorScheme, label: '模型名'),
               ),
             ],
           ),

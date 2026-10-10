@@ -65,8 +65,9 @@ class _SensitiveWordDialogState extends State<_SensitiveWordDialog> {
               TextField(
                 controller: _word,
                 autofocus: true,
-                decoration:
-                    const InputDecoration(hintText: '敏感词', isDense: true),
+                decoration: dialogFieldDecoration(
+                    Theme.of(context).colorScheme,
+                    label: '敏感词'),
                 style: const TextStyle(fontSize: 13),
                 onChanged: (_) => setState(() {}),
                 onSubmitted: (_) => _submit(),
@@ -74,8 +75,10 @@ class _SensitiveWordDialogState extends State<_SensitiveWordDialog> {
               const SizedBox(height: 10),
               TextField(
                 controller: _sug,
-                decoration: const InputDecoration(
-                    hintText: '建议替换词（留空则仅提示）', isDense: true),
+                decoration: dialogFieldDecoration(
+                    Theme.of(context).colorScheme,
+                    label: '建议替换词',
+                    hint: '留空则仅提示'),
                 style: const TextStyle(fontSize: 13),
                 onSubmitted: (_) => _submit(),
               ),

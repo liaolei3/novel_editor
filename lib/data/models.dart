@@ -15,6 +15,9 @@ class Book {
     this.lastChapterId,
     this.lastCursor,
     this.coverPath = '',
+    this.goal = 0,
+    this.chapterGoal = 0,
+    this.goalNotified = false,
   });
 
   final String id;
@@ -30,6 +33,15 @@ class Book {
   /// 封面图片相对数据目录的路径（如 'covers/xxx.png'），空 = 未设置。
   String coverPath;
 
+  /// 整书累计字数目标（0 = 未设置/关闭）。
+  int goal;
+
+  /// 全书统一的单章累计字数目标（0 = 未设置/关闭），章节可用自身 goal 覆盖。
+  int chapterGoal;
+
+  /// 整书目标是否已提示达成。
+  bool goalNotified;
+
   Map<String, Object?> toMap() => {
         'id': id,
         'title': title,
@@ -41,6 +53,9 @@ class Book {
         'last_chapter_id': lastChapterId,
         'last_cursor': lastCursor,
         'cover_path': coverPath,
+        'goal': goal,
+        'chapter_goal': chapterGoal,
+        'goal_notified': goalNotified ? 1 : 0,
       };
 
   static Book fromMap(Map<String, Object?> map) => Book(
@@ -54,6 +69,9 @@ class Book {
         lastChapterId: map['last_chapter_id'] as String?,
         lastCursor: map['last_cursor'] as int?,
         coverPath: (map['cover_path'] as String?) ?? '',
+        goal: (map['goal'] as int?) ?? 0,
+        chapterGoal: (map['chapter_goal'] as int?) ?? 0,
+        goalNotified: (map['goal_notified'] as int? ?? 0) == 1,
       );
 }
 
@@ -108,6 +126,8 @@ class Chapter {
     this.cursorOffset = 0,
     this.pinned = false,
     this.outlineEditedAt,
+    this.goal,
+    this.goalNotified = false,
   });
 
   final String id;
@@ -126,6 +146,12 @@ class Chapter {
   /// 大纲最后修改时间（null = 从未编辑过大纲）。
   DateTime? outlineEditedAt;
 
+  /// 单章累计字数目标三态：null = 跟随全书默认；0 = 关闭；>0 = 自定义。
+  int? goal;
+
+  /// 本章目标是否已提示达成。
+  bool goalNotified;
+
   Map<String, Object?> toMap() => {
         'id': id,
         'book_id': bookId,
@@ -140,6 +166,8 @@ class Chapter {
         'cursor_offset': cursorOffset,
         'pinned': pinned ? 1 : 0,
         'outline_edited_at': outlineEditedAt?.millisecondsSinceEpoch,
+        'goal': goal,
+        'goal_notified': goalNotified ? 1 : 0,
       };
 
   static Chapter fromMap(Map<String, Object?> map) => Chapter(
@@ -160,6 +188,8 @@ class Chapter {
             ? null
             : DateTime.fromMillisecondsSinceEpoch(
                 map['outline_edited_at'] as int),
+        goal: map['goal'] as int?,
+        goalNotified: (map['goal_notified'] as int? ?? 0) == 1,
       );
 }
 
@@ -262,6 +292,7 @@ class WriteRecord {
     required this.durationMs,
     this.idleMs = 0,
     this.idleCount = 0,
+    this.goalNotified = false,
   });
 
   final String id;
@@ -271,6 +302,9 @@ class WriteRecord {
   int idleMs;
   int idleCount;
 
+  /// 当日目标是否已提示达成。
+  bool goalNotified;
+
   Map<String, Object?> toMap() => {
         'id': id,
         'date': _dateKey(date),
@@ -278,6 +312,7 @@ class WriteRecord {
         'duration_ms': durationMs,
         'idle_ms': idleMs,
         'idle_count': idleCount,
+        'goal_notified': goalNotified ? 1 : 0,
       };
 
   static WriteRecord fromMap(Map<String, Object?> map) => WriteRecord(
@@ -287,6 +322,7 @@ class WriteRecord {
         durationMs: map['duration_ms'] as int,
         idleMs: (map['idle_ms'] as int?) ?? 0,
         idleCount: (map['idle_count'] as int?) ?? 0,
+        goalNotified: (map['goal_notified'] as int? ?? 0) == 1,
       );
 
   static String _dateKey(DateTime d) =>

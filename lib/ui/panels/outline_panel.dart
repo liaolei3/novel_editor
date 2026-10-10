@@ -338,6 +338,7 @@ class _OutlinePanelState extends State<OutlinePanel> {
       context,
       title: '本章大纲',
       initial: chapter.outline,
+      label: '大纲内容',
       hint: '写一两句本章要点',
       maxLines: 8,
       width: 400,

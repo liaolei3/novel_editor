@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/utils/txt_importer.dart';
-import 'dialogs.dart' show DraggableDialog;
+import 'dialogs.dart' show DraggableDialog, dialogFieldDecoration;
 
 /// 导入预览弹窗：展示切分出的卷/章结构，确认后返回书名（取消 / 关闭返回 null）。
 Future<String?> importPreviewDialog(
@@ -97,14 +97,11 @@ class _ImportPreviewBodyState extends State<_ImportPreviewBody> {
               const SizedBox(height: 14),
               TextField(
                 controller: _titleCtrl,
-                style: const TextStyle(fontSize: 13),
+                style: TextStyle(
+                    fontSize: 13, color: Theme.of(context).colorScheme.onSurface),
                 onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
-                  labelText: '书名',
-                  labelStyle: TextStyle(fontSize: 13),
-                  contentPadding:
-                      EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                ),
+                decoration: dialogFieldDecoration(
+                    Theme.of(context).colorScheme, label: '书名'),
               ),
               const SizedBox(height: 12),
               Expanded(

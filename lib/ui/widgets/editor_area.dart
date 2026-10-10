@@ -95,10 +95,16 @@ class _EditorAreaState extends State<EditorArea> {
   /// 缓存 AppState：dispose 期间禁止通过 context 查找祖先节点。
   late final AppState _appState;
 
+  /// 目标达成播报订阅。
+  StreamSubscription<String>? _goalToastSub;
+
   @override
   void initState() {
     super.initState();
     _appState = context.read<AppState>();
+    _goalToastSub = _appState.goalToasts.listen((msg) {
+      if (mounted) showToast(context, msg);
+    });
     _refreshCharacterDict();
     _appState.characterDictVersion.addListener(_refreshCharacterDict);
     _refreshForeshadowDict();
@@ -276,6 +282,7 @@ class _EditorAreaState extends State<EditorArea> {
     _appState.segmentJumpNonce.removeListener(_onSegmentJump);
     _appState.editorController.removeListener(_syncDocSubscription);
     _docSubscription?.cancel();
+    _goalToastSub?.cancel();
     _focusNode.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -631,7 +638,6 @@ class _EditorAreaState extends State<EditorArea> {
       });
     }
 
-    final sessionChars = state.session.sessionChars;
     final savingHint = _saveIndicator(context);
 
     return CallbackShortcuts(
@@ -833,7 +839,7 @@ class _EditorAreaState extends State<EditorArea> {
             ),
           ]),
         ),
-        _statusBar(context, chapter, sessionChars),
+        _statusBar(context, chapter),
       ]),
     );
   }
@@ -1058,9 +1064,27 @@ class _EditorAreaState extends State<EditorArea> {
     );
   }
 
-  Widget _statusBar(BuildContext context, Chapter chapter, int sessionChars) {
+  Widget _statusBar(BuildContext context, Chapter chapter) {
     final state = context.watch<AppState>();
-    final std = context.watch<SettingsController>().countStandard;
+    final settings = context.watch<SettingsController>();
+    final std = settings.countStandard;
+    final scheme = Theme.of(context).colorScheme;
+    final chGoal = state.resolvedChapterGoal;
+    final bookGoal = state.currentBook?.goal ?? 0;
+    final dailyGoal = settings.dailyGoal;
+
+    Widget stat(String text, bool reached) => Flexible(
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 11,
+              color: reached ? scheme.primary : null,
+              fontWeight: reached ? FontWeight.w600 : null,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        );
+
     return Container(
       height: 30,
       padding: const EdgeInsets.only(left: 16, right: 8),
@@ -1074,22 +1098,23 @@ class _EditorAreaState extends State<EditorArea> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Flexible(
-                  child: Text('本章 ${chapter.charCount} 字',
-                      style: TextStyle(fontSize: 11),
-                      overflow: TextOverflow.ellipsis),
+                stat(
+                  chGoal > 0
+                      ? '本章 ${chapter.charCount}/$chGoal'
+                      : '本章 ${chapter.charCount} 字',
+                  chGoal > 0 && chapter.charCount >= chGoal,
                 ),
                 const SizedBox(width: 16),
-                Flexible(
-                  child: Text('全书 ${state.bookCharTotal} 字',
-                      style: TextStyle(fontSize: 11),
-                      overflow: TextOverflow.ellipsis),
+                stat(
+                  bookGoal > 0
+                      ? '全书 ${state.bookCharTotal}/$bookGoal'
+                      : '全书 ${state.bookCharTotal} 字',
+                  bookGoal > 0 && state.bookCharTotal >= bookGoal,
                 ),
                 const SizedBox(width: 16),
-                Flexible(
-                  child: Text('本次会话 +$sessionChars 字',
-                      style: TextStyle(fontSize: 11),
-                      overflow: TextOverflow.ellipsis),
+                stat(
+                  '今日 ${state.todayChars}/$dailyGoal',
+                  state.todayChars >= dailyGoal,
                 ),
               ],
             ),

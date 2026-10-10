@@ -145,6 +145,34 @@ void main() {
       expect(controller.selection.start, 3);
     });
 
+    testWidgets('连续三个半角句点：合并为中文省略号（……），光标随之后移', (tester) async {
+      final controller = _controllerWith('ab..');
+      final state = await pumpEditor(tester, controller);
+
+      state.updateEditingValue(const TextEditingValue(
+        text: 'ab...\n',
+        selection: TextSelection.collapsed(offset: 5),
+      ));
+      await tester.pump();
+
+      expect(controller.document.toPlainText(), 'ab……\n');
+      expect(controller.selection.start, 4);
+    });
+
+    testWidgets('仅两个半角句点：不合并', (tester) async {
+      final controller = _controllerWith('ab.');
+      final state = await pumpEditor(tester, controller);
+
+      state.updateEditingValue(const TextEditingValue(
+        text: 'ab..\n',
+        selection: TextSelection.collapsed(offset: 4),
+      ));
+      await tester.pump();
+
+      expect(controller.document.toPlainText(), 'ab..\n');
+      expect(controller.selection.start, 4);
+    });
+
     testWidgets('未配置 autoPairSymbols 时不做补全', (tester) async {
       final controller = _controllerWith('abc');
       final focusNode = FocusNode();

@@ -21,7 +21,10 @@ void main() {
         deleted INTEGER NOT NULL DEFAULT 0,
         last_chapter_id TEXT,
         last_cursor INTEGER,
-        cover_path TEXT NOT NULL DEFAULT ''
+        cover_path TEXT NOT NULL DEFAULT '',
+        goal INTEGER NOT NULL DEFAULT 0,
+        chapter_goal INTEGER NOT NULL DEFAULT 0,
+        goal_notified INTEGER NOT NULL DEFAULT 0
       )
     ''');
     await db.execute('''
@@ -48,7 +51,9 @@ void main() {
         last_edited_at INTEGER NOT NULL,
         cursor_offset INTEGER NOT NULL DEFAULT 0,
         pinned INTEGER NOT NULL DEFAULT 0,
-        outline_edited_at INTEGER
+        outline_edited_at INTEGER,
+        goal INTEGER,
+        goal_notified INTEGER NOT NULL DEFAULT 0
       )
     ''');
 

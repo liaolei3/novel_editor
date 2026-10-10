@@ -3,6 +3,7 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:diff_match_patch/diff_match_patch.dart' as dmp;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../data/repositories.dart' show newId;
 import 'book_cover.dart';
@@ -104,11 +105,35 @@ class _DraggableDialogState extends State<DraggableDialog> {
   }
 }
 
+/// 弹窗输入框统一样式：浮动 label + 统一字号与内边距。
+InputDecoration dialogFieldDecoration(
+  ColorScheme scheme, {
+  String? label,
+  String? hint,
+  bool multiline = false,
+}) {
+  return InputDecoration(
+    labelText: label,
+    labelStyle: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+    floatingLabelStyle: const TextStyle(fontSize: 12),
+    hintText: hint,
+    hintStyle: TextStyle(
+        fontSize: 12, color: scheme.onSurfaceVariant.withValues(alpha: 0.6)),
+    alignLabelWithHint: multiline,
+    // 单行输入框统一 44 高；必须开 isDense，否则会被 48 的最小高度顶住。
+    isDense: !multiline,
+    contentPadding: multiline
+        ? const EdgeInsets.all(12)
+        : const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+  );
+}
+
 /// 通用输入对话框（macOS 风格：居中标题 + 紧凑输入框 + 右下角按钮）。
 Future<String?> inputDialog(BuildContext context,
     {required String title,
     String initial = '',
     String hint = '',
+    String label = '',
     int maxLines = 1,
     double width = 320}) {
   final controller = TextEditingController(text: initial);
@@ -133,14 +158,14 @@ Future<String?> inputDialog(BuildContext context,
           autofocus: true,
           maxLines: maxLines,
           maxLength: maxLines > 1 ? 200 : null,
-          style: const TextStyle(fontSize: 13),
+          style: TextStyle(fontSize: 13, color: Theme.of(ctx).colorScheme.onSurface),
           onSubmitted: (_) => Navigator.pop(ctx, controller.text),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: const TextStyle(fontSize: 13),
-            counterText: '',
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-          ),
+          decoration: dialogFieldDecoration(
+            Theme.of(ctx).colorScheme,
+            label: label.isEmpty ? null : label,
+            hint: hint.isEmpty ? null : hint,
+            multiline: maxLines > 1,
+          ).copyWith(counterText: ''),
         ),
         actionsAlignment: MainAxisAlignment.end,
         actions: [
@@ -180,6 +205,7 @@ Future<(String, String, String?)?> createBookDialog(BuildContext context) async 
     barrierDismissible: false,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setDialogState) {
+        final scheme = Theme.of(ctx).colorScheme;
         Future<void> pick() async {
           final picked = await BookCover.pickAndStore(tempId);
           if (picked != null) {
@@ -206,21 +232,14 @@ Future<(String, String, String?)?> createBookDialog(BuildContext context) async 
                 TextField(
                   controller: titleCtrl,
                   autofocus: true,
-                  style: const TextStyle(fontSize: 13),
-                  decoration: const InputDecoration(
-                    labelText: '书名',
-                    labelStyle: TextStyle(fontSize: 13),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                  )),
+                  style: TextStyle(fontSize: 13, color: scheme.onSurface),
+                  decoration: dialogFieldDecoration(scheme, label: '书名')),
               const SizedBox(height: 14),
               TextField(
                   controller: penCtrl,
-                  style: const TextStyle(fontSize: 13),
-                  decoration: const InputDecoration(
-                    labelText: '作者笔名（可选）',
-                    labelStyle: TextStyle(fontSize: 13),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                  )),
+                  style: TextStyle(fontSize: 13, color: scheme.onSurface),
+                  decoration:
+                      dialogFieldDecoration(scheme, label: '作者笔名（可选）')),
               const SizedBox(height: 16),
               _CoverUploadBox(
                 previewPath: cleared ? '' : (pickedPath ?? ''),
@@ -381,6 +400,7 @@ Future<(String, String, String?)?> editBookDialog(
     barrierDismissible: false,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setDialogState) {
+        final scheme = Theme.of(ctx).colorScheme;
         // 当前预览图：新选文件 > 现有封面文件 > 空占位。
         final previewPath = cleared ? '' : (newPath ?? initialCoverPath);
 
@@ -408,21 +428,14 @@ Future<(String, String, String?)?> editBookDialog(
               children: [
                 TextField(
                   controller: titleCtrl,
-                  style: const TextStyle(fontSize: 13),
-                  decoration: const InputDecoration(
-                    labelText: '书名',
-                    labelStyle: TextStyle(fontSize: 13),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                  )),
+                  style: TextStyle(fontSize: 13, color: scheme.onSurface),
+                  decoration: dialogFieldDecoration(scheme, label: '书名')),
               const SizedBox(height: 14),
               TextField(
                   controller: penCtrl,
-                  style: const TextStyle(fontSize: 13),
-                  decoration: const InputDecoration(
-                    labelText: '作者笔名（可选）',
-                    labelStyle: TextStyle(fontSize: 13),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                  )),
+                  style: TextStyle(fontSize: 13, color: scheme.onSurface),
+                  decoration:
+                      dialogFieldDecoration(scheme, label: '作者笔名（可选）')),
               const SizedBox(height: 16),
               _CoverUploadBox(
                 previewPath: previewPath,
@@ -1022,4 +1035,176 @@ class _CompareBodyState extends State<_CompareBody> {
       ),
     );
   }
+}
+
+/// 整书写作目标对话框 → (整书目标, 单章默认目标)；取消返回 null。
+Future<(int, int)?> bookGoalDialog(
+  BuildContext context, {
+  required int goal,
+  required int chapterGoal,
+}) {
+  final goalCtrl = TextEditingController(text: goal > 0 ? '$goal' : '');
+  final chGoalCtrl =
+      TextEditingController(text: chapterGoal > 0 ? '$chapterGoal' : '');
+  return showDialog<(int, int)>(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) => DraggableDialog(
+      child: AlertDialog(
+        constraints: const BoxConstraints(minWidth: 320, maxWidth: 320),
+        titlePadding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
+        contentPadding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 18, 24, 20),
+        title: const Text('写作目标',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _goalField(
+              label: '整书目标',
+              hint: '0 或留空 = 不设置',
+              scheme: Theme.of(ctx).colorScheme,
+              controller: goalCtrl,
+              presets: const [10000, 50000, 100000, 1000000],
+            ),
+            const SizedBox(height: 16),
+            _goalField(
+              label: '单章目标',
+              hint: '0 或留空 = 不设置',
+              scheme: Theme.of(ctx).colorScheme,
+              controller: chGoalCtrl,
+              presets: const [2000, 3000, 5000, 10000],
+            ),
+          ],
+        ),
+        actionsAlignment: MainAxisAlignment.end,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            style: TextButton.styleFrom(
+              minimumSize: const Size(64, 38),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+            ),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(
+              ctx,
+              (int.tryParse(goalCtrl.text.trim()) ?? 0,
+                  int.tryParse(chGoalCtrl.text.trim()) ?? 0),
+            ),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(72, 38),
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+            ),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// 目标输入块：数字输入框（标签内置，与伏笔名称输入框一致）+ 常用预设快捷按钮。
+Widget _goalField({
+  required String label,
+  required String hint,
+  required ColorScheme scheme,
+  required TextEditingController controller,
+  required List<int> presets,
+}) {
+  return Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      TextField(
+        controller: controller,
+        keyboardType: TextInputType.number,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        style: TextStyle(fontSize: 13, color: scheme.onSurface),
+        decoration: dialogFieldDecoration(scheme, label: label, hint: hint),
+      ),
+      const SizedBox(height: 8),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final p in presets)
+            OutlinedButton(
+              onPressed: () => controller.text = '$p',
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(0, 30),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                textStyle: const TextStyle(fontSize: 12),
+              ),
+              child: Text(_fmtPreset(p)),
+            ),
+        ],
+      ),
+    ],
+  );
+}
+
+/// 预设字数简写：整千整万折为「x千 / x万」。
+String _fmtPreset(int n) {
+  if (n >= 10000 && n % 10000 == 0) return '${n ~/ 10000}万';
+  if (n >= 1000 && n % 1000 == 0) return '${n ~/ 1000}千';
+  return '$n';
+}
+
+/// 单章目标对话框 → (选定值)；外层 null = 取消，内层 null = 跟随全书默认。
+Future<(int?,)?> chapterGoalDialog(
+  BuildContext context, {
+  required String chapterTitle,
+  required int? goal,
+  required int defaultGoal,
+}) {
+  final ctrl = TextEditingController(text: '${goal ?? defaultGoal}');
+  return showDialog<(int?,)>(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) => DraggableDialog(
+      child: AlertDialog(
+        constraints: const BoxConstraints(minWidth: 320, maxWidth: 320),
+        titlePadding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
+        contentPadding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 18, 24, 20),
+        title: Text('章节目标 · $chapterTitle',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        content: _goalField(
+          label: '本章目标',
+          hint: '0 = 关闭',
+          scheme: Theme.of(ctx).colorScheme,
+          controller: ctrl,
+          presets: const [2000, 3000, 5000, 10000],
+        ),
+        actionsAlignment: MainAxisAlignment.end,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            style: TextButton.styleFrom(
+              minimumSize: const Size(64, 38),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+            ),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final v = int.tryParse(ctrl.text.trim()) ?? 0;
+              // 与全书默认一致时保留「跟随默认」，否则记录本章值（0 = 关闭）。
+              Navigator.pop(ctx, (v == defaultGoal ? null : v,));
+            },
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(72, 38),
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+            ),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    ),
+  );
 }

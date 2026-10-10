@@ -10,6 +10,7 @@ import '../app_root.dart';
 import '../common/dialogs.dart';
 import '../common/context_menu.dart';
 import '../common/long_press_drag_listener.dart';
+import 'toast.dart';
 
 /// 书树各行固定高度。偏移量定位依赖该不变量，故同时用于布局与计算，
 /// 避免两处各写一个 48 后悄悄漂移。
@@ -241,6 +242,7 @@ class _BookTreeState extends State<BookTree> {
         final name = await inputDialog(
           context,
           title: '重命名卷',
+          label: '卷名',
           initial: volume.name,
         );
         if (name != null && name.trim().isNotEmpty) {
@@ -268,6 +270,7 @@ class _BookTreeState extends State<BookTree> {
     final state = context.read<AppState>();
     final action = await showAppContextMenu<String>(context, position, [
       const AppMenuItem('rename', '重命名', icon: Icons.edit_outlined),
+      const AppMenuItem('goal', '章节目标', icon: Icons.flag_outlined),
       AppMenuItem(
         'pin',
         chapter.pinned ? '取消置顶' : '置顶',
@@ -281,10 +284,23 @@ class _BookTreeState extends State<BookTree> {
         final name = await inputDialog(
           context,
           title: '重命名章节',
+          label: '章节名',
           initial: chapter.title,
         );
         if (name != null && name.trim().isNotEmpty) {
           await state.renameChapter(chapter.id, name.trim());
+        }
+        break;
+      case 'goal':
+        final result = await chapterGoalDialog(
+          context,
+          chapterTitle: chapter.title,
+          goal: chapter.goal,
+          defaultGoal: state.currentBook?.chapterGoal ?? 0,
+        );
+        if (result != null) {
+          await state.setChapterGoal(chapter.id, result.$1);
+          if (context.mounted) showToast(context, '章节目标保存成功');
         }
         break;
       case 'pin':
@@ -304,6 +320,7 @@ class _BookTreeState extends State<BookTree> {
     final name = await inputDialog(
       context,
       title: '新建卷',
+      label: '卷名',
       initial: suggestVolumeTitle(state.volumeTree.map((v) => v.name)),
     );
     if (name != null && name.trim().isNotEmpty) {
@@ -322,6 +339,7 @@ class _BookTreeState extends State<BookTree> {
     final name = await inputDialog(
       context,
       title: '新建章节',
+      label: '章节名',
       initial: suggestChapterTitle(inVolume.map((c) => c.title)),
     );
     if (name == null || name.trim().isEmpty) return;

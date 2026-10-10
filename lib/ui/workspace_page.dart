@@ -18,9 +18,11 @@ import 'panels/sensitive_panel.dart';
 import 'panels/snapshot_panel.dart';
 
 import 'recycle_page.dart';
+import 'common/dialogs.dart';
 import 'widgets/app_bar_nav_actions.dart';
 import 'widgets/book_tree.dart';
 import 'widgets/editor_area.dart';
+import 'widgets/toast.dart';
 import 'widgets/window_controls.dart';
 
 /// 作品工作区（9.2）：左=作品树，中=编辑器，右=竖向活动图标列 + 弹出工具面板；
@@ -61,9 +63,23 @@ class _WorkspacePageState extends State<WorkspacePage> {
 
   @override
   void dispose() {
+    _layoutTick.dispose();
     _appState.openCharacterNonce.removeListener(_onOpenCharacter);
     _appState.openForeshadowNonce.removeListener(_onOpenForeshadow);
     super.dispose();
+  }
+
+  /// 打开写作目标对话框：设置整书目标与全书单章默认目标。
+  Future<void> _openGoals() async {
+    final book = _appState.currentBook ?? widget.book;
+    final result = await bookGoalDialog(
+      context,
+      goal: book.goal,
+      chapterGoal: book.chapterGoal,
+    );
+    if (result == null) return;
+    await _appState.setBookGoals(goal: result.$1, chapterGoal: result.$2);
+    if (mounted) showToast(context, '目标保存成功');
   }
 
   /// 编辑器悬浮 tip 的「编辑」请求：切到角色面板并打开对应角色详情。
@@ -137,10 +153,23 @@ class _WorkspacePageState extends State<WorkspacePage> {
   double _leftWidth = 280;
   double _rightWidth = 408;
 
+  /// 拖动分隔条时仅递增此值，驱动布局层重建（不重建编辑器 / 目录 / 面板）。
+  final _layoutTick = ValueNotifier<int>(0);
+
+  /// 宽屏布局的子区域 widget，仅在常规 build 时刷新；拖动时复用同一实例跳过重建。
+  Widget? _bookTreeWidget;
+  Widget? _editorWidget;
+  Widget? _panelWidget;
+
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final wide = MediaQuery.of(context).size.width >= 1000;
+    if (wide && !_immersive) {
+      _bookTreeWidget = RepaintBoundary(child: BookTree(book: widget.book));
+      _editorWidget = RepaintBoundary(child: EditorArea(book: widget.book));
+      _panelWidget = RepaintBoundary(child: _panelArea());
+    }
     final body = wide ? _wideBody(state) : _narrowBody(state);
     return PopScope(
       canPop: false,
@@ -161,6 +190,11 @@ class _WorkspacePageState extends State<WorkspacePage> {
                 ),
                 title: Text(widget.book.title),
                 actions: [
+                  IconButton(
+                    tooltip: '写作目标',
+                    icon: const Icon(Icons.flag_outlined, size: 26),
+                    onPressed: _openGoals,
+                  ),
                   IconButton(
                     tooltip: '全局搜索替换',
                     icon: const Icon(Icons.search, size: 26),
@@ -228,50 +262,60 @@ class _WorkspacePageState extends State<WorkspacePage> {
         final chrome = _dividerWidth * 2;
         // 联合约束：左 + 右 <= 窗口宽 − 分隔条 − 中栏保底，保证中栏不被挤压。
         final midBudget = math.max(0.0, total - chrome - _minMidWidth);
-        var left = math.max(_minLeftWidth, _leftWidth);
-        var right = math.max(_minRightWidth, _rightWidth);
-        if (_panelOpen && left + right > midBudget) {
-          final overflow = left + right - midBudget;
-          // 超限时收缩较大的一侧。
-          if (left >= right) {
-            left = math.max(_minLeftWidth, left - overflow);
-          } else {
-            right = math.max(_minRightWidth, right - overflow);
-          }
-        }
-        return Row(
-          children: [
-            SizedBox(
-              width: left,
-              child: BookTree(book: widget.book),
-            ),
-            _DragDivider(
-              width: _dividerWidth,
-              onDrag: (delta) => setState(() {
-                _leftWidth = (_leftWidth + delta).clamp(
-                  _minLeftWidth,
-                  math.max(_minLeftWidth, midBudget - right),
-                );
-              }),
-              onDragEnd: () => _settings.setWorkspaceLeftWidth(_leftWidth),
-            ),
-            Expanded(child: EditorArea(book: widget.book)),
-            if (_panelOpen)
-              _DragDivider(
-                width: _dividerWidth,
-                onDrag: (delta) => setState(() {
-                  _rightWidth = (_rightWidth - delta).clamp(
-                    _minRightWidth,
-                    math.max(_minRightWidth, midBudget - left),
-                  );
-                }),
-                onDragEnd: () => _settings.setWorkspaceRightWidth(_rightWidth),
-              ),
-            SizedBox(
-              width: _panelOpen ? right : _railWidth,
-              child: _panelArea(),
-            ),
-          ],
+        return ValueListenableBuilder<int>(
+          valueListenable: _layoutTick,
+          builder: (context, _, _) {
+            var left = math.max(_minLeftWidth, _leftWidth);
+            var right = math.max(_minRightWidth, _rightWidth);
+            if (_panelOpen && left + right > midBudget) {
+              final overflow = left + right - midBudget;
+              // 超限时收缩较大的一侧。
+              if (left >= right) {
+                left = math.max(_minLeftWidth, left - overflow);
+              } else {
+                right = math.max(_minRightWidth, right - overflow);
+              }
+            }
+            return Row(
+              children: [
+                SizedBox(width: left, child: _bookTreeWidget),
+                _DragDivider(
+                  width: _dividerWidth,
+                  onDrag: (delta) {
+                    _leftWidth = (_leftWidth + delta)
+                        .clamp(
+                          _minLeftWidth,
+                          math.max(_minLeftWidth, midBudget - right),
+                        )
+                        .toDouble();
+                    _layoutTick.value++;
+                  },
+                  onDragEnd: () =>
+                      _settings.setWorkspaceLeftWidth(_leftWidth),
+                ),
+                Expanded(child: _editorWidget!),
+                if (_panelOpen)
+                  _DragDivider(
+                    width: _dividerWidth,
+                    onDrag: (delta) {
+                      _rightWidth = (_rightWidth - delta)
+                          .clamp(
+                            _minRightWidth,
+                            math.max(_minRightWidth, midBudget - left),
+                          )
+                          .toDouble();
+                      _layoutTick.value++;
+                    },
+                    onDragEnd: () =>
+                        _settings.setWorkspaceRightWidth(_rightWidth),
+                  ),
+                SizedBox(
+                  width: _panelOpen ? right : _railWidth,
+                  child: _panelWidget,
+                ),
+              ],
+            );
+          },
         );
       },
     );

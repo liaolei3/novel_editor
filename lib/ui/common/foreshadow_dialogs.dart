@@ -85,13 +85,7 @@ Future<(String, String, String)?> showCreateForeshadowDialog(
               controller: nameCtrl,
               autofocus: true,
               style: TextStyle(fontSize: 13, color: scheme.onSurface),
-              decoration: InputDecoration(
-                labelText: '伏笔名称',
-                labelStyle: TextStyle(
-                    fontSize: 12, color: scheme.onSurfaceVariant),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-              ),
+              decoration: dialogFieldDecoration(scheme, label: '伏笔名称'),
             ),
             const SizedBox(height: 14),
             TextField(
@@ -100,29 +94,11 @@ Future<(String, String, String)?> showCreateForeshadowDialog(
               maxLines: 6,
               style: TextStyle(
                   fontSize: 13, height: 1.5, color: scheme.onSurface),
-              decoration: InputDecoration(
-                labelText: '伏笔描述（必填）',
-                alignLabelWithHint: true,
-                labelStyle: TextStyle(
-                    fontSize: 12, color: scheme.onSurfaceVariant),
-                hintStyle: TextStyle(
-                    fontSize: 12,
-                    color: scheme.onSurfaceVariant.withValues(alpha: 0.6)),
-                hintText: '埋了什么、打算怎么回收…',
-                filled: true,
-                fillColor:
-                    scheme.surfaceContainerHighest.withValues(alpha: 0.25),
-                contentPadding: const EdgeInsets.all(12),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(
-                      color: scheme.outlineVariant.withValues(alpha: 0.6)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(
-                      color: scheme.outlineVariant.withValues(alpha: 0.6)),
-                ),
+              decoration: dialogFieldDecoration(
+                scheme,
+                label: '伏笔描述（必填）',
+                hint: '埋了什么、打算怎么回收…',
+                multiline: true,
               ),
             ),
             if (showRemark) ...[
@@ -133,29 +109,11 @@ Future<(String, String, String)?> showCreateForeshadowDialog(
                 maxLines: 6,
                 style: TextStyle(
                     fontSize: 13, height: 1.5, color: scheme.onSurface),
-                decoration: InputDecoration(
-                  labelText: '片段备注（可选）',
-                  alignLabelWithHint: true,
-                  labelStyle: TextStyle(
-                      fontSize: 12, color: scheme.onSurfaceVariant),
-                  hintStyle: TextStyle(
-                      fontSize: 12,
-                      color: scheme.onSurfaceVariant.withValues(alpha: 0.6)),
-                  hintText: '这次标注需要记下的话…',
-                  filled: true,
-                  fillColor:
-                      scheme.surfaceContainerHighest.withValues(alpha: 0.25),
-                  contentPadding: const EdgeInsets.all(12),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(
-                        color: scheme.outlineVariant.withValues(alpha: 0.6)),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(
-                        color: scheme.outlineVariant.withValues(alpha: 0.6)),
-                  ),
+                decoration: dialogFieldDecoration(
+                  scheme,
+                  label: '片段备注（可选）',
+                  hint: '这次标注需要记下的话…',
+                  multiline: true,
                 ),
               ),
             ],
@@ -611,10 +569,15 @@ Future<String?> showEditSegmentRemarkDialog(
           autofocus: true,
           minLines: 3,
           maxLines: 6,
-          decoration: const InputDecoration(
-            hintText: '该剧情片段的备注',
-            contentPadding:
-                EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          style: TextStyle(
+              fontSize: 13,
+              height: 1.5,
+              color: Theme.of(ctx).colorScheme.onSurface),
+          decoration: dialogFieldDecoration(
+            Theme.of(ctx).colorScheme,
+            label: '片段备注',
+            hint: '该剧情片段的备注',
+            multiline: true,
           ),
         ),
         actionsAlignment: MainAxisAlignment.end,

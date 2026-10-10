@@ -23,7 +23,7 @@ class Db {
     _db = await databaseFactory.openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 9,
+        version: 10,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
       ),
@@ -48,7 +48,10 @@ class Db {
         deleted INTEGER NOT NULL DEFAULT 0,
         last_chapter_id TEXT,
         last_cursor INTEGER,
-        cover_path TEXT NOT NULL DEFAULT ''
+        cover_path TEXT NOT NULL DEFAULT '',
+        goal INTEGER NOT NULL DEFAULT 0,
+        chapter_goal INTEGER NOT NULL DEFAULT 0,
+        goal_notified INTEGER NOT NULL DEFAULT 0
       )
     ''');
     await db.execute('''
@@ -77,6 +80,8 @@ class Db {
         cursor_offset INTEGER NOT NULL DEFAULT 0,
         pinned INTEGER NOT NULL DEFAULT 0,
         outline_edited_at INTEGER,
+        goal INTEGER,
+        goal_notified INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (book_id) REFERENCES books(id),
         FOREIGN KEY (volume_id) REFERENCES volumes(id)
       )
@@ -113,7 +118,8 @@ class Db {
         chars INTEGER NOT NULL,
         duration_ms INTEGER NOT NULL,
         idle_ms INTEGER NOT NULL DEFAULT 0,
-        idle_count INTEGER NOT NULL DEFAULT 0
+        idle_count INTEGER NOT NULL DEFAULT 0,
+        goal_notified INTEGER NOT NULL DEFAULT 0
       )
     ''');
     await db.execute('CREATE UNIQUE INDEX idx_wr_date ON write_records(date)');
@@ -266,6 +272,32 @@ class Db {
           updated_at INTEGER NOT NULL
         )
       ''');
+    }
+    if (oldVersion < 10) {
+      await _addColumns(db, 'books', {
+        'goal': 'INTEGER NOT NULL DEFAULT 0',
+        'chapter_goal': 'INTEGER NOT NULL DEFAULT 0',
+        'goal_notified': 'INTEGER NOT NULL DEFAULT 0',
+      });
+      await _addColumns(db, 'chapters', {
+        'goal': 'INTEGER',
+        'goal_notified': 'INTEGER NOT NULL DEFAULT 0',
+      });
+      await _addColumns(db, 'write_records', {
+        'goal_notified': 'INTEGER NOT NULL DEFAULT 0',
+      });
+    }
+  }
+
+  /// 按需为 [table] 补列（已存在的列跳过），用于版本迁移。
+  static Future<void> _addColumns(
+      Database db, String table, Map<String, String> columns) async {
+    final rows = await db.rawQuery('PRAGMA table_info($table)');
+    final existing = rows.map((c) => c['name']).toSet();
+    for (final entry in columns.entries) {
+      if (existing.contains(entry.key)) continue;
+      await db.execute(
+          'ALTER TABLE $table ADD COLUMN ${entry.key} ${entry.value}');
     }
   }
 

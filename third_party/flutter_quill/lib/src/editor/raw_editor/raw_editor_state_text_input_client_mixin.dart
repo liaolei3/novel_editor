@@ -268,6 +268,26 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       return;
     }
 
+    // 连续三个半角句点自动合并为中文省略号（……，占两个字位）。
+    // 文档此刻仍是旧文本：把光标前已有的两个句点替换为省略号，并吞掉待插入的第三个。
+    if (!composingActive &&
+        diff.deleted.isEmpty &&
+        diff.inserted == '.' &&
+        value.selection.isCollapsed &&
+        diff.start >= 2 &&
+        oldText.substring(diff.start - 2, diff.start) == '..' &&
+        cursorPosition == diff.start + 1 &&
+        cursorPosition <= text.length &&
+        text.substring(cursorPosition - 3, cursorPosition) == '...') {
+      widget.controller.replaceText(
+        diff.start - 2,
+        2,
+        '……',
+        TextSelection.collapsed(offset: diff.start),
+      );
+      return;
+    }
+
     if (pairs != null && diff.inserted.length == 1) {
       final inserted = diff.inserted;
       final closer = pairs[inserted];

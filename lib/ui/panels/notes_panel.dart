@@ -143,7 +143,8 @@ class _NotesPanelState extends State<NotesPanel> {
   }
 
   Future<void> _create(BuildContext context) async {
-    final title = await inputDialog(context, title: '新建${_labelOf(_tab)}', hint: '标题');
+    final title = await inputDialog(context,
+        title: '新建${_labelOf(_tab)}', label: '标题');
     if (title == null || title.trim().isEmpty) return;
     final state = context.read<AppState>();
     await state.notes.create(bookId: widget.book.id, type: _tab, title: title.trim());
@@ -162,13 +163,23 @@ class _NotesPanelState extends State<NotesPanel> {
           content: SizedBox(
             width: 420,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: '标题')),
+              TextField(
+                  controller: titleCtrl,
+                  style: TextStyle(
+                      fontSize: 13, color: Theme.of(ctx).colorScheme.onSurface),
+                  decoration: dialogFieldDecoration(
+                      Theme.of(ctx).colorScheme,
+                      label: '标题')),
               const SizedBox(height: 12),
               TextField(
                 controller: bodyCtrl,
                 maxLines: 8,
-                decoration: InputDecoration(
-                  labelText: switch (note.type) {
+                style: TextStyle(
+                    fontSize: 13, color: Theme.of(ctx).colorScheme.onSurface),
+                decoration: dialogFieldDecoration(
+                  Theme.of(ctx).colorScheme,
+                  multiline: true,
+                  label: switch (note.type) {
                     NoteType.role => '外貌 / 性格 / 背景 / 口头禅 / 人物关系',
                     NoteType.world => '世界观设定',
                     NoteType.idea => '灵感内容',

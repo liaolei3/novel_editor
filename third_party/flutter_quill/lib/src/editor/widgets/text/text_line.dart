@@ -21,6 +21,114 @@ import '../keyboard_listener.dart';
 import '../proxy.dart';
 import 'text_selection.dart';
 
+/// 行内高亮区间（行内相对字符偏移，`[start, end)`）及其底色。
+class TextLineHighlight {
+  const TextLineHighlight(this.start, this.end, this.color);
+
+  final int start;
+  final int end;
+  final Color color;
+}
+
+/// 单行内联高亮区间容器：由 [TextLine] 填充，由 [RenderEditableTextLine] 读取绘制。
+class TextLineHighlights {
+  final List<TextLineHighlight> ranges = <TextLineHighlight>[];
+}
+
+/// 视觉行内的一段同色高亮，左右边界为行内坐标。
+class _HighlightBlock {
+  _HighlightBlock(this.color, this.left, this.right);
+
+  final Color color;
+  final double left;
+  double right;
+}
+
+/// 高亮底色圆角半径。
+const double _kHighlightRadius = 8;
+
+/// 高亮底色边缘模糊 sigma。
+const double _kHighlightBlurSigma = 2.5;
+
+/// 剥离底色后写入的透明色。
+const Color _kTransparentHighlight = Color(0x00000000);
+
+/// 行内相对偏移游标，遍历 span 树时累加。
+class _TextOffsetCursor {
+  int value = 0;
+}
+
+/// 探测 span 树里是否存在 backgroundColor 非空且无 background 绘制的 span。
+bool _hasHighlightBackground(InlineSpan span) {
+  if (span is! TextSpan) {
+    return false;
+  }
+  if (span.style?.backgroundColor != null && span.style?.background == null) {
+    return true;
+  }
+  final children = span.children;
+  if (children != null) {
+    for (final child in children) {
+      if (_hasHighlightBackground(child)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/// 遍历行 span 树，收集带 [TextStyle.backgroundColor] 的区间并把底色改为透明；
+/// 带 [TextStyle.background] 的分段不参与，[WidgetSpan] 按一个字符位计入偏移。
+InlineSpan _stripHighlightSpan(
+  InlineSpan span,
+  List<TextLineHighlight> out,
+  _TextOffsetCursor cursor,
+  Color? inheritedBg,
+) {
+  if (span is! TextSpan) {
+    cursor.value += 1;
+    return span;
+  }
+  final style = span.style;
+  final bg = style?.backgroundColor;
+  final isProtected = style?.background != null;
+  final active = isProtected ? null : (bg ?? inheritedBg);
+  final text = span.text;
+  final hasText = text != null && text.isNotEmpty;
+
+  if (hasText) {
+    if (active != null) {
+      out.add(TextLineHighlight(cursor.value, cursor.value + text.length, active));
+    }
+    cursor.value += text.length;
+  }
+
+  final children = span.children;
+  List<InlineSpan>? newChildren;
+  if (children != null && children.isNotEmpty) {
+    newChildren = <InlineSpan>[];
+    for (final child in children) {
+      newChildren.add(_stripHighlightSpan(child, out, cursor, active));
+    }
+  }
+
+  return TextSpan(
+    text: hasText ? text : null,
+    children: newChildren,
+    style: (bg != null && !isProtected)
+        ? style!.copyWith(backgroundColor: _kTransparentHighlight)
+        : style,
+    recognizer: span.recognizer,
+    mouseCursor: span.mouseCursor,
+    onEnter: span.onEnter,
+    onExit: span.onExit,
+    semanticsLabel: span.semanticsLabel,
+    semanticsIdentifier: span.semanticsIdentifier,
+    locale: span.locale,
+    spellOut: span.spellOut,
+  );
+}
+
 class TextLine extends StatefulWidget {
   const TextLine({
     required this.line,
@@ -36,6 +144,7 @@ class TextLine extends StatefulWidget {
     this.customStyleBuilder,
     this.customRecognizerBuilder,
     this.customLinkPrefixes = const <String>[],
+    this.highlights,
     super.key,
   });
 
@@ -52,6 +161,7 @@ class TextLine extends StatefulWidget {
   final LinkActionPicker linkActionPicker;
   final List<String> customLinkPrefixes;
   final TextRange composingRange;
+  final TextLineHighlights? highlights;
 
   @override
   State<TextLine> createState() => _TextLineState();
@@ -193,6 +303,25 @@ class _TextLineState extends State<TextLine> {
   }
 
   InlineSpan _getTextSpanForWholeLine() {
+    final span = _buildTextSpanForWholeLine();
+    final highlights = widget.highlights;
+    if (highlights == null || span is! TextSpan) {
+      return span;
+    }
+    // 无高亮底色时直接返回原 span。
+    if (!_hasHighlightBackground(span)) {
+      highlights.ranges.clear();
+      return span;
+    }
+    final ranges = <TextLineHighlight>[];
+    final stripped = _stripHighlightSpan(span, ranges, _TextOffsetCursor(), null);
+    highlights.ranges
+      ..clear()
+      ..addAll(ranges);
+    return stripped is TextSpan ? stripped : span;
+  }
+
+  InlineSpan _buildTextSpanForWholeLine() {
     var lineStyle = _getLineStyle(widget.styles);
     if (!widget.line.hasEmbed) {
       return _buildTextSpan(
@@ -739,6 +868,7 @@ class EditableTextLine extends RenderObjectWidget {
       this.cursorCont,
       this.inlineCodeStyle,
       this.decoration,
+      this.highlights,
       {super.key});
 
   final Line line;
@@ -755,6 +885,7 @@ class EditableTextLine extends RenderObjectWidget {
   final CursorCont cursorCont;
   final InlineCodeStyle inlineCodeStyle;
   final BoxDecoration? decoration;
+  final TextLineHighlights? highlights;
 
   @override
   RenderObjectElement createElement() {
@@ -774,7 +905,8 @@ class EditableTextLine extends RenderObjectWidget {
         color,
         cursorCont,
         inlineCodeStyle,
-        decoration);
+        decoration,
+        highlights);
   }
 
   @override
@@ -791,7 +923,8 @@ class EditableTextLine extends RenderObjectWidget {
       ..setDevicePixelRatio(devicePixelRatio)
       ..setCursorCont(cursorCont)
       ..setInlineCodeStyle(inlineCodeStyle)
-      ..setDecoration(decoration);
+      ..setDecoration(decoration)
+      ..setHighlights(highlights);
   }
 
   EdgeInsetsGeometry _getPadding() {
@@ -819,6 +952,7 @@ class RenderEditableTextLine extends RenderEditableBox {
     this.cursorCont,
     this.inlineCodeStyle,
     this.decoration,
+    this.highlights,
   );
 
   RenderBox? _leading;
@@ -838,6 +972,7 @@ class RenderEditableTextLine extends RenderEditableBox {
   late Rect _caretPrototype;
   InlineCodeStyle inlineCodeStyle;
   BoxDecoration? decoration;
+  TextLineHighlights? highlights;
   final Map<TextLineSlot, RenderBox> children = <TextLineSlot, RenderBox>{};
 
   Iterable<RenderBox> get _children sync* {
@@ -957,6 +1092,75 @@ class RenderEditableTextLine extends RenderEditableBox {
     if (decoration == newDecoration) return;
     decoration = newDecoration;
     markNeedsPaint();
+  }
+
+  void setHighlights(TextLineHighlights? newHighlights) {
+    if (highlights == newHighlights) return;
+    highlights = newHighlights;
+    markNeedsPaint();
+  }
+
+  /// 绘制行内高亮底色：按视觉行合并区间，每行画一个圆角模糊块，纵向铺满整行高。
+  void _paintHighlights(
+      PaintingContext context, Offset offset, List<TextLineHighlight> ranges) {
+    final body = _body!;
+    final lineHeight = body.preferredLineHeight;
+    if (lineHeight <= 0) {
+      return;
+    }
+    final byLine = <int, List<_HighlightBlock>>{};
+    for (final range in ranges) {
+      if (range.end <= range.start) {
+        continue;
+      }
+      final boxes = body.getBoxesForSelection(
+        TextSelection(baseOffset: range.start, extentOffset: range.end),
+      );
+      for (final box in boxes) {
+        final rect = box.toRect();
+        if (rect.isEmpty) {
+          continue;
+        }
+        final lineIndex = (rect.center.dy / lineHeight).floor();
+        (byLine[lineIndex] ??= <_HighlightBlock>[])
+            .add(_HighlightBlock(range.color, rect.left, rect.right));
+      }
+    }
+
+    final paint = Paint()
+      ..maskFilter =
+          const MaskFilter.blur(BlurStyle.normal, _kHighlightBlurSigma);
+    for (final entry in byLine.entries) {
+      final top = entry.key * lineHeight;
+      for (final block in _mergeHighlightBlocks(entry.value)) {
+        paint.color = block.color;
+        final rect = Rect.fromLTRB(block.left, top, block.right, top + lineHeight)
+            .shift(offset);
+        context.canvas.drawRRect(
+          RRect.fromRectAndRadius(rect, const Radius.circular(_kHighlightRadius)),
+          paint,
+        );
+      }
+    }
+  }
+
+  /// 合并同行同色且相接/重叠的高亮段，避免相邻 span 边界处圆角把底色切断。
+  static List<_HighlightBlock> _mergeHighlightBlocks(List<_HighlightBlock> blocks) {
+    blocks.sort((a, b) => a.left.compareTo(b.left));
+    final merged = <_HighlightBlock>[];
+    for (final block in blocks) {
+      if (merged.isNotEmpty) {
+        final last = merged.last;
+        if (last.color == block.color && block.left <= last.right + 0.01) {
+          if (block.right > last.right) {
+            last.right = block.right;
+          }
+          continue;
+        }
+      }
+      merged.add(_HighlightBlock(block.color, block.left, block.right));
+    }
+    return merged;
   }
 
   // Start selection implementation
@@ -1361,6 +1565,11 @@ class RenderEditableTextLine extends RenderEditableBox {
     if (_body != null) {
       final parentData = _body!.parentData as BoxParentData;
       final effectiveOffset = offset + parentData.offset;
+
+      final lineHighlights = highlights;
+      if (lineHighlights != null && lineHighlights.ranges.isNotEmpty) {
+        _paintHighlights(context, effectiveOffset, lineHighlights.ranges);
+      }
 
       if (inlineCodeStyle.backgroundColor != null) {
         for (final item in line.children) {

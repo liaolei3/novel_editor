@@ -12,8 +12,8 @@ import '../../state/settings_controller.dart';
 /// 编辑器底部状态栏右侧的码字面板入口：一个文字按钮，
 /// 点击在状态栏上方弹出非模态气泡，再点一次收起。
 ///
-/// 气泡挂在根 Overlay 上（不拦截正文交互），点外部不关闭，也没有关闭按钮——
-/// 收起只能靠再点一次入口。
+/// 气泡经 [OverlayPortal] 挂到当前路由所在的 Overlay 层（不拦截正文交互），
+/// 因此层级低于后弹出的弹窗；点外部不关闭，也没有关闭按钮——收起只能靠再点一次入口。
 class WriteStatsEntry extends StatefulWidget {
   const WriteStatsEntry({super.key});
 
@@ -23,65 +23,59 @@ class WriteStatsEntry extends StatefulWidget {
 
 class _WriteStatsEntryState extends State<WriteStatsEntry> {
   final GlobalKey _anchorKey = GlobalKey();
-  OverlayEntry? _entry;
+  final OverlayPortalController _portal = OverlayPortalController();
+  Rect? _anchor;
   bool _hovering = false;
 
-  @override
-  void dispose() {
-    _removeBubble();
-    super.dispose();
-  }
-
-  void _removeBubble() {
-    _entry?.remove();
-    _entry = null;
-  }
-
   void _toggle() {
-    if (_entry != null) {
-      setState(_removeBubble);
+    if (_portal.isShowing) {
+      _portal.hide();
+      setState(() {});
       return;
     }
     final box = _anchorKey.currentContext?.findRenderObject() as RenderBox?;
-    final overlay = Overlay.maybeOf(context, rootOverlay: true);
-    if (box == null || !box.hasSize || overlay == null) return;
-    final anchor = box.localToGlobal(Offset.zero) & box.size;
-    late final OverlayEntry entry;
-    entry = OverlayEntry(builder: (_) => _WriteStatsBubble(anchor: anchor));
-    _entry = entry;
-    overlay.insert(entry);
+    if (box == null || !box.hasSize) return;
+    _anchor = box.localToGlobal(Offset.zero) & box.size;
+    _portal.show();
     setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final open = _entry != null;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovering = true),
-      onExit: (_) => setState(() => _hovering = false),
-      child: Tooltip(
-        message: open ? '收起码字面板' : '展开码字面板',
-        child: GestureDetector(
-          onTap: _toggle,
-          child: Container(
-            key: _anchorKey,
-            height: 20,
-            padding: const EdgeInsets.symmetric(horizontal: 5),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              // 展开与 hover 共用同一底色，展开时图标转主题色。
-              color: _hovering || open
-                  ? scheme.primaryContainer.withValues(alpha: 0.45)
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            // 与书架主页「码字统计」导航用同一图标；只剩图标后含义不自明，靠 tooltip 说明用途。
-            child: Icon(
-              Icons.insights,
-              size: 15,
-              color: open ? scheme.primary : scheme.onSurfaceVariant,
+    final open = _portal.isShowing;
+    return OverlayPortal(
+      controller: _portal,
+      // 撑满整层的 Stack：气泡仍用 Positioned 定位，且空白处不拦截点击。
+      overlayChildBuilder: (_) => Stack(
+        children: [_WriteStatsBubble(anchor: _anchor ?? Rect.zero)],
+      ),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hovering = true),
+        onExit: (_) => setState(() => _hovering = false),
+        child: Tooltip(
+          message: open ? '收起码字面板' : '展开码字面板',
+          child: GestureDetector(
+            onTap: _toggle,
+            child: Container(
+              key: _anchorKey,
+              height: 20,
+              padding: const EdgeInsets.symmetric(horizontal: 5),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                // 展开与 hover 共用同一底色，展开时图标转主题色。
+                color: _hovering || open
+                    ? scheme.primaryContainer.withValues(alpha: 0.45)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              // 与书架主页「码字统计」导航用同一图标；只剩图标后含义不自明，靠 tooltip 说明用途。
+              child: Icon(
+                Icons.insights,
+                size: 15,
+                color: open ? scheme.primary : scheme.onSurfaceVariant,
+              ),
             ),
           ),
         ),
@@ -107,8 +101,8 @@ class _WriteStatsBubbleState extends State<_WriteStatsBubble> {
   static const double _width = 299;
 
   /// 高度按内容反算：描边 Border.all(0.5) 会额外吃掉 0.5px/边，
-  /// 故内容高 = 178 - 12*2 - 1 = 153。
-  static const double _height = 178;
+  /// 故内容高 = 192 - 12*2 - 1 = 167（分段控件 26 + 间距 8 + 指标区 133）。
+  static const double _height = 192;
   static const double _gap = 10;
   static const double _edge = 8;
 
@@ -128,6 +122,9 @@ class _WriteStatsBubbleState extends State<_WriteStatsBubble> {
 
   int _chars = 0;
   int _durationMs = 0;
+
+  /// 指标口径：0 今日 / 1 本章 / 2 全书。
+  int _scope = 0;
 
   /// 缓存 AppState：dispose 期间禁止通过 context 查找祖先节点。
   late final AppState _app;
@@ -184,10 +181,18 @@ class _WriteStatsBubbleState extends State<_WriteStatsBubble> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final window = MediaQuery.sizeOf(context);
-    final goal = context.watch<SettingsController>().dailyGoal;
-    final standee = context.watch<SettingsController>().standee;
-    final progress = goal > 0 ? (_chars / goal).clamp(0.0, 1.0) : 0.0;
-    final reached = progress >= 1;
+    final settings = context.watch<SettingsController>();
+    final app = context.watch<AppState>();
+    final standee = settings.standee;
+
+    // 各口径的目标与当前字数；时长/时速恒为今日数据（无按章/按书记录）。
+    final (goal, chars) = switch (_scope) {
+      1 => (app.resolvedChapterGoal, app.currentChapter?.charCount ?? 0),
+      2 => (app.currentBook?.goal ?? 0, app.bookCharTotal),
+      _ => (settings.dailyGoal, _chars),
+    };
+    final progress = goal > 0 ? (chars / goal).clamp(0.0, 1.0) : 0.0;
+    final reached = goal > 0 && chars >= goal;
     final pos = _clampToWindow(_base + _drag, window);
 
     return Positioned(
@@ -213,18 +218,79 @@ class _WriteStatsBubbleState extends State<_WriteStatsBubble> {
                 ),
               ],
             ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            child: Column(
               children: [
+                _segmented(scheme),
+                const SizedBox(height: 8),
                 Expanded(
-                  child: _metrics(scheme, goal, progress, reached),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: _metrics(scheme, goal, chars, progress, reached),
+                      ),
+                      const SizedBox(width: _columnGap),
+                      _figure(standee),
+                    ],
+                  ),
                 ),
-                const SizedBox(width: _columnGap),
-                _figure(standee),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// 口径分段控件：今日 / 本章 / 全书。
+  Widget _segmented(ColorScheme scheme) {
+    const labels = ['今日', '本章', '全书'];
+    return Container(
+      height: 26,
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: Row(
+        children: [
+          for (var i = 0; i < labels.length; i++)
+            Expanded(
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  onTap: () => setState(() => _scope = i),
+                  child: Container(
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: _scope == i ? scheme.surface : Colors.transparent,
+                      borderRadius: BorderRadius.circular(5),
+                      boxShadow: _scope == i
+                          ? [
+                              BoxShadow(
+                                color: scheme.shadow.withValues(alpha: 0.12),
+                                blurRadius: 4,
+                                offset: const Offset(0, 1),
+                              ),
+                            ]
+                          : null,
+                    ),
+                    child: Text(
+                      labels[i],
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight:
+                            _scope == i ? FontWeight.w600 : FontWeight.w400,
+                        color: _scope == i
+                            ? scheme.primary
+                            : scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -244,6 +310,7 @@ class _WriteStatsBubbleState extends State<_WriteStatsBubble> {
   Widget _metrics(
     ColorScheme scheme,
     int goal,
+    int chars,
     double progress,
     bool reached,
   ) {
@@ -252,7 +319,7 @@ class _WriteStatsBubbleState extends State<_WriteStatsBubble> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       // 行距交给 spaceBetween 均分，不写死间距：行高总和小于内容高时不会溢出，
-      // 面板改高度也只需改一个常量（当前 5 行 ×25，余下 28px 均分成 4 个 7px）。
+      // 面板改高度也只需改一个常量（当前 5 行 ×25，余下均分）。
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         _metricRow(
@@ -265,7 +332,7 @@ class _WriteStatsBubbleState extends State<_WriteStatsBubble> {
           scheme,
           Icons.edit_outlined,
           '码字',
-          '${_fmtInt(_chars)} 字',
+          '${_fmtInt(chars)} 字',
           highlight: reached,
         ),
         _metricRow(
