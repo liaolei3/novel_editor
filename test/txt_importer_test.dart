@@ -94,4 +94,31 @@ void main() {
     expect(preview.volumes.first.chapters.single.charCount, 3);
     expect(preview.charCount, 3);
   });
+
+  test('头部「作者：xxx」识别为作者名并从正文移除', () {
+    final raw = '斗破苍穹\n作者：天蚕土豆\n\n第一卷 废物\n第一章 陨落的天才\n正文';
+    final preview = TxtImporter.parse(raw);
+
+    expect(preview.author, '天蚕土豆');
+    expect(preview.charCount, 6); // 书名行序章 4 字 +「正文」2 字，作者行已移除
+  });
+
+  test('半角冒号与「笔名」前缀同样识别', () {
+    final preview = TxtImporter.parse('作者: 某某\n笔名: 别人\n第一章 开始\n正文');
+
+    expect(preview.author, '某某');
+  });
+
+  test('无作者行时 author 为空', () {
+    final preview = TxtImporter.parse('第一章 开始\n正文');
+
+    expect(preview.author, '');
+  });
+
+  test('正文中部的作者行不识别', () {
+    final preview = TxtImporter.parse('第一章 开始\n${'引' * 600}\n作者：某人\n正文');
+
+    expect(preview.author, '');
+    expect(preview.volumes.first.chapters.single.body, contains('作者：某人'));
+  });
 }

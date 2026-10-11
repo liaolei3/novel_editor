@@ -173,6 +173,48 @@ void main() {
       expect(controller.selection.start, 4);
     });
 
+    testWidgets('连续三个中文句号：合并为中文省略号（……），光标随之后移', (tester) async {
+      final controller = _controllerWith('ab。。');
+      final state = await pumpEditor(tester, controller);
+
+      state.updateEditingValue(const TextEditingValue(
+        text: 'ab。。。\n',
+        selection: TextSelection.collapsed(offset: 5),
+      ));
+      await tester.pump();
+
+      expect(controller.document.toPlainText(), 'ab……\n');
+      expect(controller.selection.start, 4);
+    });
+
+    testWidgets('输入法一次上屏三个中文句号：替换为中文省略号（……）', (tester) async {
+      final controller = _controllerWith('ab');
+      final state = await pumpEditor(tester, controller);
+
+      state.updateEditingValue(const TextEditingValue(
+        text: 'ab。。。\n',
+        selection: TextSelection.collapsed(offset: 5),
+      ));
+      await tester.pump();
+
+      expect(controller.document.toPlainText(), 'ab……\n');
+      expect(controller.selection.start, 4);
+    });
+
+    testWidgets('仅两个中文句号：不合并', (tester) async {
+      final controller = _controllerWith('ab。');
+      final state = await pumpEditor(tester, controller);
+
+      state.updateEditingValue(const TextEditingValue(
+        text: 'ab。。\n',
+        selection: TextSelection.collapsed(offset: 4),
+      ));
+      await tester.pump();
+
+      expect(controller.document.toPlainText(), 'ab。。\n');
+      expect(controller.selection.start, 4);
+    });
+
     testWidgets('未配置 autoPairSymbols 时不做补全', (tester) async {
       final controller = _controllerWith('abc');
       final focusNode = FocusNode();
@@ -379,6 +421,95 @@ void main() {
       await tester.pump();
 
       expect(controller.document.toPlainText(), 'abc“”\n');
+      expect(controller.selection.start, 4);
+    });
+
+    testWidgets('逐键组合提交三个中文句号：组合结束后合并为省略号', (tester) async {
+      final controller = _controllerWith('ab');
+      final state = await pumpEditor(tester, controller);
+
+      // 第一个句号：组合更新写入 + 组合结束清 composing。
+      state.updateEditingValue(const TextEditingValue(
+        text: 'ab。\n',
+        selection: TextSelection.collapsed(offset: 3),
+        composing: TextRange(start: 2, end: 3),
+      ));
+      await tester.pump();
+      state.updateEditingValue(const TextEditingValue(
+        text: 'ab。\n',
+        selection: TextSelection.collapsed(offset: 3),
+      ));
+      await tester.pump();
+      expect(controller.document.toPlainText(), 'ab。\n');
+
+      // 第二个句号。
+      state.updateEditingValue(const TextEditingValue(
+        text: 'ab。。\n',
+        selection: TextSelection.collapsed(offset: 4),
+        composing: TextRange(start: 2, end: 4),
+      ));
+      await tester.pump();
+      state.updateEditingValue(const TextEditingValue(
+        text: 'ab。。\n',
+        selection: TextSelection.collapsed(offset: 4),
+      ));
+      await tester.pump();
+      expect(controller.document.toPlainText(), 'ab。。\n');
+
+      // 第三个句号：组合期间只记录，组合结束后合并。
+      state.updateEditingValue(const TextEditingValue(
+        text: 'ab。。。\n',
+        selection: TextSelection.collapsed(offset: 5),
+        composing: TextRange(start: 2, end: 5),
+      ));
+      await tester.pump();
+      state.updateEditingValue(const TextEditingValue(
+        text: 'ab。。。\n',
+        selection: TextSelection.collapsed(offset: 5),
+      ));
+      await tester.pump();
+
+      expect(controller.document.toPlainText(), 'ab……\n');
+      expect(controller.selection.start, 4);
+    });
+
+    testWidgets('前两个句号组合提交、第三个随组合结束一并上屏：合并为省略号',
+        (tester) async {
+      final controller = _controllerWith('ab');
+      final state = await pumpEditor(tester, controller);
+
+      state.updateEditingValue(const TextEditingValue(
+        text: 'ab。\n',
+        selection: TextSelection.collapsed(offset: 3),
+        composing: TextRange(start: 2, end: 3),
+      ));
+      await tester.pump();
+      state.updateEditingValue(const TextEditingValue(
+        text: 'ab。\n',
+        selection: TextSelection.collapsed(offset: 3),
+      ));
+      await tester.pump();
+
+      state.updateEditingValue(const TextEditingValue(
+        text: 'ab。。\n',
+        selection: TextSelection.collapsed(offset: 4),
+        composing: TextRange(start: 2, end: 4),
+      ));
+      await tester.pump();
+      state.updateEditingValue(const TextEditingValue(
+        text: 'ab。。\n',
+        selection: TextSelection.collapsed(offset: 4),
+      ));
+      await tester.pump();
+
+      // 最后一次更新同时写入第三个句号并结束组合。
+      state.updateEditingValue(const TextEditingValue(
+        text: 'ab。。。\n',
+        selection: TextSelection.collapsed(offset: 5),
+      ));
+      await tester.pump();
+
+      expect(controller.document.toPlainText(), 'ab……\n');
       expect(controller.selection.start, 4);
     });
   });

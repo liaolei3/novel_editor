@@ -62,7 +62,6 @@ Future<void> _bootstrap() async {
   final chapters = ChapterRepository(
       standardResolver: () => settings.countStandard);
   final snapshots = SnapshotRepository();
-  final notes = NoteRepository();
   final characters = CharacterRepository();
   final foreshadows = ForeshadowRepository();
   final fsSegments = ForeshadowSegmentRepository();
@@ -89,7 +88,6 @@ Future<void> _bootstrap() async {
     volumes: volumes,
     chapters: chapters,
     snapshots: snapshots,
-    notes: notes,
     characters: characters,
     foreshadows: foreshadows,
     fsSegments: fsSegments,

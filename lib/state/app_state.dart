@@ -31,7 +31,6 @@ class AppState extends ChangeNotifier {
     required this.volumes,
     required this.chapters,
     required this.snapshots,
-    required this.notes,
     required this.characters,
     required this.foreshadows,
     required this.fsSegments,
@@ -54,7 +53,6 @@ class AppState extends ChangeNotifier {
   final VolumeRepository volumes;
   final ChapterRepository chapters;
   final SnapshotRepository snapshots;
-  final NoteRepository notes;
   final CharacterRepository characters;
   final ForeshadowRepository foreshadows;
   final ForeshadowSegmentRepository fsSegments;
@@ -81,9 +79,11 @@ class AppState extends ChangeNotifier {
   String? _todayDateKey;
   bool _todayGoalNotified = false;
 
-  /// 目标达成播报流：UI 层订阅后以 toast 呈现。
-  final StreamController<String> _goalToasts = StreamController<String>.broadcast();
-  Stream<String> get goalToasts => _goalToasts.stream;
+  /// 目标达成播报流：UI 层订阅后以烟花庆祝呈现。
+  /// 载荷为本次达成项文案列表，同帧内多项合并为一次播报。
+  final StreamController<List<String>> _goalToasts =
+      StreamController<List<String>>.broadcast();
+  Stream<List<String>> get goalToasts => _goalToasts.stream;
 
   /// 当前章节生效的单章目标（三态解析）；0 = 未设置/关闭。
   int get resolvedChapterGoal {
@@ -120,6 +120,63 @@ class AppState extends ChangeNotifier {
   /// 片段跳转请求（面板 → 编辑器定位）：编辑器收到后聚焦滚动到选区。
   final ValueNotifier<int> segmentJumpNonce = ValueNotifier(0);
 
+  /// 每书 UI 会话快照（内存缓存，跨书保留）：目录树展开卷、右侧面板状态、
+  /// 离开时的滚动偏移。写盘统一延后到切书离开 / 退出（_persistBookUi）。
+  final Map<String, BookUiSnapshot> _uiSnaps = {};
+
+  BookUiSnapshot uiSnapshot(String bookId) =>
+      _uiSnaps.putIfAbsent(bookId, BookUiSnapshot.new);
+
+  /// 切书/重启后待恢复的编辑器滚动偏移（EditorArea 消费后清空）。
+  double? _pendingRestoreScroll;
+
+  double? consumePendingRestoreScroll() {
+    final v = _pendingRestoreScroll;
+    _pendingRestoreScroll = null;
+    return v;
+  }
+
+  /// 离开当前书时落盘 UI 快照：当前章光标（内存 + DB）、书级位置与滚动（DB）、
+  /// 树展开与面板状态（config.json）。
+  Future<void> _persistBookUi() async {
+    final book = currentBook;
+    if (book == null) return;
+    final chapter = currentChapter;
+    final snap = _uiSnaps[book.id];
+    final sel = editorController.selection;
+    final cursor =
+        (sel.baseOffset >= 0 && sel.baseOffset <= editorController.document.length)
+            ? sel.baseOffset
+            : null;
+    if (chapter != null) {
+      if (cursor != null) chapter.cursorOffset = cursor;
+      await chapters.updateCursor(chapter.id, cursor ?? chapter.cursorOffset);
+    }
+    final scroll = snap?.scrollOffset.round() ?? 0;
+    await books.saveLocation(book.id, chapter?.id, cursor, scrollOffset: scroll);
+    // 同步内存实例：切回该书时 openBook 依赖 book.lastChapterId 定位上次章节，
+    // 只写 DB 不更新内存会打开陈旧章节并连带树定位错卷。
+    book
+      ..lastChapterId = chapter?.id
+      ..lastCursor = cursor
+      ..lastScrollOffset = scroll;
+    final idx = bookList.indexWhere((b) => b.id == book.id);
+    if (idx >= 0 && !identical(bookList[idx], book)) {
+      bookList[idx]
+        ..lastChapterId = chapter?.id
+        ..lastCursor = cursor
+        ..lastScrollOffset = scroll;
+    }
+    if (snap != null) {
+      await settings.saveBookUi(
+        book.id,
+        tree: snap.expandedVolumes.toList(),
+        panelIndex: snap.panelIndex,
+        panelOpen: snap.panelOpen,
+      );
+    }
+  }
+
   StreamSubscription<SyncEvent>? _syncSub;
 
   /// document.changes 内容变化订阅；document 实例被替换时需重绑。
@@ -154,12 +211,13 @@ class AppState extends ChangeNotifier {
   Future<Book> importBookFromPreview(
     String title,
     ImportPreview preview, {
+    String penName = '',
     void Function(int done, int total)? onProgress,
   }) async {
     final total = preview.chapterCount;
     var done = 0;
     onProgress?.call(done, total);
-    final book = await books.create(title);
+    final book = await books.create(title, penName: penName);
     for (final volume in preview.volumes) {
       final vol = await volumes.create(book.id, volume.name);
       for (var i = 0; i < volume.chapters.length; i++) {
@@ -236,7 +294,6 @@ class AppState extends ChangeNotifier {
     await fsSegments.hardDeleteByBook(bookId);
     await foreshadows.hardDeleteByBook(bookId);
     await characters.hardDeleteByBook(bookId);
-    await notes.hardDeleteByBook(bookId);
     final coverPath = _decode(item.payload)['cover_path'] as String? ?? '';
     if (coverPath.isNotEmpty) {
       try {
@@ -253,8 +310,10 @@ class AppState extends ChangeNotifier {
   }
 
   /// 打开作品：加载卷章树并恢复上次编辑位置（12.1）。
+  /// 打开前先将上一本书的 UI 快照落盘（切书还原）。
   Future<void> openBook(Book book, {String? startChapterId}) async {
     await autosave.flush();
+    await _persistBookUi();
     currentBook = book;
     _resetEditor();
     currentChapter = null;
@@ -263,12 +322,22 @@ class AppState extends ChangeNotifier {
         chapterList.fold(0, (sum, c) => sum + c.charCount);
     await _loadTodayStats();
     await settings.setLastBookId(book.id);
+    await settings.touchRecentBook(book.id);
     final targetId = startChapterId ??
         book.lastChapterId ??
         (chapterList.isNotEmpty ? chapterList.first.id : null);
+    final snap = uiSnapshot(book.id);
+    if (!snap.treeLoaded) {
+      // 首次进入快照：从 config.json 还原该书的目录树展开卷（跨会话）。
+      snap.expandedVolumes.addAll(settings.bookUiOf(book.id).tree);
+      snap.treeLoaded = true;
+    }
     if (targetId != null) {
       final ch = await chapters.get(targetId);
-      if (ch != null) await openChapter(ch);
+      if (ch != null) {
+        _pendingRestoreScroll = snap.scrollOffset;
+        await openChapter(ch);
+      }
     }
     notifyListeners();
   }
@@ -528,9 +597,17 @@ class AppState extends ChangeNotifier {
   }
 
   /// 打开章节（≤300ms 预算：单次查询 + 控制器赋值）。
+  /// 离开旧章前把光标偏移写入内存章对象，供同会话切回时还原。
   Future<void> openChapter(Chapter chapter) async {
     if (currentChapter?.id == chapter.id) return;
     await autosave.flush();
+    final prev = currentChapter;
+    if (prev != null) {
+      final off = editorController.selection.baseOffset;
+      if (off >= 0 && off <= editorController.document.length) {
+        prev.cursorOffset = off;
+      }
+    }
     currentChapter = chapter;
     _loadingDoc = true;
     try {
@@ -606,10 +683,13 @@ class AppState extends ChangeNotifier {
   }
 
   /// 编辑跨越目标时播报达成：每种目标只提示一次（标记落库）。
+  /// 同帧内多个目标同时达成时，只播报首个达成项。
   void _checkGoals() {
     final book = currentBook;
     final chapter = currentChapter;
     if (book == null || chapter == null) return;
+
+    final done = <String>[];
 
     final chGoal = resolvedChapterGoal;
     if (chGoal > 0 && chapter.charCount >= chGoal && !chapter.goalNotified) {
@@ -617,7 +697,7 @@ class AppState extends ChangeNotifier {
       final idx = chapterList.indexWhere((c) => c.id == chapter.id);
       if (idx >= 0) chapterList[idx].goalNotified = true;
       chapters.setGoalNotified(chapter.id, true);
-      _goalToasts.add('本章目标达成');
+      done.add('本章目标已达成，太棒了！');
     }
 
     if (book.goal > 0 && bookCharTotal >= book.goal && !book.goalNotified) {
@@ -625,15 +705,17 @@ class AppState extends ChangeNotifier {
       final idx = bookList.indexWhere((b) => b.id == book.id);
       if (idx >= 0) bookList[idx].goalNotified = true;
       books.setGoalNotified(book.id, true);
-      _goalToasts.add('全书目标达成');
+      done.add('全书目标已达成，太棒了！');
     }
 
     final dailyGoal = settings.dailyGoal;
     if (dailyGoal > 0 && todayChars >= dailyGoal && !_todayGoalNotified) {
       _todayGoalNotified = true;
       stats.setGoalNotified(true);
-      _goalToasts.add('今日目标达成');
+      done.add('今日目标已达成，太棒了！');
     }
+
+    if (done.isNotEmpty) _goalToasts.add([done.first]);
   }
 
   /// 设置整书目标与全书单章默认目标；目标值变化时重置「已提示」以便重新播报。
@@ -678,16 +760,6 @@ class AppState extends ChangeNotifier {
     await chapters.updateGoal(chapterId, goal);
     if (changed) await chapters.setGoalNotified(chapterId, false);
     notifyListeners();
-  }
-
-  Future<void> saveCursor() async {
-    final chapter = currentChapter;
-    if (chapter == null) return;
-    await chapters.updateCursor(chapter.id, editorController.selection.baseOffset);
-    if (currentBook != null) {
-      await books.saveLocation(currentBook!.id, chapter.id,
-          editorController.selection.baseOffset);
-    }
   }
 
   Future<void> renameChapter(String id, String title) async {
@@ -1077,9 +1149,9 @@ class AppState extends ChangeNotifier {
     return sync.syncAll(currentBook!.id);
   }
 
-  /// 应用退出前：冲刷保存 + 记录写作时长 + 清除崩溃标记。
+  /// 应用退出前：保存 UI 快照 + 冲刷保存 + 记录写作时长 + 清除崩溃标记。
   Future<void> shutdown() async {
-    await saveCursor();
+    await _persistBookUi();
     await autosave.flush(withBackup: false);
     session.end();
     await crash.clear();
@@ -1116,6 +1188,25 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
   }
+}
+
+/// 单本书的会话内 UI 状态（内存，跨书切换保留；落盘由 [_persistBookUi] 负责）。
+class BookUiSnapshot {
+  BookUiSnapshot();
+
+  /// 左侧目录树中展开的卷 id 集合。
+  final Set<String> expandedVolumes = <String>{};
+
+  /// 是否已从 config.json 载入过持久化的展开集合（跨会话还原一次）。
+  bool treeLoaded = false;
+
+  /// 右侧面板选中项与展开态（由 WorkspacePage 实时同步，供落盘）。
+  int panelIndex = 0;
+  bool panelOpen = false;
+  bool panelInitialized = false;
+
+  /// 离开该书时编辑器的滚动偏移（EditorArea 滚动时实时同步）。
+  double scrollOffset = 0;
 }
 
 /// 全书敏感词检测的单章结果。

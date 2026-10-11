@@ -23,7 +23,7 @@ class Db {
     _db = await databaseFactory.openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 10,
+        version: 12,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
       ),
@@ -48,6 +48,7 @@ class Db {
         deleted INTEGER NOT NULL DEFAULT 0,
         last_chapter_id TEXT,
         last_cursor INTEGER,
+        last_scroll_offset INTEGER NOT NULL DEFAULT 0,
         cover_path TEXT NOT NULL DEFAULT '',
         goal INTEGER NOT NULL DEFAULT 0,
         chapter_goal INTEGER NOT NULL DEFAULT 0,
@@ -99,18 +100,6 @@ class Db {
       )
     ''');
     await db.execute('CREATE INDEX idx_snap_chapter ON snapshots(chapter_id, created_at)');
-    await db.execute('''
-      CREATE TABLE notes (
-        id TEXT PRIMARY KEY,
-        book_id TEXT NOT NULL,
-        type TEXT NOT NULL,
-        title TEXT NOT NULL,
-        content TEXT NOT NULL DEFAULT '',
-        tags TEXT NOT NULL DEFAULT '',
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      )
-    ''');
     await db.execute('''
       CREATE TABLE write_records (
         id TEXT PRIMARY KEY,
@@ -285,6 +274,15 @@ class Db {
       });
       await _addColumns(db, 'write_records', {
         'goal_notified': 'INTEGER NOT NULL DEFAULT 0',
+      });
+    }
+    if (oldVersion < 11) {
+      await db.execute('DROP TABLE IF EXISTS notes');
+      await db.delete('recycle_bin', where: 'type = ?', whereArgs: ['note']);
+    }
+    if (oldVersion < 12) {
+      await _addColumns(db, 'books', {
+        'last_scroll_offset': 'INTEGER NOT NULL DEFAULT 0',
       });
     }
   }

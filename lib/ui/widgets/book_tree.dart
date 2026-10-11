@@ -39,8 +39,11 @@ class BookTree extends StatefulWidget {
 }
 
 class _BookTreeState extends State<BookTree> {
-  /// 展开的卷 id 集合；进入书籍时只展开当前章所属卷，其余卷收起。
-  final Set<String> _expanded = <String>{};
+  late final AppState _appState;
+
+  /// 展开的卷 id 集合（每书一份，存于 AppState 快照；写盘延后到切书/退出）。
+  Set<String> get _expanded =>
+      _appState.uiSnapshot(widget.book.id).expandedVolumes;
 
   final ScrollController _controller = ScrollController();
 
@@ -57,10 +60,10 @@ class _BookTreeState extends State<BookTree> {
   @override
   void initState() {
     super.initState();
-    final state = context.read<AppState>();
-    final volumeId = state.currentChapter?.volumeId;
+    _appState = context.read<AppState>();
+    final volumeId = _appState.currentChapter?.volumeId;
     if (volumeId != null) _expanded.add(volumeId);
-    _lastChapterId = state.currentChapter?.id;
+    _lastChapterId = _appState.currentChapter?.id;
     // 进入书籍时把当前章滚进视野：它可能在一卷上千章的很下面。
     _pendingReveal = true;
   }
@@ -68,13 +71,9 @@ class _BookTreeState extends State<BookTree> {
   @override
   void didUpdateWidget(BookTree oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // 换书时按新书的当前章重置，避免展开态错挂到别的卷。
+    // 换书时展开集合随 AppState 快照切换（每书独立），只重新安排定位。
     if (oldWidget.book.id != widget.book.id) {
-      _expanded.clear();
-      final state = context.read<AppState>();
-      final volumeId = state.currentChapter?.volumeId;
-      if (volumeId != null) _expanded.add(volumeId);
-      _lastChapterId = state.currentChapter?.id;
+      _lastChapterId = _appState.currentChapter?.id;
       _pendingReveal = true;
     }
   }

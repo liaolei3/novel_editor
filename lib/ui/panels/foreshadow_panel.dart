@@ -70,6 +70,19 @@ class _ForeshadowPanelState extends State<ForeshadowPanel> {
     if (openId != null && openId != oldWidget.openForeshadowId) {
       _openById(openId);
     }
+    // 切书：重载新书数据，筛选与选中回到默认。
+    if (widget.book.id != oldWidget.book.id) {
+      _selected = null;
+      _editingName = false;
+      _collapsedVolumes.clear();
+      _segments = [];
+      _filter = null;
+      _keyword = '';
+      _searchCtrl.clear();
+      _searching = false;
+      _loading = true;
+      _load();
+    }
   }
 
   @override
@@ -289,13 +302,19 @@ class _ForeshadowPanelState extends State<ForeshadowPanel> {
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(64, 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                ),
                 child: const Text('取消')),
             FilledButton(
                 style: FilledButton.styleFrom(
                     backgroundColor:
                         Theme.of(ctx).colorScheme.errorContainer,
                     foregroundColor:
-                        Theme.of(ctx).colorScheme.onErrorContainer),
+                        Theme.of(ctx).colorScheme.onErrorContainer,
+                    minimumSize: const Size(72, 44),
+                    padding: const EdgeInsets.symmetric(horizontal: 18)),
                 onPressed: () => Navigator.pop(ctx, true),
                 child: const Text('删除')),
           ],
@@ -343,13 +362,19 @@ class _ForeshadowPanelState extends State<ForeshadowPanel> {
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(64, 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                ),
                 child: const Text('取消')),
             FilledButton(
                 style: FilledButton.styleFrom(
                     backgroundColor:
                         Theme.of(ctx).colorScheme.errorContainer,
                     foregroundColor:
-                        Theme.of(ctx).colorScheme.onErrorContainer),
+                        Theme.of(ctx).colorScheme.onErrorContainer,
+                    minimumSize: const Size(72, 44),
+                    padding: const EdgeInsets.symmetric(horizontal: 18)),
                 onPressed: () => Navigator.pop(ctx, true),
                 child: const Text('解除')),
           ],

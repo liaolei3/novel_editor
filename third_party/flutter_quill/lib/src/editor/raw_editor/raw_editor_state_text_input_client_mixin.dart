@@ -251,6 +251,9 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       if (pairs != null && compositionEnded) {
         _executeDeferredAutoPair(pairs);
       }
+      if (compositionEnded) {
+        _executeDeferredEllipsis();
+      }
       return;
     }
 
@@ -265,20 +268,26 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       if (pairs != null && compositionEnded) {
         _executeDeferredAutoPair(pairs);
       }
+      if (compositionEnded) {
+        _executeDeferredEllipsis();
+      }
       return;
     }
 
-    // 连续三个半角句点自动合并为中文省略号（……，占两个字位）。
+    // 连续三个半角句点 / 中文句号自动合并为中文省略号（……，占两个字位）。
     // 文档此刻仍是旧文本：把光标前已有的两个句点替换为省略号，并吞掉待插入的第三个。
-    if (!composingActive &&
+    final isEllipsisTrigger = !composingActive &&
         diff.deleted.isEmpty &&
-        diff.inserted == '.' &&
-        value.selection.isCollapsed &&
         diff.start >= 2 &&
-        oldText.substring(diff.start - 2, diff.start) == '..' &&
-        cursorPosition == diff.start + 1 &&
+        value.selection.isCollapsed &&
+        cursorPosition == diff.start + diff.inserted.length &&
         cursorPosition <= text.length &&
-        text.substring(cursorPosition - 3, cursorPosition) == '...') {
+        (diff.inserted == '.' || diff.inserted == '。') &&
+        oldText.substring(diff.start - 2, diff.start) ==
+            (diff.inserted == '.' ? '..' : '。。');
+    if (isEllipsisTrigger &&
+        text.substring(cursorPosition - 3, cursorPosition) ==
+            (diff.inserted == '.' ? '...' : '。。。')) {
       widget.controller.replaceText(
         diff.start - 2,
         2,
@@ -286,6 +295,32 @@ mixin RawEditorStateTextInputClientMixin on EditorState
         TextSelection.collapsed(offset: diff.start),
       );
       return;
+    }
+    // 输入法一次上屏三个句号：直接替换为省略号。
+    if (!composingActive &&
+        diff.deleted.isEmpty &&
+        diff.inserted == '。。。' &&
+        value.selection.isCollapsed) {
+      widget.controller.replaceText(
+        diff.start,
+        0,
+        '……',
+        TextSelection.collapsed(offset: diff.start + 2),
+      );
+      return;
+    }
+
+    // IME 组合路径的句号（组合更新写入文本 → 组合结束仅清 composing）：
+    // 组合期间改文档会被输入法回滚，故只记录替换起点，组合结束后合并。
+    // diff.start 为旧文本坐标，新文本中三个句号位于 [diff.start-2, diff.start+1)。
+    if (composingActive && diff.deleted.isEmpty) {
+      if (diff.inserted == '。' &&
+          diff.start >= 2 &&
+          text.substring(diff.start - 2, diff.start + 1) == '。。。') {
+        _pendingEllipsisStart = diff.start - 2;
+      } else if (diff.inserted == '。。。') {
+        _pendingEllipsisStart = diff.start;
+      }
     }
 
     if (pairs != null && diff.inserted.length == 1) {
@@ -363,6 +398,9 @@ mixin RawEditorStateTextInputClientMixin on EditorState
     if (pairs != null && compositionEnded) {
       _executeDeferredAutoPair(pairs);
     }
+    if (compositionEnded) {
+      _executeDeferredEllipsis();
+    }
   }
 
   // ---- 成对符号自动补全（延后执行） ----
@@ -371,6 +409,29 @@ mixin RawEditorStateTextInputClientMixin on EditorState
   String? _autoPairSymbol;
   int _autoPairPos = -1;
   String _autoPairDeleted = '';
+
+  // ---- 句号合并省略号（延后执行） ----
+
+  int _pendingEllipsisStart = -1;
+
+  /// 组合结束后执行延后的句号合并：连续三个句号替换为省略号。
+  /// 位置已失效（取消组合或文档变化）时放弃。
+  void _executeDeferredEllipsis() {
+    final pos = _pendingEllipsisStart;
+    _pendingEllipsisStart = -1;
+    if (pos < 0) return;
+    final controller = widget.controller;
+    final text = controller.document.toPlainText();
+    if (pos + 3 > text.length || text.substring(pos, pos + 3) != '。。。') {
+      return;
+    }
+    controller.replaceText(
+      pos,
+      3,
+      '……',
+      TextSelection.collapsed(offset: pos + 2),
+    );
+  }
 
   String? _openSymbolFor(Map<String, String> pairs, String closer) {
     for (final e in pairs.entries) {

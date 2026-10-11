@@ -218,13 +218,19 @@ class _ForeshadowTipViewState extends State<_ForeshadowTipView> {
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(64, 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                ),
                 child: const Text('取消')),
             FilledButton(
                 style: FilledButton.styleFrom(
                     backgroundColor:
                         Theme.of(ctx).colorScheme.errorContainer,
                     foregroundColor:
-                        Theme.of(ctx).colorScheme.onErrorContainer),
+                        Theme.of(ctx).colorScheme.onErrorContainer,
+                    minimumSize: const Size(72, 44),
+                    padding: const EdgeInsets.symmetric(horizontal: 18)),
                 onPressed: () => Navigator.pop(ctx, true),
                 child: const Text('解除')),
           ],

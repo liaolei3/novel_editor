@@ -172,7 +172,7 @@ Future<String?> inputDialog(BuildContext context,
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             style: TextButton.styleFrom(
-              minimumSize: const Size(64, 38),
+              minimumSize: const Size(64, 44),
               padding: const EdgeInsets.symmetric(horizontal: 16),
             ),
             child: const Text('取消'),
@@ -180,7 +180,7 @@ Future<String?> inputDialog(BuildContext context,
           FilledButton(
             onPressed: () => Navigator.pop(ctx, controller.text),
             style: FilledButton.styleFrom(
-              minimumSize: const Size(72, 38),
+              minimumSize: const Size(72, 44),
               padding: const EdgeInsets.symmetric(horizontal: 18),
             ),
             child: const Text('确定'),
@@ -264,7 +264,7 @@ Future<(String, String, String?)?> createBookDialog(BuildContext context) async 
                   if (ctx.mounted) Navigator.pop(ctx);
                 },
                 style: TextButton.styleFrom(
-                  minimumSize: const Size(64, 38),
+                  minimumSize: const Size(64, 44),
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                 ),
                 child: const Text('取消'),
@@ -277,7 +277,7 @@ Future<(String, String, String?)?> createBookDialog(BuildContext context) async 
                       ctx, (title, penCtrl.text.trim(), cleared ? null : pickedPath));
                 },
                 style: FilledButton.styleFrom(
-                  minimumSize: const Size(72, 38),
+                  minimumSize: const Size(72, 44),
                   padding: const EdgeInsets.symmetric(horizontal: 18),
                 ),
                 child: const Text('创建'),
@@ -458,7 +458,7 @@ Future<(String, String, String?)?> editBookDialog(
                   if (ctx.mounted) Navigator.pop(ctx);
                 },
                 style: TextButton.styleFrom(
-                  minimumSize: const Size(64, 38),
+                  minimumSize: const Size(64, 44),
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                 ),
                 child: const Text('取消'),
@@ -472,7 +472,7 @@ Future<(String, String, String?)?> editBookDialog(
                   Navigator.pop(ctx, (title, penCtrl.text.trim(), action));
                 },
                 style: FilledButton.styleFrom(
-                  minimumSize: const Size(72, 38),
+                  minimumSize: const Size(72, 44),
                   padding: const EdgeInsets.symmetric(horizontal: 18),
                 ),
                 child: const Text('保存'),
@@ -584,7 +584,7 @@ Future<String?> choiceDialog(
             TextButton(
               onPressed: () => Navigator.pop(ctx),
               style: TextButton.styleFrom(
-                minimumSize: const Size(72, 38),
+                minimumSize: const Size(72, 44),
                 padding: const EdgeInsets.symmetric(horizontal: 18),
               ),
               child: const Text('取消'),
@@ -951,6 +951,10 @@ class _CompareBodyState extends State<_CompareBody> {
             const SizedBox(width: 12),
             FilledButton(
               onPressed: () => Navigator.pop(context),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(72, 44),
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+              ),
               child: const Text('关闭'),
             ),
           ]),
@@ -1083,7 +1087,7 @@ Future<(int, int)?> bookGoalDialog(
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             style: TextButton.styleFrom(
-              minimumSize: const Size(64, 38),
+              minimumSize: const Size(64, 44),
               padding: const EdgeInsets.symmetric(horizontal: 16),
             ),
             child: const Text('取消'),
@@ -1095,7 +1099,7 @@ Future<(int, int)?> bookGoalDialog(
                   int.tryParse(chGoalCtrl.text.trim()) ?? 0),
             ),
             style: FilledButton.styleFrom(
-              minimumSize: const Size(72, 38),
+              minimumSize: const Size(72, 44),
               padding: const EdgeInsets.symmetric(horizontal: 18),
             ),
             child: const Text('保存'),
@@ -1186,7 +1190,7 @@ Future<(int?,)?> chapterGoalDialog(
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             style: TextButton.styleFrom(
-              minimumSize: const Size(64, 38),
+              minimumSize: const Size(64, 44),
               padding: const EdgeInsets.symmetric(horizontal: 16),
             ),
             child: const Text('取消'),
@@ -1198,7 +1202,7 @@ Future<(int?,)?> chapterGoalDialog(
               Navigator.pop(ctx, (v == defaultGoal ? null : v,));
             },
             style: FilledButton.styleFrom(
-              minimumSize: const Size(72, 38),
+              minimumSize: const Size(72, 44),
               padding: const EdgeInsets.symmetric(horizontal: 18),
             ),
             child: const Text('保存'),

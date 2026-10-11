@@ -3,13 +3,14 @@ import 'package:flutter/material.dart';
 import '../../core/utils/txt_importer.dart';
 import 'dialogs.dart' show DraggableDialog, dialogFieldDecoration;
 
-/// 导入预览弹窗：展示切分出的卷/章结构，确认后返回书名（取消 / 关闭返回 null）。
-Future<String?> importPreviewDialog(
+/// 导入预览弹窗：展示切分出的卷/章结构，确认后返回书名与作者
+/// （取消 / 关闭返回 null）。
+Future<({String title, String author})?> importPreviewDialog(
   BuildContext context, {
   required String initialTitle,
   required ImportPreview preview,
 }) {
-  return showDialog<String>(
+  return showDialog<({String title, String author})>(
     context: context,
     barrierDismissible: false,
     builder: (ctx) => DraggableDialog(
@@ -31,6 +32,8 @@ class _ImportPreviewBody extends StatefulWidget {
 class _ImportPreviewBodyState extends State<_ImportPreviewBody> {
   late final TextEditingController _titleCtrl =
       TextEditingController(text: widget.initialTitle);
+  late final TextEditingController _authorCtrl =
+      TextEditingController(text: widget.preview.author);
   final ScrollController _scrollCtrl = ScrollController();
 
   /// 默认全部展开，仅记录被收起的卷下标。
@@ -39,6 +42,7 @@ class _ImportPreviewBodyState extends State<_ImportPreviewBody> {
   @override
   void dispose() {
     _titleCtrl.dispose();
+    _authorCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
   }
@@ -104,6 +108,14 @@ class _ImportPreviewBodyState extends State<_ImportPreviewBody> {
                     Theme.of(context).colorScheme, label: '书名'),
               ),
               const SizedBox(height: 12),
+              TextField(
+                controller: _authorCtrl,
+                style: TextStyle(
+                    fontSize: 13, color: Theme.of(context).colorScheme.onSurface),
+                decoration: dialogFieldDecoration(
+                    Theme.of(context).colorScheme, label: '作者'),
+              ),
+              const SizedBox(height: 12),
               Expanded(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
@@ -131,13 +143,27 @@ class _ImportPreviewBodyState extends State<_ImportPreviewBody> {
                 children: [
                   TextButton(
                     onPressed: () => Navigator.pop(context),
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(64, 44),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                    ),
                     child: const Text('取消'),
                   ),
                   const SizedBox(width: 10),
                   FilledButton(
                     onPressed: _titleCtrl.text.trim().isEmpty
                         ? null
-                        : () => Navigator.pop(context, _titleCtrl.text.trim()),
+                        : () => Navigator.pop(
+                              context,
+                              (
+                                title: _titleCtrl.text.trim(),
+                                author: _authorCtrl.text.trim(),
+                              ),
+                            ),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(72, 44),
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                    ),
                     child: const Text('确认导入'),
                   ),
                 ],

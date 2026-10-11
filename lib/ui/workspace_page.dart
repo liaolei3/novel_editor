@@ -11,7 +11,6 @@ import 'global_search_dialog.dart';
 import 'panels/ai_panel.dart';
 import 'panels/character_panel.dart';
 import 'panels/foreshadow_panel.dart';
-import 'panels/notes_panel.dart';
 import 'panels/outline_panel.dart';
 import 'panels/preview_panel.dart';
 import 'panels/sensitive_panel.dart';
@@ -22,6 +21,7 @@ import 'common/dialogs.dart';
 import 'widgets/app_bar_nav_actions.dart';
 import 'widgets/book_tree.dart';
 import 'widgets/editor_area.dart';
+import 'widgets/recent_book_tabs.dart';
 import 'widgets/toast.dart';
 import 'widgets/window_controls.dart';
 
@@ -44,6 +44,9 @@ class _WorkspacePageState extends State<WorkspacePage> {
   String? _openCharacterId;
   String? _openForeshadowId;
 
+  /// 当前书籍：顶栏标签可切换，切换后整体重建。
+  late Book _book;
+
   /// 缓存 AppState：dispose 期间禁止通过 context 查找祖先节点。
   late final AppState _appState;
   late final SettingsController _settings;
@@ -51,14 +54,40 @@ class _WorkspacePageState extends State<WorkspacePage> {
   @override
   void initState() {
     super.initState();
+    _book = widget.book;
     _appState = context.read<AppState>();
     _settings = context.read<SettingsController>();
-    _panelIndex = _settings.workspacePanelIndex.clamp(0, _panels.length - 1);
-    _panelOpen = _panelIndex < _panels.length && _settings.workspacePanelOpen;
+    final (idx, open) = _loadPanelState(_book);
+    _panelIndex = idx;
+    _panelOpen = open;
     _leftWidth = _settings.workspaceLeftWidth;
     _rightWidth = _settings.workspaceRightWidth;
     _appState.openCharacterNonce.addListener(_onOpenCharacter);
     _appState.openForeshadowNonce.addListener(_onOpenForeshadow);
+  }
+
+  /// 读取某书的右侧面板状态：优先内存快照，首次回落 config.json，
+  /// 再回落全局设置（历史数据兼容）。
+  (int, bool) _loadPanelState(Book book) {
+    final snap = _appState.uiSnapshot(book.id);
+    if (!snap.panelInitialized) {
+      final saved = _settings.bookUiOf(book.id);
+      snap.panelIndex = saved.panelIndex ?? _settings.workspacePanelIndex;
+      snap.panelOpen = saved.panelOpen ?? _settings.workspacePanelOpen;
+      snap.panelInitialized = true;
+    }
+    return (
+      snap.panelIndex.clamp(0, _panels.length - 1),
+      snap.panelOpen && snap.panelIndex < _panels.length,
+    );
+  }
+
+  /// 面板状态变更后同步到内存快照（写盘延后到切书/退出）。
+  void _syncPanelState() {
+    final snap = _appState.uiSnapshot(_book.id);
+    snap.panelIndex = _panelIndex;
+    snap.panelOpen = _panelOpen;
+    snap.panelInitialized = true;
   }
 
   @override
@@ -69,9 +98,49 @@ class _WorkspacePageState extends State<WorkspacePage> {
     super.dispose();
   }
 
+  /// 顶栏标签切换书籍：切书后整体重建，并还原新书的右侧面板状态。
+  Future<void> _switchBook(Book book) async {
+    if (book.id == _book.id) return;
+    await _appState.openBook(book);
+    if (!mounted) return;
+    final (idx, open) = _loadPanelState(book);
+    setState(() {
+      _book = book;
+      _openCharacterId = null;
+      _openForeshadowId = null;
+      _panelIndex = idx;
+      _panelOpen = open;
+    });
+  }
+
+  /// 关闭标签：仅从标签栏移除；关的是当前书时优先跳到相邻标签的书
+  /// （右侧优先，其次左侧/最近一本），无标签可跳才退回主页。
+  Future<void> _closeTab(Book book) async {
+    final pos = _settings.recentBookIds.indexOf(book.id);
+    await _settings.removeRecentBook(book.id);
+    if (book.id != _book.id || !mounted) return;
+    final remaining = _settings.recentBookIds;
+    Book? next;
+    if (remaining.isNotEmpty) {
+      final nextId =
+          pos >= 0 && pos < remaining.length ? remaining[pos] : remaining.last;
+      for (final b in _appState.bookList) {
+        if (b.id == nextId) {
+          next = b;
+          break;
+        }
+      }
+    }
+    if (next == null) {
+      Navigator.of(context).maybePop();
+      return;
+    }
+    await _switchBook(next);
+  }
+
   /// 打开写作目标对话框：设置整书目标与全书单章默认目标。
   Future<void> _openGoals() async {
-    final book = _appState.currentBook ?? widget.book;
+    final book = _appState.currentBook ?? _book;
     final result = await bookGoalDialog(
       context,
       goal: book.goal,
@@ -94,8 +163,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
       _panelOpen = true;
       _immersive = false;
       _mobileTab = 2;
-      _settings.setWorkspacePanelIndex(_panelIndex);
-      _settings.setWorkspacePanelOpen(_panelOpen);
+      _syncPanelState();
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) setState(() => _openCharacterId = null);
@@ -114,8 +182,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
       _panelOpen = true;
       _immersive = false;
       _mobileTab = 2;
-      _settings.setWorkspacePanelIndex(_panelIndex);
-      _settings.setWorkspacePanelOpen(_panelOpen);
+      _syncPanelState();
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) setState(() => _openForeshadowId = null);
@@ -128,7 +195,6 @@ class _WorkspacePageState extends State<WorkspacePage> {
     '历史快照',
     '角色',
     '伏笔',
-    '素材库',
     '敏感词',
     '回收站',
     '预览',
@@ -139,7 +205,6 @@ class _WorkspacePageState extends State<WorkspacePage> {
     Icons.history,
     Icons.people_outlined,
     Icons.flag_outlined,
-    Icons.sticky_note_2_outlined,
     Icons.shield_outlined,
     Icons.delete_outline,
     Icons.visibility_outlined,
@@ -166,8 +231,8 @@ class _WorkspacePageState extends State<WorkspacePage> {
     final state = context.watch<AppState>();
     final wide = MediaQuery.of(context).size.width >= 1000;
     if (wide && !_immersive) {
-      _bookTreeWidget = RepaintBoundary(child: BookTree(book: widget.book));
-      _editorWidget = RepaintBoundary(child: EditorArea(book: widget.book));
+      _bookTreeWidget = RepaintBoundary(child: BookTree(book: _book));
+      _editorWidget = RepaintBoundary(child: EditorArea(book: _book));
       _panelWidget = RepaintBoundary(child: _panelArea());
     }
     final body = wide ? _wideBody(state) : _narrowBody(state);
@@ -185,10 +250,14 @@ class _WorkspacePageState extends State<WorkspacePage> {
             : AppTopBar(
                 leading: IconButton(
                   tooltip: '返回主页',
-                  icon: const Icon(Icons.home_outlined, size: 26),
+                  icon: const Icon(Icons.home_outlined, size: 22),
                   onPressed: () => Navigator.of(context).maybePop(),
                 ),
-                title: Text(widget.book.title),
+                title: RecentBookTabs(
+                  selectedBookId: _book.id,
+                  onSelect: _switchBook,
+                  onClose: _closeTab,
+                ),
                 actions: [
                   IconButton(
                     tooltip: '写作目标',
@@ -211,7 +280,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
                   const AppBarNavActions(),
                 ],
               ),
-        body: _immersive && !wide ? EditorArea(book: widget.book) : body,
+        body: _immersive && !wide ? EditorArea(book: _book) : body,
         bottomNavigationBar: wide
             ? null
             : NavigationBar(
@@ -243,7 +312,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
     if (_immersive) {
       return Stack(
         children: [
-          EditorArea(book: widget.book),
+          EditorArea(book: _book),
           Positioned(
             right: 16,
             top: 16,
@@ -324,9 +393,9 @@ class _WorkspacePageState extends State<WorkspacePage> {
   Widget _narrowBody(AppState state) {
     switch (_immersive ? 1 : _mobileTab) {
       case 0:
-        return BookTree(book: widget.book);
+        return BookTree(book: _book);
       case 1:
-        return EditorArea(book: widget.book);
+        return EditorArea(book: _book);
       default:
         return _panelArea(forceOpen: true);
     }
@@ -376,8 +445,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
                       _panelIndex = i;
                       _panelOpen = true;
                     }
-                    _settings.setWorkspacePanelIndex(_panelIndex);
-                    _settings.setWorkspacePanelOpen(_panelOpen);
+                    _syncPanelState();
                   }),
                 ),
             ],
@@ -388,7 +456,7 @@ class _WorkspacePageState extends State<WorkspacePage> {
   }
 
   Widget _panelBody() {
-    final book = widget.book;
+    final book = _book;
     switch (_panelIndex) {
       case 0:
         return OutlinePanel(book: book);
@@ -401,10 +469,8 @@ class _WorkspacePageState extends State<WorkspacePage> {
       case 4:
         return ForeshadowPanel(book: book, openForeshadowId: _openForeshadowId);
       case 5:
-        return NotesPanel(book: book);
-      case 6:
         return const SensitivePanel();
-      case 7:
+      case 6:
         return const RecycleView(scope: RecycleScope.workspace);
       default:
         return const PreviewPanel();

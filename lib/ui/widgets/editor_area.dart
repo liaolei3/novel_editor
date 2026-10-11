@@ -29,6 +29,7 @@ import '../common/file_io.dart';
 import '../common/foreshadow_dialogs.dart';
 import 'busy_overlay.dart';
 import 'character_tip.dart';
+import 'fireworks.dart';
 import 'foreshadow_tip.dart';
 import 'highlight_swatches.dart';
 import 'reading_styles.dart';
@@ -61,6 +62,9 @@ class _EditorAreaState extends State<EditorArea> {
   String _searchQuery = '';
 
   String? _lastChapterId;
+
+  /// 上一次见到的当前书 id：跨书但章 id 相同（如中间切到空书）时也要还原滚动。
+  String? _lastBookId;
 
   /// 打字机模式（光标固定打字）：需要 RenderEditor 换算光标在正文中的
   /// 垂直位置，因此把 GlobalKey 交给 QuillEditorConfig.editorKey。
@@ -96,14 +100,14 @@ class _EditorAreaState extends State<EditorArea> {
   late final AppState _appState;
 
   /// 目标达成播报订阅。
-  StreamSubscription<String>? _goalToastSub;
+  StreamSubscription<List<String>>? _goalFireworksSub;
 
   @override
   void initState() {
     super.initState();
     _appState = context.read<AppState>();
-    _goalToastSub = _appState.goalToasts.listen((msg) {
-      if (mounted) showToast(context, msg);
+    _goalFireworksSub = _appState.goalToasts.listen((msgs) {
+      if (mounted) showFireworks(context, msgs);
     });
     _refreshCharacterDict();
     _appState.characterDictVersion.addListener(_refreshCharacterDict);
@@ -113,6 +117,14 @@ class _EditorAreaState extends State<EditorArea> {
     _appState.editorController.addListener(_syncDocSubscription);
     _syncDocSubscription();
     _scrollController.typewriterTarget = _typewriterCenterOffset;
+    // 滚动偏移实时同步到每书内存快照（写盘延后到切书/退出）。
+    _scrollController.addListener(_onEditorScroll);
+  }
+
+  void _onEditorScroll() {
+    final bookId = _appState.currentBook?.id;
+    if (bookId == null) return;
+    _appState.uiSnapshot(bookId).scrollOffset = _scrollController.offset;
   }
 
   /// 章节切换会替换 QuillController.document，需跟随重新订阅内容变化流。
@@ -282,7 +294,7 @@ class _EditorAreaState extends State<EditorArea> {
     _appState.segmentJumpNonce.removeListener(_onSegmentJump);
     _appState.editorController.removeListener(_syncDocSubscription);
     _docSubscription?.cancel();
-    _goalToastSub?.cancel();
+    _goalFireworksSub?.cancel();
     _focusNode.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -361,7 +373,7 @@ class _EditorAreaState extends State<EditorArea> {
     return KeyEventResult.handled;
   }
 
-  /// 自定义 textSpanBuilder：角色名高亮 + 搜索背景高亮复合。
+  /// 自定义 textSpanBuilder：段首缩进占位 + 角色名高亮 + 搜索背景高亮复合。
   InlineSpan _textSpanBuilder(
     BuildContext context,
     Node node,
@@ -370,32 +382,8 @@ class _EditorAreaState extends State<EditorArea> {
     TextStyle? style,
     GestureRecognizer? recognizer,
   ) {
-    // TextAlign.justify 下引擎会裁掉行首空白（段首全角空格缩进会消失），
-    // 渲染层把行首 \u3000 替换为等宽 WidgetSpan 占位：每个占位符对应
-    // 恰好一个字符位，文档文本与光标/选区映射均不受影响。
-    var leading = 0;
-    if (nodeOffset == 0 && node.isFirst) {
-      while (leading < text.length && text.codeUnitAt(leading) == 0x3000) {
-        leading++;
-      }
-    }
-    if (leading > 0) {
-      final fs =
-          style?.fontSize ?? DefaultTextStyle.of(context).style.fontSize ?? 16;
-      return TextSpan(
-        style: style,
-        children: [
-          for (var i = 0; i < leading; i++)
-            WidgetSpan(
-              alignment: PlaceholderAlignment.bottom,
-              child: SizedBox(width: fs),
-            ),
-          _richSpan(context, node, nodeOffset, text.substring(leading), style,
-              recognizer),
-        ],
-      );
-    }
-    return _richSpan(context, node, nodeOffset, text, style, recognizer);
+    return leadingIndentSpan(context, node, nodeOffset, text, style,
+        (rest) => _richSpan(context, node, nodeOffset, rest, style, recognizer));
   }
 
   /// 对话高亮：台词引号内的文字套用高亮底色。
@@ -628,12 +616,15 @@ class _EditorAreaState extends State<EditorArea> {
       return const Center(child: Text('从左侧目录选择或新建一个章节开始写作'));
     }
 
-    // 切换章节时将编辑器滚动位置复位到顶部（State 跨章节复用，滚动位置会残留）
-    if (chapter.id != _lastChapterId) {
+    // 切章/切书时还原滚动位置：切书走 AppState 的每书快照，同书切章复位顶部
+    // （State 跨章节复用，滚动位置会残留）。
+    if (chapter.id != _lastChapterId || state.currentBook?.id != _lastBookId) {
       _lastChapterId = chapter.id;
+      _lastBookId = state.currentBook?.id;
+      final restore = state.consumePendingRestoreScroll();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scrollController.hasClients) {
-          _scrollController.jumpTo(0);
+          _scrollController.jumpTo(restore ?? 0);
         }
       });
     }
@@ -694,6 +685,10 @@ class _EditorAreaState extends State<EditorArea> {
                     if (event.buttons == kSecondaryButton) {
                       _secondaryTapPosition = event.position;
                       _secondaryTapAt = DateTime.now();
+                    } else if (!_focusNode.hasFocus) {
+                      // flutter_quill 只在单击时请求焦点，拖选不请求；
+                      // 这里按下即获焦，否则切章后首次拖选 Ctrl+C 复制失败。
+                      _focusNode.requestFocus();
                     }
                   },
                   onPointerUp: (_) => _scrollController.suppressAnimateTo = false,
@@ -1284,11 +1279,19 @@ class _EditorAreaState extends State<EditorArea> {
                         const Spacer(),
                         TextButton(
                           onPressed: () => Navigator.pop(ctx, false),
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(64, 44),
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                          ),
                           child: const Text('取消'),
                         ),
                         const SizedBox(width: 8),
                         FilledButton(
                           onPressed: () => Navigator.pop(ctx, true),
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size(72, 44),
+                            padding: const EdgeInsets.symmetric(horizontal: 18),
+                          ),
                           child: const Text('应用排版'),
                         ),
                       ]),
@@ -1798,46 +1801,59 @@ const double _endTolerance = 0.5;
 
 /// 正文右下角的置顶 / 置底浮动按钮组（纵向叠放、锚定右下角）。
 ///
-/// 显隐由当前滚动量决定：无法滚动时整组不出现；停在顶端只留「回到底部」，
-/// 停在底端只留「回到顶部」，中间区域两个都在。因锚点在右下角，收起其中一个
-/// 时另一个原地不动。
-class _ScrollJumpButtons extends StatelessWidget {
+/// 显隐由滚动方向决定：向下滚动且未到底端显示「回到底部」，向上滚动且未到
+/// 顶端显示「回到顶部」，二者不会同时出现；停在端头或无法滚动时整组不出现。
+/// 因锚点在右下角，切换时另一个原地不动。
+class _ScrollJumpButtons extends StatefulWidget {
   const _ScrollJumpButtons({required this.controller});
 
   final _EditorScrollController controller;
 
   @override
+  State<_ScrollJumpButtons> createState() => _ScrollJumpButtonsState();
+}
+
+class _ScrollJumpButtonsState extends State<_ScrollJumpButtons> {
+  /// null 表示尚未发生滚动（如刚切章），此时不显示任何按钮。
+  bool? _scrollingDown;
+  double? _lastPixels;
+
+  @override
   Widget build(BuildContext context) {
+    final controller = widget.controller;
     return AnimatedBuilder(
       // 滚动偏移变化由控制器通知；内容撑长、视口缩放不改变偏移，
       // 只会触发 metricsTick，两条信号都要接。
       animation: Listenable.merge([controller, controller.metricsTick]),
       builder: (context, _) {
         // 切章重建正文的窗口期内位置可能尚未挂载，此时不画。
-        if (!controller.hasClients) return const SizedBox.shrink();
+        if (!controller.hasClients) {
+          _lastPixels = null;
+          _scrollingDown = null;
+          return const SizedBox.shrink();
+        }
         final position = controller.position;
         final max = position.maxScrollExtent;
-        if (max <= 0) return const SizedBox.shrink();
-        final canUp = position.pixels > position.minScrollExtent + _endTolerance;
-        final canDown = position.pixels < max - _endTolerance;
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            if (canUp)
-              _JumpButton(
-                icon: Icons.vertical_align_top,
-                tooltip: '回到顶部',
-                onTap: () => _jumpToEdge(controller, toEnd: false),
-              ),
-            if (canUp && canDown) const SizedBox(height: 8),
-            if (canDown)
-              _JumpButton(
-                icon: Icons.vertical_align_bottom,
-                tooltip: '回到底部',
-                onTap: () => _jumpToEdge(controller, toEnd: true),
-              ),
-          ],
+        if (max <= 0) {
+          _lastPixels = null;
+          _scrollingDown = null;
+          return const SizedBox.shrink();
+        }
+        final pixels = position.pixels;
+        final last = _lastPixels;
+        if (last != null && pixels != last) {
+          _scrollingDown = pixels > last;
+        }
+        _lastPixels = pixels;
+        final canUp = pixels > position.minScrollExtent + _endTolerance;
+        final canDown = pixels < max - _endTolerance;
+        final showDown = (_scrollingDown ?? false) && canDown;
+        final showUp = !(_scrollingDown ?? true) && canUp;
+        if (!showDown && !showUp) return const SizedBox.shrink();
+        return _JumpButton(
+          icon: showDown ? Icons.arrow_downward : Icons.arrow_upward,
+          tooltip: showDown ? '回到底部' : '回到顶部',
+          onTap: () => _jumpToEdge(controller, toEnd: showDown),
         );
       },
     );
@@ -1910,7 +1926,7 @@ class _JumpButtonState extends State<_JumpButton> {
             ),
             child: Icon(
               widget.icon,
-              size: 18,
+              size: 20,
               color: _hovering ? scheme.primary : scheme.onSurfaceVariant,
             ),
           ),

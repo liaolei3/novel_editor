@@ -1,6 +1,40 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 
+/// TextAlign.justify 下引擎会裁掉行首空白（段首全角空格缩进会消失），
+/// 渲染层把行首 \u3000 替换为等宽 WidgetSpan 占位：每个占位符对应
+/// 恰好一个字符位，文档文本与光标/选区映射均不受影响。
+/// [buildRest] 负责去掉缩进后剩余文本的实际渲染。
+InlineSpan leadingIndentSpan(
+  BuildContext context,
+  Node node,
+  int nodeOffset,
+  String text,
+  TextStyle? style,
+  InlineSpan Function(String text) buildRest,
+) {
+  var leading = 0;
+  if (nodeOffset == 0 && node.isFirst) {
+    while (leading < text.length && text.codeUnitAt(leading) == 0x3000) {
+      leading++;
+    }
+  }
+  if (leading == 0) return buildRest(text);
+  final fs =
+      style?.fontSize ?? DefaultTextStyle.of(context).style.fontSize ?? 16;
+  return TextSpan(
+    style: style,
+    children: [
+      for (var i = 0; i < leading; i++)
+        WidgetSpan(
+          alignment: PlaceholderAlignment.bottom,
+          child: SizedBox(width: fs),
+        ),
+      buildRest(text.substring(leading)),
+    ],
+  );
+}
+
 /// 正文块默认样式：把字号/行距/段间距映射到 flutter_quill 的各正文块。
 /// 编辑器与手机预览共用同一份映射，避免两处口径漂移（预览只是参数不同）。
 DefaultStyles buildReadingStyles(

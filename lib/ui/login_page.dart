@@ -84,6 +84,10 @@ class _LoginDialogState extends State<LoginDialog> {
           width: double.infinity,
           child: FilledButton(
             onPressed: _submit,
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(72, 44),
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+            ),
             child: Text(_register ? '注册并登录' : '登录'),
           ),
         ),

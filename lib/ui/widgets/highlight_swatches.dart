@@ -2,15 +2,15 @@ import 'package:flutter/material.dart';
 
 /// 文字/对话高亮色板（亮色主题）：文档统一存亮色规范值。
 const List<Color> highlightLightSwatches = [
-  Color(0xFFFFEB3B), // 亮黄
-  Color(0xFFFFB74D), // 橙
-  Color(0xFFE57373), // 红
-  Color(0xFFF48FB1), // 粉
-  Color(0xFFBA68C8), // 紫
-  Color(0xFF64B5F6), // 蓝
-  Color(0xFF4DB6AC), // 青
-  Color(0xFF81C784), // 绿
-  Color(0xFFAED581), // 黄绿
+  Color(0xFFFFF59D), // 亮黄
+  Color(0xFFFFCC80), // 橙
+  Color(0xFFEF9A9A), // 红
+  Color(0xFFF8BBD0), // 粉
+  Color(0xFFCE93D8), // 紫
+  Color(0xFF90CAF9), // 蓝
+  Color(0xFF80CBC4), // 青
+  Color(0xFFA5D6A7), // 绿
+  Color(0xFFC5E1A5), // 黄绿
 ];
 
 /// 高亮色板（暗色主题）：同色相的深色变体，浅色文字下均可读。

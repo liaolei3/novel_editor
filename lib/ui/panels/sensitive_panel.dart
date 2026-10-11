@@ -30,6 +30,9 @@ class _SensitivePanelState extends State<SensitivePanel> {
   List<SensitiveMatch> _chapterMatches = const [];
   List<SensitiveChapterScan> _bookScans = const [];
 
+  /// 全书结果中已收起的卷 id（默认全部展开）。
+  final Set<String> _collapsedVols = {};
+
   /// 检测时的当前章正文长度，用于判断结果是否已过期。
   int _scannedLen = -1;
   bool _stale = false;
@@ -266,9 +269,17 @@ class _SensitivePanelState extends State<SensitivePanel> {
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(64, 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                ),
                 child: const Text('取消')),
             FilledButton(
                 onPressed: () => Navigator.pop(ctx, true),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(72, 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                ),
                 child: Text(okLabel)),
           ],
         ),
@@ -282,12 +293,20 @@ class _SensitivePanelState extends State<SensitivePanel> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Column(children: [
+      Container(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        child: Row(children: [
+          Text('敏感词', style: TextStyle(
+            fontSize: 15, fontWeight: FontWeight.w600, color: scheme.onSurface,
+          )),
+        ]),
+      ),
       SizedBox(
         height: 40,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SizedBox(width: 4),
+            const SizedBox(width: 2),
             UnderlineTab(
               label: '检测',
               selected: _view == _View.detect,
@@ -320,13 +339,15 @@ class _SensitivePanelState extends State<SensitivePanel> {
             FilledButton.icon(
               onPressed: chapter == null ? null : _detectChapter,
               icon: const Icon(Icons.search, size: 16),
-              label: const Text('检测本章'),
+              label: const Text('检测本章',
+                  style: TextStyle(fontSize: 13)),
             ),
             const SizedBox(width: 8),
             OutlinedButton.icon(
               onPressed: chapter == null ? null : _detectBook,
               icon: const Icon(Icons.menu_book_outlined, size: 16),
-              label: const Text('检测全书'),
+              label: const Text('检测全书',
+                  style: TextStyle(fontSize: 13)),
             ),
           ]),
           const SizedBox(height: 8),
@@ -374,13 +395,13 @@ class _SensitivePanelState extends State<SensitivePanel> {
           FilledButton.icon(
             onPressed: () => _replaceChapter(chapter),
             icon: const Icon(Icons.auto_fix_high, size: 16),
-            label: const Text('替换本章'),
+            label: const Text('替换本章', style: TextStyle(fontSize: 13)),
           ),
         if (canReplaceBook)
           FilledButton.icon(
             onPressed: _replaceBook,
             icon: const Icon(Icons.auto_fix_high, size: 16),
-            label: const Text('全书替换'),
+            label: const Text('全书替换', style: TextStyle(fontSize: 13)),
           ),
         const Spacer(),
         Text('已启用 $_enabledCount 词',
@@ -428,14 +449,46 @@ class _SensitivePanelState extends State<SensitivePanel> {
     for (final vid in orderedIds) {
       final items = groups[vid];
       if (items == null || items.isEmpty) continue;
-      children.add(Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-        child: Text(volName[vid] ?? '未命名卷',
-            style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: scheme.onSurface)),
+      final collapsed = _collapsedVols.contains(vid);
+      children.add(InkWell(
+        mouseCursor: SystemMouseCursors.click,
+        onTap: () => setState(() {
+          if (collapsed) {
+            _collapsedVols.remove(vid);
+          } else {
+            _collapsedVols.add(vid);
+          }
+        }),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 12, 12, 6),
+          child: Row(children: [
+            Icon(
+              collapsed
+                  ? Icons.keyboard_arrow_right
+                  : Icons.keyboard_arrow_down,
+              size: 15,
+              color: scheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 2),
+            Icon(Icons.menu_book, size: 13, color: scheme.onSurfaceVariant),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(volName[vid] ?? '未命名卷',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: scheme.onSurface)),
+            ),
+            Text('${items.length} 章',
+                style: TextStyle(
+                    fontSize: 11,
+                    color: scheme.onSurfaceVariant.withValues(alpha: 0.7))),
+          ]),
+        ),
       ));
+      if (collapsed) continue;
       for (final scan in items) {
         children.add(_ChapterResultCard(
           scan: scan,
@@ -455,7 +508,7 @@ class _SensitivePanelState extends State<SensitivePanel> {
           FilledButton.icon(
             onPressed: _addWord,
             icon: const Icon(Icons.add, size: 16),
-            label: const Text('新增'),
+            label: const Text('新增', style: TextStyle(fontSize: 13)),
           ),
           const SizedBox(width: 8),
           OutlinedButton(
@@ -466,16 +519,16 @@ class _SensitivePanelState extends State<SensitivePanel> {
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               const Icon(Icons.upload_file, size: 16),
               const SizedBox(width: 5),
-              const Text('导入文件'),
+              const Text('导入文件', style: TextStyle(fontSize: 13)),
               const SizedBox(width: 4),
               _hintIcon(
-                  '导入格式：每行一个词，或「词|建议词」；分隔符支持 | 、逗号、Tab；# 开头为注释行。'),
+                  '导入格式：每行一个词，或「词|建议词」；分隔符支持 | 、逗号、Tab。'),
             ]),
           ),
           const Spacer(),
           TextButton(
             onPressed: _words.isEmpty ? null : _clearWords,
-            child: const Text('清空'),
+            child: const Text('清空', style: TextStyle(fontSize: 13)),
           ),
         ]),
       ),
@@ -609,7 +662,7 @@ class _ChapterResultCard extends StatelessWidget {
             const SizedBox(width: 4),
             TextButton(
               onPressed: onReplace,
-              child: const Text('替换本章', style: TextStyle(fontSize: 12)),
+              child: const Text('替换本章', style: TextStyle(fontSize: 13)),
             ),
           ]),
           for (final m in scan.matches) ...[

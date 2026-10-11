@@ -77,11 +77,17 @@ Future<bool> confirmDangerous(
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
+            style: TextButton.styleFrom(
+              minimumSize: const Size(64, 44),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+            ),
             child: const Text('取消'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(ctx).colorScheme.error,
+              minimumSize: const Size(72, 44),
+              padding: const EdgeInsets.symmetric(horizontal: 18),
             ),
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(confirmLabel),

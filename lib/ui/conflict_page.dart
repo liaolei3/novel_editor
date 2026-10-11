@@ -56,14 +56,26 @@ class _ConflictDialogState extends State<ConflictDialog> {
             Wrap(spacing: 12, runSpacing: 8, alignment: WrapAlignment.end, children: [
               OutlinedButton(
                 onPressed: () => _resolve(ConflictChoice.keepLocal),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(64, 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                ),
                 child: const Text('保留我的'),
               ),
               OutlinedButton(
                 onPressed: () => _resolve(ConflictChoice.useCloud),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(64, 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                ),
                 child: const Text('使用云端'),
               ),
               FilledButton(
                 onPressed: () => _resolve(ConflictChoice.keepBoth),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(72, 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                ),
                 child: const Text('两者都保留（云端生成副本）'),
               ),
             ]),

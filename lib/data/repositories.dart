@@ -45,8 +45,13 @@ class BookRepository {
   Future<void> updateCover(String id, String? coverPath) =>
       _update(id, {'cover_path': coverPath ?? ''});
 
-  Future<void> saveLocation(String id, String? chapterId, int? cursor) =>
-      _update(id, {'last_chapter_id': chapterId, 'last_cursor': cursor});
+  Future<void> saveLocation(String id, String? chapterId, int? cursor,
+          {int scrollOffset = 0}) =>
+      _update(id, {
+        'last_chapter_id': chapterId,
+        'last_cursor': cursor,
+        'last_scroll_offset': scrollOffset,
+      });
 
   /// 更新整书目标与全书单章默认目标。
   Future<void> updateGoals(String id,
@@ -316,49 +321,6 @@ class SnapshotRepository {
 
   static String _typeLabel(SnapshotType type) =>
       switch (type) { SnapshotType.manual => '手动', SnapshotType.auto => '自动', SnapshotType.rollback => '回滚前' };
-}
-
-class NoteRepository {
-  Future<List<Note>> listByBook(String bookId, {NoteType? type}) async {
-    final db = await Db.instance();
-    final rows = await db.query('notes',
-        where: type == null ? 'book_id = ?' : 'book_id = ? AND type = ?',
-        whereArgs: type == null ? [bookId] : [bookId, type.name],
-        orderBy: 'updated_at DESC');
-    return rows.map(Note.fromMap).toList();
-  }
-
-  Future<Note> create({
-    required String bookId,
-    required NoteType type,
-    required String title,
-    String content = '',
-  }) async {
-    final now = DateTime.now();
-    final note = Note(
-        id: newId(), bookId: bookId, type: type, title: title,
-        content: content, createdAt: now, updatedAt: now);
-    final db = await Db.instance();
-    await db.insert('notes', note.toMap());
-    return note;
-  }
-
-  Future<void> update(Note note) async {
-    note.updatedAt = DateTime.now();
-    final db = await Db.instance();
-    await db.update('notes', note.toMap(),
-        where: 'id = ?', whereArgs: [note.id]);
-  }
-
-  Future<void> hardDelete(String id) async {
-    final db = await Db.instance();
-    await db.delete('notes', where: 'id = ?', whereArgs: [id]);
-  }
-
-  Future<void> hardDeleteByBook(String bookId) async {
-    final db = await Db.instance();
-    await db.delete('notes', where: 'book_id = ?', whereArgs: [bookId]);
-  }
 }
 
 class CharacterRepository {

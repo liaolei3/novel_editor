@@ -21,6 +21,7 @@ void main() {
         deleted INTEGER NOT NULL DEFAULT 0,
         last_chapter_id TEXT,
         last_cursor INTEGER,
+        last_scroll_offset INTEGER NOT NULL DEFAULT 0,
         cover_path TEXT NOT NULL DEFAULT '',
         goal INTEGER NOT NULL DEFAULT 0,
         chapter_goal INTEGER NOT NULL DEFAULT 0,

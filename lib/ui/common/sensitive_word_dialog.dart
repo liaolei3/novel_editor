@@ -90,7 +90,7 @@ class _SensitiveWordDialogState extends State<_SensitiveWordDialog> {
           TextButton(
             onPressed: () => Navigator.pop(context),
             style: TextButton.styleFrom(
-              minimumSize: const Size(64, 38),
+              minimumSize: const Size(64, 44),
               padding: const EdgeInsets.symmetric(horizontal: 16),
             ),
             child: const Text('取消'),
@@ -98,7 +98,7 @@ class _SensitiveWordDialogState extends State<_SensitiveWordDialog> {
           FilledButton.tonal(
             onPressed: _word.text.trim().isEmpty ? null : _submit,
             style: FilledButton.styleFrom(
-              minimumSize: const Size(72, 38),
+              minimumSize: const Size(72, 44),
               padding: const EdgeInsets.symmetric(horizontal: 18),
             ),
             child: const Text('保存'),

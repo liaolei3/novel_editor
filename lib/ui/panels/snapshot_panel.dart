@@ -183,10 +183,18 @@ class _SnapshotPanelState extends State<SnapshotPanel> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
+              style: TextButton.styleFrom(
+                minimumSize: const Size(64, 44),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+              ),
               child: const Text('取消'),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(72, 44),
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+              ),
               child: const Text('回滚'),
             ),
           ],

@@ -156,14 +156,79 @@ class SettingsController extends ChangeNotifier {
 
   Future<void> setLastBookId(String v) => _set('lastBookId', v, null);
 
+  static const int _recentBookLimit = 10;
+  static const int _hiddenRecentLimit = 10;
+
+  /// 最近打开的书籍 id（新打开的排最前），用于主页顶栏书籍标签。
+  List<String> get recentBookIds =>
+      _cfg.getStringList('recentBookIds') ?? const [];
+
+  /// 最近关闭标签的书 id（按关闭时间倒序），供「＋」浮层快速恢复。
+  List<String> get hiddenRecentBookIds =>
+      _cfg.getStringList('hiddenRecentBookIds') ?? const [];
+
+  /// 记录一次打开：已在标签栏的书保持原位不跳动；新书追加到末尾，
+  /// 超出上限时淘汰最旧（列表头部）移入隐藏列表。
+  Future<void> touchRecentBook(String id) async {
+    final ids = [...recentBookIds];
+    if (ids.contains(id)) return;
+    final hidden = [...hiddenRecentBookIds]..remove(id);
+    ids.add(id);
+    if (ids.length > _recentBookLimit) {
+      hidden.insertAll(0, ids.sublist(0, ids.length - _recentBookLimit));
+      ids.removeRange(0, ids.length - _recentBookLimit);
+    }
+    if (hidden.length > _hiddenRecentLimit) {
+      hidden.removeRange(_hiddenRecentLimit, hidden.length);
+    }
+    await _cfg.setStringList('recentBookIds', ids);
+    await _cfg.setStringList('hiddenRecentBookIds', hidden);
+  }
+
+  /// 关闭标签：从标签栏移入隐藏列表（可经「＋」浮层恢复）。
+  Future<void> removeRecentBook(String id) async {
+    final ids = [...recentBookIds]..remove(id);
+    await _cfg.setStringList('recentBookIds', ids);
+    final hidden = [...hiddenRecentBookIds]..remove(id);
+    hidden.insert(0, id);
+    if (hidden.length > _hiddenRecentLimit) {
+      hidden.removeRange(_hiddenRecentLimit, hidden.length);
+    }
+    await _cfg.setStringList('hiddenRecentBookIds', hidden);
+    notifyListeners();
+  }
+
   /// 工作区布局：仅落盘，不通知（布局是 WorkspacePage 的本地状态）。
   Future<void> setWorkspaceLeftWidth(double v) => _cfg.setDouble('workspaceLeftWidth', v);
   Future<void> setWorkspaceRightWidth(double v) => _cfg.setDouble('workspaceRightWidth', v);
-  Future<void> setWorkspacePanelIndex(int v) => _cfg.setInt('workspacePanelIndex', v);
-  Future<void> setWorkspacePanelOpen(bool v) => _cfg.setBool('workspacePanelOpen', v);
   Future<void> setOutlineGridView(bool v) => _cfg.setBool('outlineGridView', v);
   Future<void> setCharacterGridView(bool v) => _cfg.setBool('characterGridView', v);
   Future<void> setForeshadowGridView(bool v) => _cfg.setBool('foreshadowGridView', v);
+
+  /// 每书 UI 快照（config.json 的 bookUi 键）：目录树展开卷 + 右侧面板状态。
+  /// 仅在切书离开 / 退出时落盘（AppState._persistBookUi 调用）。
+  BookUiRecord bookUiOf(String bookId) {
+    final m = _cfg.getMap('bookUi')?[bookId];
+    if (m is! Map) return const BookUiRecord();
+    return BookUiRecord(
+      tree: (m['tree'] as List?)?.whereType<String>().toList() ?? const [],
+      panelIndex: m['panelIndex'] as int?,
+      panelOpen: m['panelOpen'] as bool?,
+    );
+  }
+
+  Future<void> saveBookUi(String bookId,
+      {required List<String> tree,
+      required int panelIndex,
+      required bool panelOpen}) async {
+    final map = _cfg.getMap('bookUi') ?? <String, Object?>{};
+    map[bookId] = {
+      'tree': tree,
+      'panelIndex': panelIndex,
+      'panelOpen': panelOpen,
+    };
+    await _cfg.setMap('bookUi', map);
+  }
 
   /// 切换数据存储目录（空 = 应用默认目录）；重启应用后生效。
   Future<void> setDataDir(String v) =>
@@ -181,4 +246,18 @@ class SettingsController extends ChangeNotifier {
     }
     after?.call();
   }
+}
+
+/// 单本书的持久化 UI 快照（config.json bookUi 键的条目）。
+class BookUiRecord {
+  const BookUiRecord({this.tree = const [], this.panelIndex, this.panelOpen});
+
+  /// 展开的卷 id 集合。
+  final List<String> tree;
+
+  /// 右侧面板选中项；null = 无记录。
+  final int? panelIndex;
+
+  /// 右侧面板是否展开；null = 无记录。
+  final bool? panelOpen;
 }

@@ -47,9 +47,8 @@ class _WriteStatsEntryState extends State<WriteStatsEntry> {
     return OverlayPortal(
       controller: _portal,
       // 撑满整层的 Stack：气泡仍用 Positioned 定位，且空白处不拦截点击。
-      overlayChildBuilder: (_) => Stack(
-        children: [_WriteStatsBubble(anchor: _anchor ?? Rect.zero)],
-      ),
+      overlayChildBuilder: (_) =>
+          Stack(children: [_WriteStatsBubble(anchor: _anchor ?? Rect.zero)]),
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hovering = true),
@@ -96,25 +95,27 @@ class _WriteStatsBubble extends StatefulWidget {
 }
 
 class _WriteStatsBubbleState extends State<_WriteStatsBubble> {
-  /// 宽度按最长数值反算：数值可用宽 = 299 - 12*2 - 1 - _columnGap - _figureWidth
-  /// = 132px，足够「12,345 字/时」「10 小时 30 分」不被省略号截断。
-  static const double _width = 299;
+  /// 默认尺寸（收起重开即恢复）与拖拽缩放上下限。
+  static const Size _defaultSize = Size(299, 192);
+  static const Size _minSize = Size(280, 190);
+  static const Size _maxSize = Size(480, 360);
 
-  /// 高度按内容反算：描边 Border.all(0.5) 会额外吃掉 0.5px/边，
-  /// 故内容高 = 192 - 12*2 - 1 = 167（分段控件 26 + 间距 8 + 指标区 133）。
-  static const double _height = 192;
   static const double _gap = 10;
+
+  /// 面板与窗口边缘的最小间距。
   static const double _edge = 8;
+
+  /// 四边拖拽缩放的命中带宽度。
+  static const double _borderZone = 6;
 
   /// 数值右对齐后，这个间距就是「数值右端 → 萌宠左端」的实际视觉距离。
   static const double _columnGap = 12;
 
-  /// 萌宠列宽度：资源为 1:1，列高 153，取 130 让萌宠比列高略窄并垂直居中，
-  /// 左右更紧凑且不过度留白。
+  /// 萌宠列宽度：资源为 1:1，列宽固定，图片按 BoxFit.contain 缩放并垂直居中。
   static const double _figureWidth = 130;
 
-  /// 相对基准位置的拖动量（写入前已按窗口边界钳制）。
-  Offset _drag = Offset.zero;
+  /// 当前面板矩形（窗口坐标），拖动与缩放共用；null 表示未交互，用默认矩形。
+  Rect? _rect;
 
   StreamSubscription<int>? _sub;
   Timer? _debounce;
@@ -161,20 +162,135 @@ class _WriteStatsBubbleState extends State<_WriteStatsBubble> {
     });
   }
 
-  Offset get _base => Offset(
-        widget.anchor.right - _width,
-        widget.anchor.top - _height - _gap,
-      );
+  Rect get _initialRect => Rect.fromLTWH(
+    widget.anchor.right - _defaultSize.width,
+    widget.anchor.top - _gap - _defaultSize.height,
+    _defaultSize.width,
+    _defaultSize.height,
+  );
 
-  Offset _clampToWindow(Offset raw, Size window) => Offset(
-        raw.dx.clamp(_edge, math.max(_edge, window.width - _width - _edge)),
-        raw.dy.clamp(_edge, math.max(_edge, window.height - _height - _edge)),
-      );
+  Rect _clampRect(Rect r, Size window) => Rect.fromLTWH(
+    r.left.clamp(_edge, math.max(_edge, window.width - r.width - _edge)),
+    r.top.clamp(_edge, math.max(_edge, window.height - r.height - _edge)),
+    r.width,
+    r.height,
+  );
 
   /// 以「当前钳制位置 + 位移」推进，避免拖到边界后反向拖动出现死区。
   void _onPanUpdate(DragUpdateDetails details, Size window) {
-    final next = _clampToWindow(_base + _drag + details.delta, window);
-    setState(() => _drag = next - _base);
+    final cur = _rect ?? _clampRect(_initialRect, window);
+    setState(() => _rect = _clampRect(cur.shift(details.delta), window));
+  }
+
+  /// 对边固定、拖动边随位移推进；增量钳制在尺寸上下限与窗口边界内。
+  void _onResizeUpdate(
+    _ResizeEdge edge,
+    DragUpdateDetails details,
+    Size window,
+  ) {
+    final cur = _rect ?? _clampRect(_initialRect, window);
+    final (left0, top0, right0, bottom0) = (
+      cur.left,
+      cur.top,
+      cur.right,
+      cur.bottom,
+    );
+    var left = left0, top = top0, right = right0, bottom = bottom0;
+    if (edge.hitsLeft) {
+      left = (left + details.delta.dx).clamp(
+        math.max(_edge, right0 - _maxSize.width),
+        right0 - _minSize.width,
+      );
+    }
+    if (edge.hitsRight) {
+      right = (right + details.delta.dx).clamp(
+        left0 + _minSize.width,
+        math.min(window.width - _edge, left0 + _maxSize.width),
+      );
+    }
+    if (edge.hitsTop) {
+      top = (top + details.delta.dy).clamp(
+        math.max(_edge, bottom0 - _maxSize.height),
+        bottom0 - _minSize.height,
+      );
+    }
+    if (edge.hitsBottom) {
+      bottom = (bottom + details.delta.dy).clamp(
+        top0 + _minSize.height,
+        math.min(window.height - _edge, top0 + _maxSize.height),
+      );
+    }
+    setState(() => _rect = Rect.fromLTRB(left, top, right, bottom));
+  }
+
+  /// 边缘/角落的缩放命中区：边为 6px 条带，四角为 12px 方块并盖在条带之上。
+  Widget _resizeHandle(_ResizeEdge edge, Size window) {
+    final handle = MouseRegion(
+      cursor: edge.cursor,
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onPanUpdate: (d) => _onResizeUpdate(edge, d, window),
+      ),
+    );
+    const c = 12.0;
+    return switch (edge) {
+      _ResizeEdge.left => Positioned(
+        left: 0,
+        top: 0,
+        bottom: 0,
+        width: _borderZone,
+        child: handle,
+      ),
+      _ResizeEdge.right => Positioned(
+        right: 0,
+        top: 0,
+        bottom: 0,
+        width: _borderZone,
+        child: handle,
+      ),
+      _ResizeEdge.top => Positioned(
+        top: 0,
+        left: 0,
+        right: 0,
+        height: _borderZone,
+        child: handle,
+      ),
+      _ResizeEdge.bottom => Positioned(
+        bottom: 0,
+        left: 0,
+        right: 0,
+        height: _borderZone,
+        child: handle,
+      ),
+      _ResizeEdge.topLeft => Positioned(
+        left: 0,
+        top: 0,
+        width: c,
+        height: c,
+        child: handle,
+      ),
+      _ResizeEdge.topRight => Positioned(
+        right: 0,
+        top: 0,
+        width: c,
+        height: c,
+        child: handle,
+      ),
+      _ResizeEdge.bottomLeft => Positioned(
+        left: 0,
+        bottom: 0,
+        width: c,
+        height: c,
+        child: handle,
+      ),
+      _ResizeEdge.bottomRight => Positioned(
+        right: 0,
+        bottom: 0,
+        width: c,
+        height: c,
+        child: handle,
+      ),
+    };
   }
 
   @override
@@ -193,51 +309,66 @@ class _WriteStatsBubbleState extends State<_WriteStatsBubble> {
     };
     final progress = goal > 0 ? (chars / goal).clamp(0.0, 1.0) : 0.0;
     final reached = goal > 0 && chars >= goal;
-    final pos = _clampToWindow(_base + _drag, window);
+    final pos = _clampRect(_rect ?? _initialRect, window);
 
-    return Positioned(
-      left: pos.dx,
-      top: pos.dy,
-      child: GestureDetector(
-        onPanUpdate: (d) => _onPanUpdate(d, window),
-        child: Material(
-          type: MaterialType.transparency,
-          child: Container(
-            width: _width,
-            height: _height,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: scheme.surface,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: scheme.outlineVariant, width: 0.5),
-              boxShadow: [
-                BoxShadow(
-                  color: scheme.shadow.withValues(alpha: 0.16),
-                  blurRadius: 18,
-                  offset: const Offset(0, 6),
+    return Positioned.fromRect(
+      rect: pos,
+      child: Stack(
+        children: [
+          GestureDetector(
+            onPanUpdate: (d) => _onPanUpdate(d, window),
+            child: Material(
+              type: MaterialType.transparency,
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: scheme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: scheme.outlineVariant, width: 0.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: scheme.shadow.withValues(alpha: 0.16),
+                      blurRadius: 18,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            child: Column(
-              children: [
-                _segmented(scheme),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(
-                        child: _metrics(scheme, goal, chars, progress, reached),
+                child: Column(
+                  children: [
+                    _segmented(scheme),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: _metrics(
+                              scheme,
+                              goal,
+                              chars,
+                              progress,
+                              reached,
+                            ),
+                          ),
+                          const SizedBox(width: _columnGap),
+                          _figure(standee),
+                        ],
                       ),
-                      const SizedBox(width: _columnGap),
-                      _figure(standee),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
-        ),
+          _resizeHandle(_ResizeEdge.left, window),
+          _resizeHandle(_ResizeEdge.right, window),
+          _resizeHandle(_ResizeEdge.top, window),
+          _resizeHandle(_ResizeEdge.bottom, window),
+          _resizeHandle(_ResizeEdge.topLeft, window),
+          _resizeHandle(_ResizeEdge.topRight, window),
+          _resizeHandle(_ResizeEdge.bottomLeft, window),
+          _resizeHandle(_ResizeEdge.bottomRight, window),
+        ],
       ),
     );
   }
@@ -279,8 +410,9 @@ class _WriteStatsBubbleState extends State<_WriteStatsBubble> {
                       labels[i],
                       style: TextStyle(
                         fontSize: 11,
-                        fontWeight:
-                            _scope == i ? FontWeight.w600 : FontWeight.w400,
+                        fontWeight: _scope == i
+                            ? FontWeight.w600
+                            : FontWeight.w400,
                         color: _scope == i
                             ? scheme.primary
                             : scheme.onSurfaceVariant,
@@ -300,10 +432,7 @@ class _WriteStatsBubbleState extends State<_WriteStatsBubble> {
   Widget _figure(PetStandee standee) {
     return SizedBox(
       width: _figureWidth,
-      child: Image.asset(
-        standee.assetPath,
-        fit: BoxFit.contain,
-      ),
+      child: Image.asset(standee.assetPath, fit: BoxFit.contain),
     );
   }
 
@@ -322,12 +451,7 @@ class _WriteStatsBubbleState extends State<_WriteStatsBubble> {
       // 面板改高度也只需改一个常量（当前 5 行 ×25，余下均分）。
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        _metricRow(
-          scheme,
-          Icons.track_changes,
-          '目标',
-          '${_fmtInt(goal)} 字',
-        ),
+        _metricRow(scheme, Icons.track_changes, '目标', '${_fmtInt(goal)} 字'),
         _metricRow(
           scheme,
           Icons.edit_outlined,
@@ -391,6 +515,32 @@ class _WriteStatsBubbleState extends State<_WriteStatsBubble> {
 
   TextStyle _labelStyle(ColorScheme scheme) =>
       TextStyle(fontSize: 12, color: scheme.onSurfaceVariant);
+}
+
+/// 缩放命中的边或角。
+enum _ResizeEdge {
+  left,
+  right,
+  top,
+  bottom,
+  topLeft,
+  topRight,
+  bottomLeft,
+  bottomRight;
+
+  bool get hitsLeft => this == left || this == topLeft || this == bottomLeft;
+  bool get hitsRight =>
+      this == right || this == topRight || this == bottomRight;
+  bool get hitsTop => this == top || this == topLeft || this == topRight;
+  bool get hitsBottom =>
+      this == bottom || this == bottomLeft || this == bottomRight;
+
+  MouseCursor get cursor => switch (this) {
+    left || right => SystemMouseCursors.resizeLeftRight,
+    top || bottom => SystemMouseCursors.resizeUpDown,
+    topLeft || bottomRight => SystemMouseCursors.resizeUpLeftDownRight,
+    topRight || bottomLeft => SystemMouseCursors.resizeUpRightDownLeft,
+  };
 }
 
 /// 千分位整数格式（与统计页口径一致）。

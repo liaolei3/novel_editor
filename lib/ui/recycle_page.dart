@@ -657,7 +657,6 @@ IconData _iconFor(RecycleType t) => switch (t) {
   RecycleType.book => Icons.menu_book_outlined,
   RecycleType.volume => Icons.folder_off_outlined,
   RecycleType.chapter => Icons.description_outlined,
-  RecycleType.note => Icons.sticky_note_2_outlined,
   RecycleType.character => Icons.person_outline,
   RecycleType.foreshadow => Icons.flag_outlined,
 };
@@ -668,14 +667,12 @@ Color _colorFor(RecycleType t, ColorScheme scheme) => switch (t) {
   RecycleType.chapter => scheme.tertiary,
   RecycleType.character => const Color(0xFF4A90D9),
   RecycleType.foreshadow => const Color(0xFF7B61C9),
-  RecycleType.note => const Color(0xFF4CAF7D),
 };
 
 String _typeLabel(RecycleType t) => switch (t) {
   RecycleType.book => '书籍',
   RecycleType.volume => '卷',
   RecycleType.chapter => '章节',
-  RecycleType.note => '素材',
   RecycleType.character => '角色',
   RecycleType.foreshadow => '伏笔',
 };
@@ -685,8 +682,6 @@ const _characterLabels = {
   'supporting': '配角',
   'antagonist': '反派',
 };
-
-const _noteLabels = {'role': '角色卡', 'world': '世界观', 'idea': '灵感便签'};
 
 /// 按类型生成附加信息：书籍显示笔名、卷显示含章数、章节显示字数等。
 String _extraInfo(RecycleItem item, BuildContext context) {
@@ -712,9 +707,6 @@ String _extraInfo(RecycleItem item, BuildContext context) {
       return _characterLabels[t] ?? '';
     case RecycleType.foreshadow:
       return payload['status'] == 'done' ? '已完成' : '未完成';
-    case RecycleType.note:
-      final t = payload['type'] as String?;
-      return _noteLabels[t] ?? '';
   }
 }
 

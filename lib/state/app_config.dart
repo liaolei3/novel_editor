@@ -72,10 +72,24 @@ class AppConfig {
 
   bool? getBool(String key) => _values[key] as bool?;
 
+  List<String>? getStringList(String key) {
+    final v = _values[key];
+    if (v is List) return v.whereType<String>().toList();
+    return null;
+  }
+
+  Map<String, Object?>? getMap(String key) {
+    final v = _values[key];
+    if (v is Map) return v.map((k, e) => MapEntry(k.toString(), e));
+    return null;
+  }
+
   Future<void> setString(String key, String v) => _set(key, v);
   Future<void> setInt(String key, int v) => _set(key, v);
   Future<void> setDouble(String key, double v) => _set(key, v);
   Future<void> setBool(String key, bool v) => _set(key, v);
+  Future<void> setStringList(String key, List<String> v) => _set(key, v);
+  Future<void> setMap(String key, Map<String, Object?> v) => _set(key, v);
 
   Future<void> _set(String key, Object? v) async {
     _values[key] = v;

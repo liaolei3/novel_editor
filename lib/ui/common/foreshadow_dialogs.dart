@@ -123,6 +123,10 @@ Future<(String, String, String)?> showCreateForeshadowDialog(
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
+            style: TextButton.styleFrom(
+              minimumSize: const Size(64, 44),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+            ),
             child: const Text('取消'),
           ),
           ValueListenableBuilder<TextEditingValue>(
@@ -139,6 +143,10 @@ Future<(String, String, String)?> showCreateForeshadowDialog(
                           (nameCtrl.text.trim(), contentCtrl.text.trim(),
                               remarkCtrl.text.trim()))
                       : null,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(72, 44),
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                  ),
                   child: const Text('创建'),
                 );
               },
@@ -535,6 +543,10 @@ Future<(Foreshadow, String)?> showLinkForeshadowDialog(
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(64, 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                ),
                 child: const Text('取消'),
               ),
               FilledButton(
@@ -542,6 +554,10 @@ Future<(Foreshadow, String)?> showLinkForeshadowDialog(
                     ? null
                     : () =>
                         Navigator.pop(ctx, (selected!, remarkCtrl.text.trim())),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(72, 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                ),
                 child: const Text('确认'),
               ),
             ],
@@ -584,10 +600,18 @@ Future<String?> showEditSegmentRemarkDialog(
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
+            style: TextButton.styleFrom(
+              minimumSize: const Size(64, 44),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+            ),
             child: const Text('取消'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(72, 44),
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+            ),
             child: const Text('保存'),
           ),
         ],

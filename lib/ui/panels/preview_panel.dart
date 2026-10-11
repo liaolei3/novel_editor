@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:dart_quill_delta/dart_quill_delta.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart';
@@ -339,7 +340,27 @@ class _PreviewPanelState extends State<PreviewPanel> {
           paragraphSpacing: settings.reviewParagraphSpacing,
           fontFamily: settings.editorFontFamily,
         ),
+        textSpanBuilder: _previewSpanBuilder,
       ),
+    );
+  }
+
+  /// 与正文一致：justify 会裁掉行首空白，段首全角空格需占位渲染。
+  InlineSpan _previewSpanBuilder(
+    BuildContext context,
+    Node node,
+    int nodeOffset,
+    String text,
+    TextStyle? style,
+    GestureRecognizer? recognizer,
+  ) {
+    return leadingIndentSpan(
+      context,
+      node,
+      nodeOffset,
+      text,
+      style,
+      (rest) => TextSpan(text: rest, style: style, recognizer: recognizer),
     );
   }
 
@@ -583,6 +604,10 @@ class _PreviewSettingsDialogState extends State<_PreviewSettingsDialog> {
       actions: [
         FilledButton(
           onPressed: () => Navigator.pop(context),
+          style: FilledButton.styleFrom(
+            minimumSize: const Size(72, 44),
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+          ),
           child: const Text('完成'),
         ),
       ],

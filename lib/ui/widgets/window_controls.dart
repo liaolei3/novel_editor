@@ -151,6 +151,50 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
       ),
     );
     if (!_isWindowsDesktop) return bar;
-    return DragToMoveArea(child: bar);
+    return _WindowDragArea(child: bar);
+  }
+}
+
+/// 顶栏拖动区：双击切换最大化/还原；移动超过 [_dragThreshold] 才启动原生窗口拖动。
+/// 直接用 DragToMoveArea 会在鼠标仅移动 2px 时就触发拖动，
+/// 长按顶栏时的轻微抖动会误把最大化窗口还原，故抬高拖动阈值。
+class _WindowDragArea extends StatefulWidget {
+  const _WindowDragArea({required this.child});
+
+  final Widget child;
+
+  /// 启动原生窗口拖动所需的最小移动距离（逻辑像素）。
+  static const double _dragThreshold = 10;
+
+  @override
+  State<_WindowDragArea> createState() => _WindowDragAreaState();
+}
+
+class _WindowDragAreaState extends State<_WindowDragArea> {
+  double _moved = 0;
+  bool _dragging = false;
+
+  void _reset() {
+    _moved = 0;
+    _dragging = false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onPanDown: (_) => _reset(),
+      onPanUpdate: (details) {
+        if (_dragging) return;
+        _moved += details.delta.distance;
+        if (_moved < _WindowDragArea._dragThreshold) return;
+        _dragging = true;
+        windowManager.startDragging();
+      },
+      onPanEnd: (_) => _reset(),
+      onPanCancel: _reset,
+      onDoubleTap: _toggleMaximize,
+      child: widget.child,
+    );
   }
 }

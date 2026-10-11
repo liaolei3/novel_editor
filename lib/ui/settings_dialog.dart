@@ -354,7 +354,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
         ),
         _divider(hairline),
         _sliderRow(
-          title: '界面缩放',
+          title: '字体缩放',
           value: '${(s.uiScale * 100).round()}%',
           slider: Slider(
             min: 0.8,
@@ -1000,10 +1000,18 @@ class _SettingsDialogState extends State<SettingsDialog> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
+              style: TextButton.styleFrom(
+                minimumSize: const Size(64, 44),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+              ),
               child: const Text('取消'),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(72, 44),
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+              ),
               child: const Text('确认切换'),
             ),
           ],
@@ -1028,6 +1036,10 @@ class _SettingsDialogState extends State<SettingsDialog> {
             actions: [
               FilledButton(
                 onPressed: () => Navigator.pop(ctx),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(72, 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                ),
                 child: const Text('知道了'),
               ),
             ],
@@ -1109,10 +1121,18 @@ class _SettingsDialogState extends State<SettingsDialog> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
+              style: TextButton.styleFrom(
+                minimumSize: const Size(64, 44),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+              ),
               child: const Text('取消'),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(72, 44),
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+              ),
               child: const Text('保存'),
             ),
           ],

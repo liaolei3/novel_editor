@@ -55,14 +55,14 @@ class SensitiveWordScanner {
   final List<SensitiveEntry> entries;
 
   /// 导入解析：每行「词」或「词|建议词」（分隔符兼容 `|`、逗号、制表符），
-  /// `#` 起首为注释行；去 BOM、按词忽略大小写去重。
+  /// 去 BOM、按词忽略大小写去重。
   static List<SensitiveEntry> parseImport(String text) {
     final out = <SensitiveEntry>[];
     final seen = <String>{};
     for (var line in text.split(RegExp(r'[\r\n]+'))) {
       if (line.startsWith('\uFEFF')) line = line.substring(1);
       final s = line.trim();
-      if (s.isEmpty || s.startsWith('#')) continue;
+      if (s.isEmpty) continue;
       final idx = s.indexOf(RegExp(r'[|\t,]'));
       final word = idx >= 0 ? s.substring(0, idx).trim() : s;
       final suggestion = idx >= 0 ? s.substring(idx + 1).trim() : '';

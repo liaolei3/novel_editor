@@ -4,6 +4,7 @@ import 'text_stats.dart';
 ///
 /// 行首「第X卷/集/册」识别为卷、「第X章/回/话」识别为章，切分为
 /// 卷→章两级结构，供书架导入预览确认后再落库。
+/// 文件头部「作者：xxx」行自动识别为作者名并从正文中移除。
 class TxtImporter {
   TxtImporter._();
 
@@ -20,11 +21,21 @@ class TxtImporter {
   static final RegExp _sentenceMarkPattern = RegExp(r'[。！？；.!?;]');
   static const int _maxTitleLength = 30;
 
+  // 「作者：xxx」行识别，全角 / 半角冒号均可；只认文本头部，防止误伤正文。
+  static final RegExp _authorPattern = RegExp(
+    r'^\s*(?:作者|笔名)\s*[：:]\s*(?<name>\S[^\n]*?)\s*$',
+    multiLine: true,
+  );
+  static const int _authorScanLength = 500;
+  static const int _maxAuthorLength = 30;
+
   /// 切分为卷→章两级；无任何标记时整篇作为一卷一章。
   static ImportPreview parse(String raw) {
-    final text = raw.replaceAll('\r\n', '\n');
+    var text = raw.replaceAll('\r\n', '\n');
+    final (author, String stripped) = _extractAuthor(text);
+    text = stripped;
     final marks = _validMarks(text);
-    if (marks.isEmpty) return _fallback(text);
+    if (marks.isEmpty) return _fallback(text, author);
 
     final volumes = <ImportVolume>[];
     final leading = <ImportChapter>[]; // 首个卷标记之前的序章 / 章
@@ -60,7 +71,20 @@ class TxtImporter {
     }
     // 无内容的空卷不落地，避免左侧出现空卷节点。
     volumes.removeWhere((v) => v.chapters.isEmpty);
-    return ImportPreview(volumes: volumes.isEmpty ? _fallback(text).volumes : volumes);
+    return ImportPreview(
+        volumes: volumes.isEmpty ? _fallback(text, author).volumes : volumes,
+        author: author);
+  }
+
+  /// 提取头部「作者：xxx」行，返回 (作者名, 移除该行后的文本)。
+  static (String, String) _extractAuthor(String text) {
+    final m = _authorPattern.firstMatch(text);
+    if (m == null || m.start > _authorScanLength) return ('', text);
+    final name = m.namedGroup('name')!.trim();
+    if (name.isEmpty || name.length > _maxAuthorLength) return ('', text);
+    var end = m.end;
+    if (end < text.length && text[end] == '\n') end++;
+    return (name, text.replaceRange(m.start, end, ''));
   }
 
   static List<RegExpMatch> _validMarks(String text) => _markPattern
@@ -72,11 +96,12 @@ class TxtImporter {
       line.length <= _maxTitleLength && !_sentenceMarkPattern.hasMatch(line);
 
   /// 无标记（或通篇只有卷名）时的兜底：整篇作一卷一章。
-  static ImportPreview _fallback(String text) => ImportPreview(volumes: [
+  static ImportPreview _fallback(String text, String author) =>
+      ImportPreview(volumes: [
         ImportVolume(name: '第一卷', chapters: [
           ImportChapter(title: _firstLine(text), body: text.trim()),
         ]),
-      ]);
+      ], author: author);
 
   static String _firstLine(String text) {
     final idx = text.indexOf('\n');
@@ -88,9 +113,12 @@ class TxtImporter {
 
 /// 导入切分结果：卷 → 章两级结构。
 class ImportPreview {
-  ImportPreview({required this.volumes});
+  ImportPreview({required this.volumes, this.author = ''});
 
   final List<ImportVolume> volumes;
+
+  /// 从文件头部识别出的作者名，未识别为空串。
+  final String author;
 
   int get chapterCount => volumes.fold(0, (sum, v) => sum + v.chapters.length);
   int get volumeCount => volumes.length;

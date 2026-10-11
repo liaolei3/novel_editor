@@ -62,9 +62,9 @@ void main() {
     expect((jsonDecode(out) as List)[0]['insert'], '某社交平台群\n');
   });
 
-  test('parseImport 解析词与建议词、忽略注释、去重', () {
+  test('parseImport 解析词与建议词、去重', () {
     final entries = SensitiveWordScanner.parseImport(
-        '\uFEFF# 注释\n自杀|自尽\n翻墙\t翻围墙\nQQ群,读者群\n自杀|其它\n');
+        '\uFEFF自杀|自尽\n翻墙\t翻围墙\nQQ群,读者群\n自杀|其它\n');
     expect(entries.length, 3);
     expect(entries[0].word, '自杀');
     expect(entries[0].suggestion, '自尽');

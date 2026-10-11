@@ -61,6 +61,16 @@ class _CharacterPanelState extends State<CharacterPanel> {
     if (openId != null && openId != oldWidget.openCharacterId) {
       _openById(openId);
     }
+    // 切书：重载新书数据，筛选与选中回到默认。
+    if (widget.book.id != oldWidget.book.id) {
+      _selected = null;
+      _filter = null;
+      _keyword = '';
+      _searchCtrl.clear();
+      _searching = false;
+      _loading = true;
+      _load();
+    }
   }
 
   /// 打开指定角色详情；列表未加载完成时先加载。
@@ -199,7 +209,7 @@ class _CharacterPanelState extends State<CharacterPanel> {
             TextButton(
               onPressed: () => Navigator.pop(ctx),
               style: TextButton.styleFrom(
-                minimumSize: const Size(64, 38),
+                minimumSize: const Size(64, 44),
                 padding: const EdgeInsets.symmetric(horizontal: 16),
               ),
               child: const Text('取消'),
@@ -211,7 +221,7 @@ class _CharacterPanelState extends State<CharacterPanel> {
                 Navigator.pop(ctx, (n, valueCtrl.text));
               },
               style: FilledButton.styleFrom(
-                minimumSize: const Size(72, 38),
+                minimumSize: const Size(72, 44),
                 padding: const EdgeInsets.symmetric(horizontal: 18),
               ),
               child: const Text('确定'),

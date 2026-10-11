@@ -26,6 +26,7 @@ import 'stats_page.dart';
 import 'widgets/busy_overlay.dart';
 import 'widgets/tinted_card.dart' show EdgeShadowPainter;
 import 'widgets/app_bar_nav_actions.dart';
+import 'widgets/recent_book_tabs.dart';
 import 'widgets/toast.dart';
 import 'widgets/window_controls.dart';
 import 'workspace_page.dart';
@@ -40,6 +41,32 @@ class ShelfPage extends StatefulWidget {
 }
 
 enum _HomeTab { shelf, stats, recycle }
+
+/// 主页顶栏书籍标签：点击打开书籍，悬浮可关闭标签。
+class _HomeBookTabs extends StatelessWidget {
+  const _HomeBookTabs();
+
+  Future<void> _open(BuildContext context, Book book) async {
+    final state = appState(context);
+    await state.openBook(book);
+    if (context.mounted) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => WorkspacePage(book: book)),
+      );
+      await state.loadShelf();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RecentBookTabs(
+      onSelect: (book) => _open(context, book),
+      onClose: (book) =>
+          context.read<SettingsController>().removeRecentBook(book.id),
+    );
+  }
+}
 
 class _ShelfPageState extends State<ShelfPage> {
   _HomeTab _tab = _HomeTab.shelf;
@@ -58,10 +85,10 @@ class _ShelfPageState extends State<ShelfPage> {
       appBar: AppTopBar(
         leading: IconButton(
           tooltip: '主页',
-          icon: const Icon(Icons.home_outlined, size: 26),
+          icon: const Icon(Icons.home_outlined, size: 22),
           onPressed: () => setState(() => _tab = _HomeTab.shelf),
         ),
-        title: const Text('主页'),
+        title: const _HomeBookTabs(),
         titleSpacing: 4,
         actions: const [AppBarNavActions()],
       ),
@@ -276,6 +303,7 @@ class _ShelfBody extends StatefulWidget {
 
 class _ShelfBodyState extends State<_ShelfBody> {
   bool _loading = true;
+  bool _autoOpened = false;
   final _searchController = TextEditingController();
 
   @override
@@ -284,7 +312,34 @@ class _ShelfBodyState extends State<_ShelfBody> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await appState(context).loadShelf();
       if (mounted) setState(() => _loading = false);
+      await _autoOpenLastBook();
     });
+  }
+
+  /// 启动时自动恢复上次编辑的书：直接进入工作区（书已删除则停留主页）。
+  Future<void> _autoOpenLastBook() async {
+    if (_autoOpened || !mounted) return;
+    _autoOpened = true;
+    final settings = context.read<SettingsController>();
+    final lastId = settings.lastBookId;
+    if (lastId.isEmpty) return;
+    final state = appState(context);
+    Book? book;
+    for (final b in state.bookList) {
+      if (b.id == lastId) {
+        book = b;
+        break;
+      }
+    }
+    if (book == null) return;
+    await state.openBook(book);
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => WorkspacePage(book: book!)),
+    );
+    await state.loadShelf();
+    if (mounted) setState(() {});
   }
 
   @override
@@ -330,15 +385,16 @@ class _ShelfBodyState extends State<_ShelfBody> {
   Widget _toolbar(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final scale = context.watch<SettingsController>().uiScale;
-    final btnHeight = 38 * scale;
+    // 与新建书弹窗书名输入框同高：搜索框按标准输入框内边距取自然高度，
+    // 按钮随行高拉伸对齐（不用 uiScale 直接放大高度，否则与弹窗输入框对不上）。
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 4),
-      child: Row(
-        children: [
-          ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: 280 * scale),
-            child: SizedBox(
-              height: btnHeight,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: 280 * scale),
               child: TextField(
                 controller: _searchController,
                 onChanged: (_) => setState(() {}),
@@ -352,13 +408,10 @@ class _ShelfBodyState extends State<_ShelfBody> {
                     size: 18 * scale,
                     color: scheme.onSurfaceVariant,
                   ),
-                  prefixIconConstraints: BoxConstraints(
-                    minWidth: 38 * scale,
-                    minHeight: btnHeight,
-                  ),
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 12 * scale,
-                    vertical: 10 * scale,
+                  prefixIconConstraints: BoxConstraints(minWidth: 38 * scale),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
                   ),
                   filled: true,
                   fillColor: scheme.surfaceContainerHighest.withValues(
@@ -371,28 +424,28 @@ class _ShelfBodyState extends State<_ShelfBody> {
                 ),
               ),
             ),
-          ),
-          const SizedBox(width: 12),
-          FilledButton.tonalIcon(
-            onPressed: () => _importBook(context),
-            icon: Icon(Icons.file_download_outlined, size: 18 * scale),
-            label: const Text('导入书籍', style: TextStyle(fontSize: 13)),
-            style: FilledButton.styleFrom(
-              fixedSize: Size.fromHeight(btnHeight),
-              padding: EdgeInsets.symmetric(horizontal: 14 * scale),
+            const SizedBox(width: 12),
+            FilledButton.tonalIcon(
+              onPressed: () => _importBook(context),
+              icon: Icon(Icons.file_download_outlined, size: 18 * scale),
+              label: const Text('导入书籍', style: TextStyle(fontSize: 13)),
+              style: FilledButton.styleFrom(
+                padding: EdgeInsets.symmetric(horizontal: 14 * scale),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
             ),
-          ),
-          const SizedBox(width: 10),
-          FilledButton.icon(
-            onPressed: () => _createBook(context),
-            icon: Icon(Icons.add, size: 18 * scale),
-            label: const Text('新增书籍', style: TextStyle(fontSize: 13)),
-            style: FilledButton.styleFrom(
-              fixedSize: Size.fromHeight(btnHeight),
-              padding: EdgeInsets.symmetric(horizontal: 14 * scale),
+            const SizedBox(width: 10),
+            FilledButton.icon(
+              onPressed: () => _createBook(context),
+              icon: Icon(Icons.add, size: 18 * scale),
+              label: const Text('新增书籍', style: TextStyle(fontSize: 13)),
+              style: FilledButton.styleFrom(
+                padding: EdgeInsets.symmetric(horizontal: 14 * scale),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -535,19 +588,19 @@ class _ShelfBodyState extends State<_ShelfBody> {
     }
     final preview = result.preview!;
 
-    final title =
-        await importPreviewDialog(ctx, initialTitle: name, preview: preview);
-    if (title == null || ctx.mounted == false) return;
+    final confirmed = await importPreviewDialog(ctx,
+        initialTitle: name, preview: preview);
+    if (confirmed == null || ctx.mounted == false) return;
 
     final state = appState(ctx);
     await runWithBusy(
-      '正在导入《$title》',
-      (report) => state.importBookFromPreview(title, preview,
-          onProgress: report),
+      '正在导入《${confirmed.title}》',
+      (report) => state.importBookFromPreview(confirmed.title, preview,
+          penName: confirmed.author, onProgress: report),
     );
     if (ctx.mounted) {
       showToast(ctx,
-          '《$title》导入成功，共 ${preview.volumeCount} 卷 · ${preview.chapterCount} 章');
+          '《${confirmed.title}》导入成功，共 ${preview.volumeCount} 卷 · ${preview.chapterCount} 章');
     }
   }
 }

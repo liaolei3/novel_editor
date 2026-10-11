@@ -14,6 +14,7 @@ class Book {
     this.deleted = false,
     this.lastChapterId,
     this.lastCursor,
+    this.lastScrollOffset = 0,
     this.coverPath = '',
     this.goal = 0,
     this.chapterGoal = 0,
@@ -29,6 +30,9 @@ class Book {
   bool deleted;
   String? lastChapterId;
   int? lastCursor;
+
+  /// 上次离开该书时当前章节的滚动偏移（书级快照，供切书/重启还原）。
+  int lastScrollOffset;
 
   /// 封面图片相对数据目录的路径（如 'covers/xxx.png'），空 = 未设置。
   String coverPath;
@@ -52,6 +56,7 @@ class Book {
         'deleted': deleted ? 1 : 0,
         'last_chapter_id': lastChapterId,
         'last_cursor': lastCursor,
+        'last_scroll_offset': lastScrollOffset,
         'cover_path': coverPath,
         'goal': goal,
         'chapter_goal': chapterGoal,
@@ -68,6 +73,7 @@ class Book {
         deleted: (map['deleted'] as int? ?? 0) == 1,
         lastChapterId: map['last_chapter_id'] as String?,
         lastCursor: map['last_cursor'] as int?,
+        lastScrollOffset: (map['last_scroll_offset'] as int?) ?? 0,
         coverPath: (map['cover_path'] as String?) ?? '',
         goal: (map['goal'] as int?) ?? 0,
         chapterGoal: (map['chapter_goal'] as int?) ?? 0,
@@ -232,55 +238,6 @@ class Snapshot {
           orElse: () => SnapshotType.manual,
         ),
         title: (map['title'] as String?) ?? '',
-      );
-}
-
-enum NoteType { role, world, idea }
-
-class Note {
-  Note({
-    required this.id,
-    required this.bookId,
-    required this.type,
-    required this.title,
-    required this.content,
-    this.tags = '',
-    required this.createdAt,
-    required this.updatedAt,
-  });
-
-  final String id;
-  final String bookId;
-  NoteType type;
-  String title;
-  String content;
-  String tags;
-  DateTime createdAt;
-  DateTime updatedAt;
-
-  Map<String, Object?> toMap() => {
-        'id': id,
-        'book_id': bookId,
-        'type': type.name,
-        'title': title,
-        'content': content,
-        'tags': tags,
-        'created_at': createdAt.millisecondsSinceEpoch,
-        'updated_at': updatedAt.millisecondsSinceEpoch,
-      };
-
-  static Note fromMap(Map<String, Object?> map) => Note(
-        id: map['id'] as String,
-        bookId: map['book_id'] as String,
-        type: NoteType.values.firstWhere(
-          (t) => t.name == map['type'],
-          orElse: () => NoteType.idea,
-        ),
-        title: map['title'] as String,
-        content: (map['content'] as String?) ?? '',
-        tags: (map['tags'] as String?) ?? '',
-        createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
-        updatedAt: DateTime.fromMillisecondsSinceEpoch(map['updated_at'] as int),
       );
 }
 
@@ -586,7 +543,7 @@ class ForeshadowSegment {
       );
 }
 
-enum RecycleType { volume, chapter, note, character, foreshadow, book }
+enum RecycleType { volume, chapter, character, foreshadow, book }
 
 /// 敏感词词条（全局共享，不隶属单本书）。
 class SensitiveWord {
