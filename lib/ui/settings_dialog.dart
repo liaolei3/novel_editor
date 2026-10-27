@@ -1464,7 +1464,7 @@ class _StandeePreviewCardState extends State<_StandeePreviewCard> {
                 child: Padding(
                   padding: const EdgeInsets.all(8),
                   child: Image.asset(
-                    widget.standee.assetPath,
+                    widget.standee.staticAssetPath,
                     fit: BoxFit.contain,
                   ),
                 ),

@@ -9,21 +9,26 @@ class PreviewDevice {
 }
 
 /// 码字面板立绘形象。id 既是配置值也是资源文件名口径
-/// （`assets/branding/pet_standee_<id>.png`）。
+/// （`assets/branding/pet_standee_<id>.png`）；
+/// [dynamicAsset] 为动态立绘，配置后优先生效并循环播放。
 enum PetStandee {
-  blue('blue', '英短蓝猫'),
+  blue('blue', '英短蓝猫', 'assets/branding/pet_standee_blue_anim.webp'),
   orange('orange', '橘猫'),
   tuxedo('tuxedo', '奶牛猫'),
   calico('calico', '三花猫'),
   tabby('tabby', '狸花猫'),
   ragdoll('ragdoll', '布偶猫');
 
-  const PetStandee(this.id, this.label);
+  const PetStandee(this.id, this.label, [this.dynamicAsset]);
 
   final String id;
   final String label;
+  final String? dynamicAsset;
 
-  String get assetPath => 'assets/branding/pet_standee_$id.png';
+  String get assetPath => dynamicAsset ?? staticAssetPath;
+
+  /// 静态立绘，供设置页预览等不播放动画的场合使用。
+  String get staticAssetPath => 'assets/branding/pet_standee_$id.png';
 }
 
 class AppConstants {

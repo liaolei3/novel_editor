@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../data/models.dart';
 import '../state/app_state.dart';
+import '../state/rail_layout.dart';
 import '../state/settings_controller.dart';
 import 'app_root.dart';
 import 'global_search_dialog.dart';
@@ -21,11 +22,13 @@ import 'common/dialogs.dart';
 import 'widgets/app_bar_nav_actions.dart';
 import 'widgets/book_tree.dart';
 import 'widgets/editor_area.dart';
+import 'widgets/panel_rail.dart';
 import 'widgets/recent_book_tabs.dart';
 import 'widgets/toast.dart';
 import 'widgets/window_controls.dart';
 
-/// 作品工作区（9.2）：左=作品树，中=编辑器，右=竖向活动图标列 + 弹出工具面板；
+/// 作品工作区（9.2）：左右停靠栏 + 中间编辑器；
+/// 停靠栏左右各分上下两段，图标可拖动换段换侧，每段独立展开一个面板。
 /// 窄屏以底部导航切换；沉浸模式隐藏左右栏（FR-4）。
 class WorkspacePage extends StatefulWidget {
   const WorkspacePage({super.key, required this.book});
@@ -38,8 +41,6 @@ class WorkspacePage extends StatefulWidget {
 
 class _WorkspacePageState extends State<WorkspacePage> {
   int _mobileTab = 1;
-  int _panelIndex = 0;
-  bool _panelOpen = false;
   bool _immersive = false;
   String? _openCharacterId;
   String? _openForeshadowId;
@@ -51,43 +52,35 @@ class _WorkspacePageState extends State<WorkspacePage> {
   late final AppState _appState;
   late final SettingsController _settings;
 
+  /// 停靠栏布局（全局配置，不随书切换）。
+  late RailLayout _rail;
+
+  /// 窄屏当前工具面板。
+  String _narrowPanelId = RailLayout.outline;
+
+  /// 是否正在拖动 rail 图标（拖动期间两侧显示投放轮廓）。
+  bool _dragging = false;
+
+  static const double _minMidWidth = 320;
+  static const double _dividerWidth = 6;
+
+  /// 拖动分隔条时仅递增此值，驱动布局层重建（不重建编辑器 / 目录 / 面板）。
+  final _layoutTick = ValueNotifier<int>(0);
+
+  /// 宽屏布局的子区域 widget，仅在常规 build 时刷新；拖动时复用同一实例跳过重建。
+  Widget? _editorWidget;
+  final Map<String, Widget> _panelWidgets = {};
+
   @override
   void initState() {
     super.initState();
     _book = widget.book;
     _appState = context.read<AppState>();
     _settings = context.read<SettingsController>();
-    final (idx, open) = _loadPanelState(_book);
-    _panelIndex = idx;
-    _panelOpen = open;
-    _leftWidth = _settings.workspaceLeftWidth;
-    _rightWidth = _settings.workspaceRightWidth;
+    _rail = _settings.railLayout;
+    _narrowPanelId = _rail.mergedPanels.first;
     _appState.openCharacterNonce.addListener(_onOpenCharacter);
     _appState.openForeshadowNonce.addListener(_onOpenForeshadow);
-  }
-
-  /// 读取某书的右侧面板状态：优先内存快照，首次回落 config.json，
-  /// 再回落全局设置（历史数据兼容）。
-  (int, bool) _loadPanelState(Book book) {
-    final snap = _appState.uiSnapshot(book.id);
-    if (!snap.panelInitialized) {
-      final saved = _settings.bookUiOf(book.id);
-      snap.panelIndex = saved.panelIndex ?? _settings.workspacePanelIndex;
-      snap.panelOpen = saved.panelOpen ?? _settings.workspacePanelOpen;
-      snap.panelInitialized = true;
-    }
-    return (
-      snap.panelIndex.clamp(0, _panels.length - 1),
-      snap.panelOpen && snap.panelIndex < _panels.length,
-    );
-  }
-
-  /// 面板状态变更后同步到内存快照（写盘延后到切书/退出）。
-  void _syncPanelState() {
-    final snap = _appState.uiSnapshot(_book.id);
-    snap.panelIndex = _panelIndex;
-    snap.panelOpen = _panelOpen;
-    snap.panelInitialized = true;
   }
 
   @override
@@ -98,18 +91,18 @@ class _WorkspacePageState extends State<WorkspacePage> {
     super.dispose();
   }
 
-  /// 顶栏标签切换书籍：切书后整体重建，并还原新书的右侧面板状态。
+  /// 保存停靠栏布局到配置文件。
+  void _saveRail() => _settings.saveRailLayout(_rail);
+
+  /// 顶栏标签切换书籍：切书后整体重建（布局为全局配置，不还原面板）。
   Future<void> _switchBook(Book book) async {
     if (book.id == _book.id) return;
     await _appState.openBook(book);
     if (!mounted) return;
-    final (idx, open) = _loadPanelState(book);
     setState(() {
       _book = book;
       _openCharacterId = null;
       _openForeshadowId = null;
-      _panelIndex = idx;
-      _panelOpen = open;
     });
   }
 
@@ -151,89 +144,99 @@ class _WorkspacePageState extends State<WorkspacePage> {
     if (mounted) showToast(context, '目标保存成功');
   }
 
-  /// 编辑器悬浮 tip 的「编辑」请求：切到角色面板并打开对应角色详情。
+  /// 编辑器悬浮 tip 的「编辑」请求：在图标所在段展开角色面板。
   void _onOpenCharacter() {
     final state = context.read<AppState>();
     final id = state.pendingOpenCharacterId;
     if (id == null) return;
     state.pendingOpenCharacterId = null;
+    final wide = MediaQuery.sizeOf(context).width >= 1000;
     setState(() {
       _openCharacterId = id;
-      _panelIndex = 3;
-      _panelOpen = true;
       _immersive = false;
       _mobileTab = 2;
-      _syncPanelState();
+      if (wide) {
+        _rail.expandInSlot(RailLayout.character);
+        _saveRail();
+      } else {
+        _narrowPanelId = RailLayout.character;
+      }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) setState(() => _openCharacterId = null);
     });
   }
 
-  /// 编辑器悬浮 tip 的「编辑」请求：切到伏笔面板并打开对应伏笔详情。
+  /// 编辑器悬浮 tip 的「编辑」请求：在图标所在段展开伏笔面板。
   void _onOpenForeshadow() {
     final state = context.read<AppState>();
     final id = state.pendingOpenForeshadowId;
     if (id == null) return;
     state.pendingOpenForeshadowId = null;
+    final wide = MediaQuery.sizeOf(context).width >= 1000;
     setState(() {
       _openForeshadowId = id;
-      _panelIndex = 4;
-      _panelOpen = true;
       _immersive = false;
       _mobileTab = 2;
-      _syncPanelState();
+      if (wide) {
+        _rail.expandInSlot(RailLayout.foreshadow);
+        _saveRail();
+      } else {
+        _narrowPanelId = RailLayout.foreshadow;
+      }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) setState(() => _openForeshadowId = null);
     });
   }
 
-  static const _panels = [
-    '大纲视图',
-    'AI 助手',
-    '历史快照',
-    '角色',
-    '伏笔',
-    '敏感词',
-    '回收站',
-    '预览',
-  ];
-  static const _panelIcons = [
-    Icons.account_tree_outlined,
-    Icons.auto_awesome,
-    Icons.history,
-    Icons.people_outlined,
-    Icons.flag_outlined,
-    Icons.shield_outlined,
-    Icons.delete_outline,
-    Icons.visibility_outlined,
-  ];
-  static const double _minLeftWidth = 220;
-  static const double _minMidWidth = 320;
-  static const double _minRightWidth = 360;
-  static const double _dividerWidth = 6;
-  static const double _railWidth = 48;
+  /// 点击 rail 图标：展开 / 收起该段面板。
+  void _onTogglePanel(String panelId) {
+    setState(() {
+      _rail.toggle(panelId);
+      _saveRail();
+    });
+  }
 
-  double _leftWidth = 280;
-  double _rightWidth = 408;
+  void _onRailDragStarted() {
+    if (mounted && !_dragging) setState(() => _dragging = true);
+  }
 
-  /// 拖动分隔条时仅递增此值，驱动布局层重建（不重建编辑器 / 目录 / 面板）。
-  final _layoutTick = ValueNotifier<int>(0);
+  void _onRailDragEnd() {
+    if (mounted && _dragging) setState(() => _dragging = false);
+  }
 
-  /// 宽屏布局的子区域 widget，仅在常规 build 时刷新；拖动时复用同一实例跳过重建。
-  Widget? _bookTreeWidget;
-  Widget? _editorWidget;
-  Widget? _panelWidget;
+  /// 指针抬起后于下一帧兜底清除拖动状态：rail 被卸载时 onDragEnd 不会回调。
+  void _scheduleEndDrag() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _dragging) setState(() => _dragging = false);
+    });
+  }
+
+  /// 图标落到目标段：同段移动按移除后的索引插入。
+  void _onRailDrop(RailSlot slot, PanelRailDragData data, int index) {
+    final from = _rail.slotOf(data.panelId);
+    if (from == null) return;
+    var at = index;
+    if (from == slot) {
+      final sourceIndex = _rail.panels[from]!.indexOf(data.panelId);
+      if (sourceIndex >= 0 && sourceIndex < at) at -= 1;
+    }
+    setState(() {
+      _rail.move(data.panelId, slot, at);
+      _saveRail();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
-    final wide = MediaQuery.of(context).size.width >= 1000;
+    final wide = MediaQuery.sizeOf(context).width >= 1000;
     if (wide && !_immersive) {
-      _bookTreeWidget = RepaintBoundary(child: BookTree(book: _book));
       _editorWidget = RepaintBoundary(child: EditorArea(book: _book));
-      _panelWidget = RepaintBoundary(child: _panelArea());
+      for (final id in RailLayout.allPanels) {
+        _panelWidgets[id] = _buildPanel(id);
+      }
     }
     final body = wide ? _wideBody(state) : _narrowBody(state);
     return PopScope(
@@ -280,7 +283,16 @@ class _WorkspacePageState extends State<WorkspacePage> {
                   const AppBarNavActions(),
                 ],
               ),
-        body: _immersive && !wide ? EditorArea(book: _book) : body,
+        body: Listener(
+          onPointerUp: (_) => _scheduleEndDrag(),
+          onPointerCancel: (_) => _scheduleEndDrag(),
+          child: MouseRegion(
+            cursor: _dragging
+                ? SystemMouseCursors.grabbing
+                : MouseCursor.defer,
+            child: _immersive && !wide ? EditorArea(book: _book) : body,
+          ),
+        ),
         bottomNavigationBar: wide
             ? null
             : NavigationBar(
@@ -328,65 +340,260 @@ class _WorkspacePageState extends State<WorkspacePage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final total = constraints.maxWidth;
-        final chrome = _dividerWidth * 2;
-        // 联合约束：左 + 右 <= 窗口宽 − 分隔条 − 中栏保底，保证中栏不被挤压。
-        final midBudget = math.max(0.0, total - chrome - _minMidWidth);
         return ValueListenableBuilder<int>(
           valueListenable: _layoutTick,
           builder: (context, _, _) {
-            var left = math.max(_minLeftWidth, _leftWidth);
-            var right = math.max(_minRightWidth, _rightWidth);
-            if (_panelOpen && left + right > midBudget) {
-              final overflow = left + right - midBudget;
-              // 超限时收缩较大的一侧。
-              if (left >= right) {
-                left = math.max(_minLeftWidth, left - overflow);
-              } else {
-                right = math.max(_minRightWidth, right - overflow);
-              }
-            }
+            final budget = _computeBudget(total);
             return Row(
               children: [
-                SizedBox(width: left, child: _bookTreeWidget),
-                _DragDivider(
-                  width: _dividerWidth,
-                  onDrag: (delta) {
-                    _leftWidth = (_leftWidth + delta)
-                        .clamp(
-                          _minLeftWidth,
-                          math.max(_minLeftWidth, midBudget - right),
-                        )
-                        .toDouble();
-                    _layoutTick.value++;
-                  },
-                  onDragEnd: () =>
-                      _settings.setWorkspaceLeftWidth(_leftWidth),
-                ),
-                Expanded(child: _editorWidget!),
-                if (_panelOpen)
-                  _DragDivider(
-                    width: _dividerWidth,
-                    onDrag: (delta) {
-                      _rightWidth = (_rightWidth - delta)
-                          .clamp(
-                            _minRightWidth,
-                            math.max(_minRightWidth, midBudget - left),
-                          )
-                          .toDouble();
-                      _layoutTick.value++;
-                    },
-                    onDragEnd: () =>
-                        _settings.setWorkspaceRightWidth(_rightWidth),
+                if (budget.showLeftRail)
+                  KeyedSubtree(
+                    key: const ValueKey('dockLeft'),
+                    child: _dockSide(isLeft: true, budget: budget),
                   ),
-                SizedBox(
-                  width: _panelOpen ? right : _railWidth,
-                  child: _panelWidget,
+                if (budget.leftPanelWidth > 0)
+                  KeyedSubtree(
+                    key: const ValueKey('leftPanelDivider'),
+                    child: PanelRailVerticalDivider(
+                      onDrag: (delta) {
+                        _rail.leftWidth = (_rail.leftWidth + delta)
+                            .clamp(
+                              RailLayout.minPanelWidth,
+                              RailLayout.maxPanelWidth,
+                            )
+                            .toDouble();
+                        _layoutTick.value++;
+                      },
+                      onDragEnd: _saveRail,
+                    ),
+                  ),
+                Expanded(
+                  key: const ValueKey('editor'),
+                  child: _editorWidget ?? EditorArea(book: _book),
                 ),
+                if (budget.rightPanelWidth > 0)
+                  KeyedSubtree(
+                    key: const ValueKey('rightPanelDivider'),
+                    child: PanelRailVerticalDivider(
+                      onDrag: (delta) {
+                        _rail.rightWidth = (_rail.rightWidth - delta)
+                            .clamp(
+                              RailLayout.minPanelWidth,
+                              RailLayout.maxPanelWidth,
+                            )
+                            .toDouble();
+                        _layoutTick.value++;
+                      },
+                      onDragEnd: _saveRail,
+                    ),
+                  ),
+                if (budget.showRightRail)
+                  KeyedSubtree(
+                    key: const ValueKey('dockRight'),
+                    child: _dockSide(isLeft: false, budget: budget),
+                  ),
               ],
             );
           },
         );
       },
+    );
+  }
+
+  /// 计算宽度预算：优先压缩面板宽度，仍不足时先隐藏右侧面板、再隐藏左侧面板。
+  _WideBudget _computeBudget(double total) {
+    final showLeftRail = _rail.panels[RailSlot.leftTop]!.isNotEmpty ||
+        _rail.panels[RailSlot.leftBottom]!.isNotEmpty ||
+        _dragging;
+    final showRightRail = _rail.panels[RailSlot.rightTop]!.isNotEmpty ||
+        _rail.panels[RailSlot.rightBottom]!.isNotEmpty ||
+        _dragging;
+
+    var leftOpen = _rail.active[RailSlot.leftTop] != null ||
+        _rail.active[RailSlot.leftBottom] != null;
+    var rightOpen = _rail.active[RailSlot.rightTop] != null ||
+        _rail.active[RailSlot.rightBottom] != null;
+    var leftPanel = leftOpen ? _rail.leftWidth : 0.0;
+    var rightPanel = rightOpen ? _rail.rightWidth : 0.0;
+
+    final rails = (showLeftRail ? panelRailWidth : 0.0) +
+        (showRightRail ? panelRailWidth : 0.0);
+
+    // 编辑器可用宽度 = 总宽 - 图标列 - 面板 - 分隔条。
+    double over() =>
+        leftPanel +
+        rightPanel +
+        (leftOpen ? _dividerWidth : 0.0) +
+        (rightOpen ? _dividerWidth : 0.0) -
+        (total - rails - _minMidWidth);
+
+    var exceeded = over();
+    if (exceeded > 0) {
+      final leftCap =
+          leftOpen ? math.max(0.0, leftPanel - RailLayout.minPanelWidth) : 0.0;
+      final rightCap =
+          rightOpen ? math.max(0.0, rightPanel - RailLayout.minPanelWidth) : 0.0;
+      final capacity = leftCap + rightCap;
+      if (capacity > 0) {
+        final shrink = math.min(exceeded, capacity);
+        leftPanel -= shrink * leftCap / capacity;
+        rightPanel -= shrink * rightCap / capacity;
+        exceeded = over();
+      }
+      if (exceeded > 0 && rightOpen) {
+        rightOpen = false;
+        rightPanel = 0;
+        exceeded = over();
+      }
+      if (exceeded > 0 && leftOpen) {
+        leftOpen = false;
+        leftPanel = 0;
+      }
+    }
+
+    return _WideBudget(
+      leftPanelWidth:
+          leftOpen ? math.max(leftPanel, RailLayout.minPanelWidth) : 0.0,
+      rightPanelWidth:
+          rightOpen ? math.max(rightPanel, RailLayout.minPanelWidth) : 0.0,
+      showLeftRail: showLeftRail,
+      showRightRail: showRightRail,
+      active: {
+        RailSlot.leftTop: leftOpen ? _rail.active[RailSlot.leftTop] : null,
+        RailSlot.leftBottom: leftOpen ? _rail.active[RailSlot.leftBottom] : null,
+        RailSlot.rightTop: rightOpen ? _rail.active[RailSlot.rightTop] : null,
+        RailSlot.rightBottom:
+            rightOpen ? _rail.active[RailSlot.rightBottom] : null,
+      },
+    );
+  }
+
+  /// 一侧停靠区：图标列在窗口边缘，面板朝编辑器一侧展开。
+  Widget _dockSide({required bool isLeft, required _WideBudget budget}) {
+    final topSlot = isLeft ? RailSlot.leftTop : RailSlot.rightTop;
+    final bottomSlot = isLeft ? RailSlot.leftBottom : RailSlot.rightBottom;
+    final topIds = _rail.panels[topSlot]!;
+    final bottomIds = _rail.panels[bottomSlot]!;
+    final topVisible = topIds.isNotEmpty || _dragging;
+    final bottomVisible = bottomIds.isNotEmpty || _dragging;
+    if (!topVisible && !bottomVisible) return const SizedBox.shrink();
+
+    final activeTop = budget.active[topSlot];
+    final activeBottom = budget.active[bottomSlot];
+    final anyOpen = activeTop != null || activeBottom != null;
+    final panelWidth = isLeft ? budget.leftPanelWidth : budget.rightPanelWidth;
+    final sideWidth = panelRailWidth + (anyOpen ? panelWidth : 0.0);
+    final split = isLeft ? _rail.leftSplit : _rail.rightSplit;
+    final both = topVisible && bottomVisible;
+
+    Widget segment(RailSlot slot, List<String> ids, String? active) {
+      final rail = ids.isEmpty
+          ? PanelRailDropStub(
+              slot: slot,
+              borderOnRight: isLeft,
+              onDrop: (data, index) => _onRailDrop(slot, data, index),
+            )
+          : PanelRailColumn(
+              slot: slot,
+              panelIds: ids,
+              activeId: _rail.active[slot],
+              borderOnRight: isLeft,
+              onTap: _onTogglePanel,
+              onDragStarted: _onRailDragStarted,
+              onDragEnd: _onRailDragEnd,
+              onDrop: (data, index) => _onRailDrop(slot, data, index),
+              dragging: _dragging,
+            );
+      final Widget? panel = !anyOpen
+          ? null
+          : Expanded(
+              child: active == null
+                  ? ColoredBox(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerLowest
+                          .withValues(alpha: 0.6),
+                      child: const SizedBox.expand(),
+                    )
+                  : AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 150),
+                      switchInCurve: Curves.easeOut,
+                      switchOutCurve: Curves.easeIn,
+                      transitionBuilder: (child, animation) =>
+                          FadeTransition(opacity: animation, child: child),
+                      child: KeyedSubtree(
+                        key: ValueKey('${slot.name}:$active'),
+                        child: _panelWidgets[active] ?? _buildPanel(active),
+                      ),
+                    ),
+            );
+      final keyedRail = KeyedSubtree(
+        key: ValueKey('${slot.name}-rail'),
+        child: rail,
+      );
+      return PanelRailDropArea(
+        slot: slot,
+        railOnLeft: isLeft,
+        enabled: _dragging,
+        dropIndex: ids.length,
+        onDrop: (data, index) => _onRailDrop(slot, data, index),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: isLeft ? [keyedRail, ?panel] : [?panel, keyedRail],
+        ),
+      );
+    }
+
+    return SizedBox(
+      width: sideWidth,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final height = constraints.maxHeight;
+          final topFlex = both
+              ? (split * 1000).round().clamp(1, 999).toInt()
+              : 1;
+          final bottomFlex = both
+              ? (1000 - (split * 1000).round()).clamp(1, 999).toInt()
+              : 1;
+          final showSplit = topIds.isNotEmpty && bottomIds.isNotEmpty;
+          return Column(
+            children: [
+              if (topVisible)
+                Expanded(
+                  key: ValueKey('${isLeft ? 'L' : 'R'}-top'),
+                  flex: topFlex,
+                  child: segment(topSlot, topIds, activeTop),
+                ),
+              if (showSplit)
+                PanelRailHorizontalDivider(
+                  key: ValueKey('${isLeft ? 'L' : 'R'}-split'),
+                  onDrag: (delta) {
+                    final usable = math.max(1.0, height - _dividerWidth);
+                    final next =
+                        (isLeft ? _rail.leftSplit : _rail.rightSplit) +
+                            delta / usable;
+                    final value = next
+                        .clamp(RailLayout.minSplit, RailLayout.maxSplit)
+                        .toDouble();
+                    if (isLeft) {
+                      _rail.leftSplit = value;
+                    } else {
+                      _rail.rightSplit = value;
+                    }
+                    _layoutTick.value++;
+                  },
+                  onDragEnd: _saveRail,
+                ),
+              if (bottomVisible)
+                Expanded(
+                  key: ValueKey('${isLeft ? 'L' : 'R'}-bottom'),
+                  flex: bottomFlex,
+                  child: segment(bottomSlot, bottomIds, activeBottom),
+                ),
+            ],
+          );
+        },
+      ),
     );
   }
 
@@ -397,80 +604,65 @@ class _WorkspacePageState extends State<WorkspacePage> {
       case 1:
         return EditorArea(book: _book);
       default:
-        return _panelArea(forceOpen: true);
+        // 窄屏底部导航已有「目录」页，工具列表不再重复给出目录图标。
+        final ids = [
+          for (final id in _rail.mergedPanels)
+            if (id != RailLayout.tree) id,
+        ];
+        final available = ids.isEmpty ? [RailLayout.outline] : ids;
+        final current = available.contains(_narrowPanelId)
+            ? _narrowPanelId
+            : available.first;
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 150),
+                switchInCurve: Curves.easeOut,
+                switchOutCurve: Curves.easeIn,
+                transitionBuilder: (child, animation) =>
+                    FadeTransition(opacity: animation, child: child),
+                child: KeyedSubtree(
+                  key: ValueKey(current),
+                  child: _buildPanel(current),
+                ),
+              ),
+            ),
+            PanelRailPlainList(
+              panelIds: available,
+              activeId: current,
+              onTap: (id) => setState(() => _narrowPanelId = id),
+            ),
+          ],
+        );
     }
   }
 
-  /// 右缘活动图标列：点击图标在其左侧弹出对应面板，再次点击收起。
-  Widget _panelArea({bool forceOpen = false}) {
-    final scheme = Theme.of(context).colorScheme;
-    final open = forceOpen || _panelOpen;
-    return Row(
-      children: [
-        if (open)
-          Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 150),
-              switchInCurve: Curves.easeOut,
-              switchOutCurve: Curves.easeIn,
-              transitionBuilder: (child, animation) =>
-                  FadeTransition(opacity: animation, child: child),
-              child: KeyedSubtree(
-                key: ValueKey(_panelIndex),
-                child: _panelBody(),
-              ),
-            ),
-          ),
-        Container(
-          width: _railWidth,
-          decoration: BoxDecoration(
-            color: scheme.surfaceContainerHighest.withValues(alpha: 0.45),
-            border: Border(
-              left: BorderSide(
-                color: scheme.outlineVariant.withValues(alpha: 0.6),
-              ),
-            ),
-          ),
-          child: Column(
-            children: [
-              for (var i = 0; i < _panels.length; i++)
-                _RailButton(
-                  tooltip: _panels[i],
-                  icon: _panelIcons[i],
-                  selected: open && _panelIndex == i,
-                  onTap: () => setState(() {
-                    if (_panelIndex == i) {
-                      _panelOpen = !_panelOpen;
-                    } else {
-                      _panelIndex = i;
-                      _panelOpen = true;
-                    }
-                    _syncPanelState();
-                  }),
-                ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _panelBody() {
-    final book = _book;
-    switch (_panelIndex) {
-      case 0:
-        return OutlinePanel(book: book);
-      case 1:
+  /// 按面板 id 构建面板内容。
+  Widget _buildPanel(String panelId) {
+    switch (panelId) {
+      case RailLayout.tree:
+        return BookTree(book: _book);
+      case RailLayout.outline:
+        return OutlinePanel(book: _book);
+      case RailLayout.ai:
         return const AiPanel();
-      case 2:
+      case RailLayout.snapshot:
         return const SnapshotPanel();
-      case 3:
-        return CharacterPanel(book: book, openCharacterId: _openCharacterId);
-      case 4:
-        return ForeshadowPanel(book: book, openForeshadowId: _openForeshadowId);
-      case 5:
+      case RailLayout.character:
+        return CharacterPanel(
+          book: _book,
+          openCharacterId: _openCharacterId,
+        );
+      case RailLayout.foreshadow:
+        return ForeshadowPanel(
+          book: _book,
+          openForeshadowId: _openForeshadowId,
+        );
+      case RailLayout.sensitive:
         return const SensitivePanel();
-      case 6:
+      case RailLayout.recycle:
         return const RecycleView(scope: RecycleScope.workspace);
       default:
         return const PreviewPanel();
@@ -478,113 +670,21 @@ class _WorkspacePageState extends State<WorkspacePage> {
   }
 }
 
-/// 可拖动的垂直分隔条：拖动调整左右栏宽度，hover 时高亮。
-class _DragDivider extends StatefulWidget {
-  const _DragDivider({
-    required this.width,
-    required this.onDrag,
-    this.onDragEnd,
+/// 宽屏布局的宽度预算结果。
+class _WideBudget {
+  const _WideBudget({
+    required this.leftPanelWidth,
+    required this.rightPanelWidth,
+    required this.showLeftRail,
+    required this.showRightRail,
+    required this.active,
   });
 
-  final double width;
-  final ValueChanged<double> onDrag;
-  final VoidCallback? onDragEnd;
+  final double leftPanelWidth;
+  final double rightPanelWidth;
+  final bool showLeftRail;
+  final bool showRightRail;
 
-  @override
-  State<_DragDivider> createState() => _DragDividerState();
-}
-
-class _DragDividerState extends State<_DragDivider> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return SizedBox(
-      width: widget.width,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.resizeLeftRight,
-        onEnter: (_) => setState(() => _hovered = true),
-        onExit: (_) => setState(() => _hovered = false),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onHorizontalDragUpdate: (details) => widget.onDrag(details.delta.dx),
-          onHorizontalDragEnd: (_) => widget.onDragEnd?.call(),
-          child: Center(
-            child: Container(
-              width: _hovered ? 2 : 1,
-              height: double.infinity,
-              color: _hovered
-                  ? scheme.primary.withValues(alpha: 0.45)
-                  : scheme.outlineVariant.withValues(alpha: 0.6),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 活动列按钮：类似 IDE 工具窗按钮，选中时左缘显示指示条。
-class _RailButton extends StatelessWidget {
-  const _RailButton({
-    required this.tooltip,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String tooltip;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Tooltip(
-      message: tooltip,
-      waitDuration: const Duration(milliseconds: 400),
-      child: Stack(
-        children: [
-          SizedBox(
-            width: 48,
-            height: 44,
-            child: Material(
-              color: selected
-                  ? scheme.primaryContainer.withValues(alpha: 0.55)
-                  : Colors.transparent,
-              child: InkWell(
-                mouseCursor: SystemMouseCursors.click,
-                onTap: onTap,
-                child: Center(
-                  child: Icon(
-                    icon,
-                    size: 20,
-                    color: selected ? scheme.primary : scheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            left: 0,
-            top: 8,
-            bottom: 8,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              width: 3,
-              curve: Curves.easeOut,
-              decoration: BoxDecoration(
-                color: selected ? scheme.primary : Colors.transparent,
-                borderRadius: const BorderRadius.horizontal(
-                  right: Radius.circular(2),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  /// 实际生效的展开状态（临时隐藏的面板为 null）。
+  final Map<RailSlot, String?> active;
 }

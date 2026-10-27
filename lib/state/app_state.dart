@@ -120,8 +120,8 @@ class AppState extends ChangeNotifier {
   /// 片段跳转请求（面板 → 编辑器定位）：编辑器收到后聚焦滚动到选区。
   final ValueNotifier<int> segmentJumpNonce = ValueNotifier(0);
 
-  /// 每书 UI 会话快照（内存缓存，跨书保留）：目录树展开卷、右侧面板状态、
-  /// 离开时的滚动偏移。写盘统一延后到切书离开 / 退出（_persistBookUi）。
+  /// 每书 UI 会话快照（内存缓存，跨书保留）：目录树展开卷、离开时的滚动偏移。
+  /// 写盘统一延后到切书离开 / 退出（_persistBookUi）。
   final Map<String, BookUiSnapshot> _uiSnaps = {};
 
   BookUiSnapshot uiSnapshot(String bookId) =>
@@ -129,6 +129,15 @@ class AppState extends ChangeNotifier {
 
   /// 切书/重启后待恢复的编辑器滚动偏移（EditorArea 消费后清空）。
   double? _pendingRestoreScroll;
+
+  /// 每章滚动偏移（仅内存）：切回标签时还原。
+  final Map<String, double> _chapterScrolls = {};
+
+  double? chapterScrollOf(String chapterId) => _chapterScrolls[chapterId];
+
+  void setChapterScroll(String chapterId, double offset) {
+    _chapterScrolls[chapterId] = offset;
+  }
 
   double? consumePendingRestoreScroll() {
     final v = _pendingRestoreScroll;
@@ -171,8 +180,7 @@ class AppState extends ChangeNotifier {
       await settings.saveBookUi(
         book.id,
         tree: snap.expandedVolumes.toList(),
-        panelIndex: snap.panelIndex,
-        panelOpen: snap.panelOpen,
+        chapterTabs: snap.chapterTabIds.toList(),
       );
     }
   }
@@ -332,6 +340,16 @@ class AppState extends ChangeNotifier {
       snap.expandedVolumes.addAll(settings.bookUiOf(book.id).tree);
       snap.treeLoaded = true;
     }
+    if (!snap.tabsLoaded) {
+      // 首次进入快照：还原章节标签，剔除已删除章节并去重。
+      final validIds = chapterList.map((c) => c.id).toSet();
+      for (final id in settings.bookUiOf(book.id).chapterTabs) {
+        if (validIds.contains(id) && !snap.chapterTabIds.contains(id)) {
+          snap.chapterTabIds.add(id);
+        }
+      }
+      snap.tabsLoaded = true;
+    }
     if (targetId != null) {
       final ch = await chapters.get(targetId);
       if (ch != null) {
@@ -346,6 +364,81 @@ class AppState extends ChangeNotifier {
     if (currentBook == null) return;
     volumeTree = await volumes.listByBook(currentBook!.id);
     chapterList = await chapters.listByBook(currentBook!.id);
+    // 章节被删除 / 同步移除后，标签里不再存在的 id 一并剔除。
+    final snap = uiSnapshot(currentBook!.id);
+    final validIds = chapterList.map((c) => c.id).toSet();
+    final before = snap.chapterTabIds.length;
+    snap.chapterTabIds.removeWhere((id) => !validIds.contains(id));
+    if (snap.chapterTabIds.length != before) await _saveChapterTabs();
+  }
+
+  /// 章节标签顺序落盘（config.json bookUi）。
+  Future<void> _saveChapterTabs() async {
+    final book = currentBook;
+    if (book == null) return;
+    final snap = uiSnapshot(book.id);
+    await settings.saveBookUi(
+      book.id,
+      tree: snap.expandedVolumes.toList(),
+      chapterTabs: snap.chapterTabIds.toList(),
+    );
+  }
+
+  /// 当前书的章节标签（按标签顺序解析为章对象）。
+  List<Chapter> get chapterTabs {
+    final book = currentBook;
+    if (book == null) return const [];
+    final byId = {for (final c in chapterList) c.id: c};
+    return [
+      for (final id in uiSnapshot(book.id).chapterTabIds)
+        if (byId[id] != null) byId[id]!,
+    ];
+  }
+
+  /// 当前章在标签中的邻位：先右后左，跳过 [removed]；无则返回 null。
+  String? _neighborTabId(
+    List<String> tabs,
+    int fromPos,
+    Set<String> removed,
+  ) {
+    for (var i = fromPos; i < tabs.length; i++) {
+      if (!removed.contains(tabs[i])) return tabs[i];
+    }
+    for (var i = fromPos - 1; i >= 0; i--) {
+      if (!removed.contains(tabs[i])) return tabs[i];
+    }
+    return null;
+  }
+
+  /// 关闭章节标签：移除标签；关的是当前章时切到邻位，无标签则进入空态。
+  Future<void> closeChapterTab(String id) async {
+    final book = currentBook;
+    if (book == null) return;
+    final snap = uiSnapshot(book.id);
+    final pos = snap.chapterTabIds.indexOf(id);
+    if (pos < 0) return;
+    final wasCurrent = currentChapter?.id == id;
+    final nextId = wasCurrent
+        ? _neighborTabId(snap.chapterTabIds, pos, {id})
+        : null;
+    snap.chapterTabIds.removeAt(pos);
+    await _saveChapterTabs();
+    if (!wasCurrent) {
+      notifyListeners();
+      return;
+    }
+    final next =
+        chapterList.where((c) => c.id == nextId).firstOrNull;
+    if (next != null) {
+      await openChapter(next);
+      return;
+    }
+    await autosave.flush();
+    final ch = currentChapter;
+    if (ch != null) await _saveCursorTo(ch);
+    currentChapter = null;
+    _resetEditor();
+    notifyListeners();
   }
 
   /// 对外暴露的树刷新（大纲编辑等场景）。
@@ -596,18 +689,29 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// 把编辑器当前光标写回指定章节（内存 + DB）。
+  Future<void> _saveCursorTo(Chapter chapter) async {
+    final off = editorController.selection.baseOffset;
+    if (off < 0 || off > editorController.document.length) return;
+    chapter.cursorOffset = off;
+    await chapters.updateCursor(chapter.id, off);
+  }
+
   /// 打开章节（≤300ms 预算：单次查询 + 控制器赋值）。
   /// 离开旧章前把光标偏移写入内存章对象，供同会话切回时还原。
   Future<void> openChapter(Chapter chapter) async {
     if (currentChapter?.id == chapter.id) return;
-    await autosave.flush();
-    final prev = currentChapter;
-    if (prev != null) {
-      final off = editorController.selection.baseOffset;
-      if (off >= 0 && off <= editorController.document.length) {
-        prev.cursorOffset = off;
+    final book = currentBook;
+    if (book != null && chapter.bookId == book.id) {
+      final snap = uiSnapshot(book.id);
+      if (!snap.chapterTabIds.contains(chapter.id)) {
+        snap.chapterTabIds.add(chapter.id);
+        await _saveChapterTabs();
       }
     }
+    await autosave.flush();
+    final prev = currentChapter;
+    if (prev != null) await _saveCursorTo(prev);
     currentChapter = chapter;
     _loadingDoc = true;
     try {
@@ -1020,13 +1124,30 @@ class AppState extends ChangeNotifier {
       'outline': ch.outline,
       'sort': ch.sort,
     });
-    if (currentChapter?.id == id) {
+    final wasCurrent = currentChapter?.id == id;
+    final snap = currentBook == null ? null : uiSnapshot(currentBook!.id);
+    final tabsBefore =
+        snap == null ? const <String>[] : [...snap.chapterTabIds];
+    final pos = tabsBefore.indexOf(id);
+    if (wasCurrent) {
       currentChapter = null;
       _resetEditor();
-
     }
     await chapters.hardDelete(id);
     await _reloadTree();
+    if (wasCurrent && snap != null) {
+      final nextId = _neighborTabId(
+        tabsBefore,
+        pos < 0 ? tabsBefore.length : pos,
+        {id},
+      );
+      final next = nextId == null
+          ? null
+          : chapterList.where((c) => c.id == nextId).firstOrNull;
+      if (next != null) {
+        await openChapter(next);
+      }
+    }
     notifyListeners();
   }
 
@@ -1046,15 +1167,34 @@ class AppState extends ChangeNotifier {
             'sort': c.sort,
           }).toList(),
     });
+    final currentId = currentChapter?.id;
+    final removed = list.map((c) => c.id).toSet();
+    final wasCurrent = currentId != null && removed.contains(currentId);
+    final snap = currentBook == null ? null : uiSnapshot(currentBook!.id);
+    final tabsBefore =
+        snap == null ? const <String>[] : [...snap.chapterTabIds];
+    final pos = currentId == null ? -1 : tabsBefore.indexOf(currentId);
+    if (wasCurrent) {
+      currentChapter = null;
+      _resetEditor();
+    }
     for (final c in list) {
-      if (currentChapter?.id == c.id) {
-        currentChapter = null;
-        _resetEditor();
-
-      }
       await chapters.hardDelete(c.id);
     }
     await _reloadTree();
+    if (wasCurrent && snap != null) {
+      final nextId = _neighborTabId(
+        tabsBefore,
+        pos < 0 ? tabsBefore.length : pos,
+        removed,
+      );
+      final next = nextId == null
+          ? null
+          : chapterList.where((c) => c.id == nextId).firstOrNull;
+      if (next != null) {
+        await openChapter(next);
+      }
+    }
     notifyListeners();
   }
 
@@ -1197,13 +1337,14 @@ class BookUiSnapshot {
   /// 左侧目录树中展开的卷 id 集合。
   final Set<String> expandedVolumes = <String>{};
 
+  /// 章节标签顺序（章节 id）。
+  final List<String> chapterTabIds = <String>[];
+
   /// 是否已从 config.json 载入过持久化的展开集合（跨会话还原一次）。
   bool treeLoaded = false;
 
-  /// 右侧面板选中项与展开态（由 WorkspacePage 实时同步，供落盘）。
-  int panelIndex = 0;
-  bool panelOpen = false;
-  bool panelInitialized = false;
+  /// 是否已从 config.json 载入过章节标签（跨会话还原一次）。
+  bool tabsLoaded = false;
 
   /// 离开该书时编辑器的滚动偏移（EditorArea 滚动时实时同步）。
   double scrollOffset = 0;

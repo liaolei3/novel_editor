@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants.dart';
@@ -430,10 +432,7 @@ class _WriteStatsBubbleState extends State<_WriteStatsBubble> {
   /// 萌宠列：列宽固定，萌宠按 BoxFit.contain 缩放并垂直居中。
   /// 注意不能用 AspectRatio(1)：那会撑成与列等高的正方形，把面板顶宽。
   Widget _figure(PetStandee standee) {
-    return SizedBox(
-      width: _figureWidth,
-      child: Image.asset(standee.assetPath, fit: BoxFit.contain),
-    );
+    return SizedBox(width: _figureWidth, child: _StandeeFigure(standee: standee));
   }
 
   Widget _metrics(
@@ -515,6 +514,116 @@ class _WriteStatsBubbleState extends State<_WriteStatsBubble> {
 
   TextStyle _labelStyle(ColorScheme scheme) =>
       TextStyle(fontSize: 12, color: scheme.onSurfaceVariant);
+}
+
+/// 萌宠立绘：动态资源先播一轮，之后随机等待数秒再播；
+/// 静态资源直接显示图片。
+class _StandeeFigure extends StatefulWidget {
+  const _StandeeFigure({required this.standee});
+
+  final PetStandee standee;
+
+  @override
+  State<_StandeeFigure> createState() => _StandeeFigureState();
+}
+
+class _StandeeFigureState extends State<_StandeeFigure> {
+  /// 两轮播放之间的随机间隔（毫秒）。
+  static const int _minGapMs = 3000;
+  static const int _maxGapMs = 8000;
+
+  final math.Random _random = math.Random();
+
+  ByteData? _bytes;
+  ui.Codec? _codec;
+  ui.Image? _image;
+  Timer? _timer;
+  int _shown = 0;
+
+  bool get _animated => widget.standee.dynamicAsset != null;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_animated) _load();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _codec?.dispose();
+    _image?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final data = await rootBundle.load(widget.standee.assetPath);
+    if (!mounted) return;
+    _bytes = data;
+    await _playRound();
+  }
+
+  /// 从第一帧播放一轮。
+  Future<void> _playRound() async {
+    final bytes = _bytes;
+    if (bytes == null || !mounted) return;
+    _timer?.cancel();
+    _codec?.dispose();
+    _shown = 0;
+    final codec = await ui.instantiateImageCodec(bytes.buffer.asUint8List());
+    if (!mounted) {
+      codec.dispose();
+      return;
+    }
+    _codec = codec;
+    await _playNext();
+  }
+
+  Future<void> _playNext() async {
+    final codec = _codec;
+    if (codec == null || !mounted) return;
+    if (_shown >= codec.frameCount) {
+      _codec = null;
+      codec.dispose();
+      _scheduleNextRound();
+      return;
+    }
+    final frame = await codec.getNextFrame();
+    if (!mounted) {
+      frame.image.dispose();
+      return;
+    }
+    _shown++;
+    _showImage(frame.image);
+    _timer = Timer(frame.duration, _playNext);
+  }
+
+  void _scheduleNextRound() {
+    final gap = _minGapMs + _random.nextInt(_maxGapMs - _minGapMs);
+    _timer = Timer(Duration(milliseconds: gap), _playRound);
+  }
+
+  void _showImage(ui.Image image) {
+    final old = _image;
+    setState(() => _image = image);
+    if (old != null) {
+      // 旧帧可能仍在绘制中，等下一帧后再释放。
+      WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final image = _image;
+    if (!_animated || image == null) {
+      return Image.asset(widget.standee.staticAssetPath, fit: BoxFit.contain);
+    }
+    return RawImage(
+      image: image,
+      fit: BoxFit.contain,
+      filterQuality: FilterQuality.medium,
+    );
+  }
 }
 
 /// 缩放命中的边或角。

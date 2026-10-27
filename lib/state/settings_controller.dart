@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'app_config.dart';
+import 'rail_layout.dart';
 import '../core/constants.dart';
 import '../core/utils/text_stats.dart';
 import '../ui/app_theme.dart';
@@ -78,12 +79,13 @@ class SettingsController extends ChangeNotifier {
   String get dataDir => _cfg.getString('dataDir') ?? '';
 
   double get workspaceLeftWidth => _cfg.getDouble('workspaceLeftWidth') ?? 280;
-  double get workspaceRightWidth => _cfg.getDouble('workspaceRightWidth') ?? 408;
-  int get workspacePanelIndex => _cfg.getInt('workspacePanelIndex') ?? 0;
-  bool get workspacePanelOpen => _cfg.getBool('workspacePanelOpen') ?? false;
   bool get outlineGridView => _cfg.getBool('outlineGridView') ?? true;
   bool get characterGridView => _cfg.getBool('characterGridView') ?? false;
   bool get foreshadowGridView => _cfg.getBool('foreshadowGridView') ?? false;
+
+  /// 可停靠面板图标栏布局（全局保存）。
+  RailLayout get railLayout =>
+      RailLayout.fromJson(_cfg.getMap('railLayout'));
 
   Future<void> setTheme(AppTheme theme) =>
       _set('appTheme', theme.name, () => notifyListeners());
@@ -200,33 +202,32 @@ class SettingsController extends ChangeNotifier {
 
   /// 工作区布局：仅落盘，不通知（布局是 WorkspacePage 的本地状态）。
   Future<void> setWorkspaceLeftWidth(double v) => _cfg.setDouble('workspaceLeftWidth', v);
-  Future<void> setWorkspaceRightWidth(double v) => _cfg.setDouble('workspaceRightWidth', v);
   Future<void> setOutlineGridView(bool v) => _cfg.setBool('outlineGridView', v);
   Future<void> setCharacterGridView(bool v) => _cfg.setBool('characterGridView', v);
   Future<void> setForeshadowGridView(bool v) => _cfg.setBool('foreshadowGridView', v);
 
-  /// 每书 UI 快照（config.json 的 bookUi 键）：目录树展开卷 + 右侧面板状态。
-  /// 仅在切书离开 / 退出时落盘（AppState._persistBookUi 调用）。
+  /// 保存可停靠面板布局，仅落盘。
+  Future<void> saveRailLayout(RailLayout layout) =>
+      _cfg.setMap('railLayout', layout.toJson());
+
+  /// 每书 UI 快照（config.json 的 bookUi 键）：目录树展开卷、章节标签。
   BookUiRecord bookUiOf(String bookId) {
     final m = _cfg.getMap('bookUi')?[bookId];
     if (m is! Map) return const BookUiRecord();
     return BookUiRecord(
       tree: (m['tree'] as List?)?.whereType<String>().toList() ?? const [],
-      panelIndex: m['panelIndex'] as int?,
-      panelOpen: m['panelOpen'] as bool?,
+      chapterTabs:
+          (m['chapterTabs'] as List?)?.whereType<String>().toList() ?? const [],
     );
   }
 
-  Future<void> saveBookUi(String bookId,
-      {required List<String> tree,
-      required int panelIndex,
-      required bool panelOpen}) async {
+  Future<void> saveBookUi(
+    String bookId, {
+    required List<String> tree,
+    required List<String> chapterTabs,
+  }) async {
     final map = _cfg.getMap('bookUi') ?? <String, Object?>{};
-    map[bookId] = {
-      'tree': tree,
-      'panelIndex': panelIndex,
-      'panelOpen': panelOpen,
-    };
+    map[bookId] = {'tree': tree, 'chapterTabs': chapterTabs};
     await _cfg.setMap('bookUi', map);
   }
 
@@ -250,14 +251,11 @@ class SettingsController extends ChangeNotifier {
 
 /// 单本书的持久化 UI 快照（config.json bookUi 键的条目）。
 class BookUiRecord {
-  const BookUiRecord({this.tree = const [], this.panelIndex, this.panelOpen});
+  const BookUiRecord({this.tree = const [], this.chapterTabs = const []});
 
   /// 展开的卷 id 集合。
   final List<String> tree;
 
-  /// 右侧面板选中项；null = 无记录。
-  final int? panelIndex;
-
-  /// 右侧面板是否展开；null = 无记录。
-  final bool? panelOpen;
+  /// 章节标签顺序（章节 id）。
+  final List<String> chapterTabs;
 }

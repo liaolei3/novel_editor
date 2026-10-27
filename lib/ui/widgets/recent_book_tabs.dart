@@ -347,6 +347,9 @@ class _BookTabState extends State<_BookTab> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    // 界面字号放大后中文字形的视觉中心偏移更大，图标随之下移。
+    final iconDy =
+        MediaQuery.textScalerOf(context).scale(1.0) > 1.0 ? 2.0 : 1.0;
     return Padding(
       padding: const EdgeInsets.only(right: 6),
       child: MouseRegion(
@@ -357,7 +360,7 @@ class _BookTabState extends State<_BookTab> {
           onTap: widget.onSelect,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 120),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            padding: const EdgeInsets.fromLTRB(10, 6, 6, 6),
             decoration: BoxDecoration(
               color: scheme.primary.withValues(
                 alpha: widget.selected ? 0.22 : (_hover ? 0.16 : 0.10),
@@ -367,8 +370,11 @@ class _BookTabState extends State<_BookTab> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.auto_stories_outlined,
-                    size: 16, color: scheme.primary),
+                Transform.translate(
+                  offset: Offset(0, iconDy),
+                  child: Icon(Icons.auto_stories_outlined,
+                      size: 16, color: scheme.primary),
+                ),
                 const SizedBox(width: 5),
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 150),
@@ -383,17 +389,26 @@ class _BookTabState extends State<_BookTab> {
                     ),
                   ),
                 ),
-                // 悬浮时显示关闭按钮，点击只关标签不打开幕。
-                SizedBox(width: _hover ? 4 : 0),
-                if (_hover)
-                  GestureDetector(
-                    onTap: widget.onClose,
-                    child: Icon(
-                      Icons.close,
-                      size: 14,
-                      color: scheme.onSurfaceVariant,
+                // 关闭按钮位置常驻，仅切换显隐，避免悬浮时标签宽度变化。
+                const SizedBox(width: 2),
+                IgnorePointer(
+                  ignoring: !_hover && !widget.selected,
+                  child: AnimatedOpacity(
+                    opacity: _hover || widget.selected ? 1 : 0,
+                    duration: const Duration(milliseconds: 120),
+                    child: GestureDetector(
+                      onTap: widget.onClose,
+                      child: Transform.translate(
+                        offset: Offset(0, iconDy),
+                        child: Icon(
+                          Icons.close,
+                          size: 12,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
                     ),
                   ),
+                ),
               ],
             ),
           ),

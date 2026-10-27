@@ -28,6 +28,7 @@ import '../common/dialogs.dart';
 import '../common/file_io.dart';
 import '../common/foreshadow_dialogs.dart';
 import 'busy_overlay.dart';
+import 'chapter_tabs.dart';
 import 'character_tip.dart';
 import 'fireworks.dart';
 import 'foreshadow_tip.dart';
@@ -124,7 +125,10 @@ class _EditorAreaState extends State<EditorArea> {
   void _onEditorScroll() {
     final bookId = _appState.currentBook?.id;
     if (bookId == null) return;
-    _appState.uiSnapshot(bookId).scrollOffset = _scrollController.offset;
+    final offset = _scrollController.offset;
+    _appState.uiSnapshot(bookId).scrollOffset = offset;
+    final chapterId = _appState.currentChapter?.id;
+    if (chapterId != null) _appState.setChapterScroll(chapterId, offset);
   }
 
   /// 章节切换会替换 QuillController.document，需跟随重新订阅内容变化流。
@@ -612,24 +616,32 @@ class _EditorAreaState extends State<EditorArea> {
     _dialogueColor = settings.dialogueHighlightColor;
     final chapter = state.currentChapter;
 
+    final savingHint = _saveIndicator(context);
     if (chapter == null) {
-      return const Center(child: Text('从左侧目录选择或新建一个章节开始写作'));
+      // 退出正文后重新打开同一章也要触发滚动还原。
+      _lastChapterId = null;
+      return Column(children: [
+        _topBar(context, savingHint),
+        const Expanded(
+          child: Center(child: Text('从左侧目录选择或新建一个章节开始写作')),
+        ),
+      ]);
     }
 
-    // 切章/切书时还原滚动位置：切书走 AppState 的每书快照，同书切章复位顶部
-    // （State 跨章节复用，滚动位置会残留）。
+    // 切章/切书时还原滚动位置：跨书/重启用书级快照，同书切章用每章偏移，
+    // 首次打开的章节从顶部开始。
     if (chapter.id != _lastChapterId || state.currentBook?.id != _lastBookId) {
       _lastChapterId = chapter.id;
       _lastBookId = state.currentBook?.id;
-      final restore = state.consumePendingRestoreScroll();
+      final restore = state.consumePendingRestoreScroll() ??
+          state.chapterScrollOf(chapter.id) ??
+          0.0;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scrollController.hasClients) {
-          _scrollController.jumpTo(restore ?? 0);
+          _scrollController.jumpTo(restore);
         }
       });
     }
-
-    final savingHint = _saveIndicator(context);
 
     return CallbackShortcuts(
       bindings: {
@@ -895,7 +907,10 @@ class _EditorAreaState extends State<EditorArea> {
       height: 44,
       child: Row(children: [
         const SizedBox(width: 8),
+        const Expanded(child: ChapterTabs()),
+        const SizedBox(width: 8),
         savingHint,
+        const SizedBox(width: 12),
       ]),
     );
   }
