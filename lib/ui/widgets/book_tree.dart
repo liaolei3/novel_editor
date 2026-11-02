@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:ui' show lerpDouble;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -10,6 +12,7 @@ import '../app_root.dart';
 import '../common/dialogs.dart';
 import '../common/context_menu.dart';
 import '../common/long_press_drag_listener.dart';
+import 'chapter_drag.dart';
 import 'toast.dart';
 
 /// 书树各行固定高度。偏移量定位依赖该不变量，故同时用于布局与计算，
@@ -57,6 +60,9 @@ class _BookTreeState extends State<BookTree> {
   /// 硬滚到中间只会让列表无谓地跳。
   bool _suppressRevealOnce = false;
 
+  /// 当前是否已有一个章节拖出，避免 onDragEnd 与 onDraggableCanceled 重复计数。
+  bool _chapterDragging = false;
+
   @override
   void initState() {
     super.initState();
@@ -84,6 +90,20 @@ class _BookTreeState extends State<BookTree> {
     super.dispose();
   }
 
+  /// 章节拖出开始：记账并切换光标。
+  void _startChapterDrag() {
+    if (_chapterDragging) return;
+    _chapterDragging = true;
+    _appState.chapterDragCount.value += 1;
+  }
+
+  /// 章节拖出结束（投放成功或被取消）。
+  void _endChapterDrag() {
+    if (!_chapterDragging) return;
+    _chapterDragging = false;
+    _appState.chapterDragCount.value -= 1;
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
@@ -109,38 +129,48 @@ class _BookTreeState extends State<BookTree> {
     if (_pendingReveal) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _applyPendingReveal());
     }
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      floatingActionButton: FloatingActionButton.small(
-        heroTag: 'tree-add',
-        tooltip: '新建卷',
-        mouseCursor: SystemMouseCursors.click,
-        child: const Icon(Icons.post_add),
-        onPressed: () => _addVolume(context, state),
+    return ValueListenableBuilder<int>(
+      valueListenable: _appState.chapterDragCount,
+      builder: (context, count, child) => MouseRegion(
+        // 拖拽中整树兜底为抓取光标，行内其它 hover 光标优先。
+        cursor: count > 0
+            ? SystemMouseCursors.grabbing
+            : SystemMouseCursors.basic,
+        child: child,
       ),
-      body: volumes.isEmpty
-          ? Center(
-              child: TextButton.icon(
-                icon: const Icon(Icons.add),
-                label: const Text('新建卷'),
-                onPressed: () => _addVolume(context, state),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        floatingActionButton: FloatingActionButton.small(
+          heroTag: 'tree-add',
+          tooltip: '新建卷',
+          mouseCursor: SystemMouseCursors.click,
+          child: const Icon(Icons.post_add),
+          onPressed: () => _addVolume(context, state),
+        ),
+        body: volumes.isEmpty
+            ? Center(
+                child: TextButton.icon(
+                  icon: const Icon(Icons.add),
+                  label: const Text('新建卷'),
+                  onPressed: () => _addVolume(context, state),
+                ),
+              )
+            : CustomScrollView(
+                controller: _controller,
+                slivers: [
+                  for (var i = 0; i < volumes.length; i++)
+                    ..._volumeSlivers(
+                      context,
+                      state,
+                      i,
+                      volumes[i],
+                      byVolume[volumes[i].id] ?? const <Chapter>[],
+                      volumeChars[volumes[i].id] ?? 0,
+                    ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 88)),
+                ],
               ),
-            )
-          : CustomScrollView(
-              controller: _controller,
-              slivers: [
-                for (var i = 0; i < volumes.length; i++)
-                  ..._volumeSlivers(
-                    context,
-                    state,
-                    i,
-                    volumes[i],
-                    byVolume[volumes[i].id] ?? const <Chapter>[],
-                    volumeChars[volumes[i].id] ?? 0,
-                  ),
-                const SliverToBoxAdapter(child: SizedBox(height: 88)),
-              ],
-            ),
+      ),
     );
   }
 
@@ -195,14 +225,42 @@ class _BookTreeState extends State<BookTree> {
             ids.insert(newIndex, ids.removeAt(oldIndex));
             await state.reorderChapters(volume.id, ids);
           },
-          itemBuilder: (ctx, j) => LongPressDragStartListener(
-            key: ValueKey(chapters[j].id),
-            index: j,
-            child: _ChapterTile(
-              chapter: chapters[j],
-              onTap: () => _openChapter(chapters[j]),
-            ),
-          ),
+          itemBuilder: (ctx, j) {
+            final chapter = chapters[j];
+            final data = ChapterDragData(
+              bookId: widget.book.id,
+              volumeId: volume.id,
+              chapterId: chapter.id,
+              title: chapter.title,
+            );
+            return ChapterDraggable(
+              key: ValueKey(chapter.id),
+              data: data,
+              dragAnchorStrategy: pointerDragAnchorStrategy,
+              feedback: chapterDragFeedback(ctx, data),
+              // 原位保留行但降低不透明度，提示该行正在被拖出。
+              childWhenDragging: Opacity(
+                opacity: 0.4,
+                child: _ChapterTile(
+                  chapter: chapter,
+                  onTap: () => _openChapter(chapter),
+                  dragCount: _appState.chapterDragCount,
+                ),
+              ),
+              onDragStarted: _startChapterDrag,
+              onDragEnd: (_) => _endChapterDrag(),
+              onDraggableCanceled: (_, _) => _endChapterDrag(),
+              // 长按排序仍由内层监听器负责，两者按手势竞技场区分。
+              child: LongPressDragStartListener(
+                index: j,
+                child: _ChapterTile(
+                  chapter: chapter,
+                  onTap: () => _openChapter(chapter),
+                  dragCount: _appState.chapterDragCount,
+                ),
+              ),
+            );
+          },
         ),
         SliverToBoxAdapter(
           key: ValueKey('add-${volume.id}'),
@@ -523,29 +581,103 @@ class _VolumeHeader extends StatelessWidget {
 }
 
 /// 章节行：无左侧图标，整行长按拖动排序，右键弹操作菜单。
-class _ChapterTile extends StatelessWidget {
-  const _ChapterTile({required this.chapter, required this.onTap});
+/// 同时作为章节拖拽的目标行：同卷拖入时显示插入线并提交排序。
+class _ChapterTile extends StatefulWidget {
+  const _ChapterTile({
+    required this.chapter,
+    required this.onTap,
+    required this.dragCount,
+  });
 
   final Chapter chapter;
   final VoidCallback onTap;
 
+  /// 书树内进行中的章节拖出数量，>0 时行内光标切换为抓取态。
+  final ValueListenable<int> dragCount;
+
+  @override
+  State<_ChapterTile> createState() => _ChapterTileState();
+}
+
+class _ChapterTileState extends State<_ChapterTile> {
+  /// 插入位置：true 插到本行之前，false 插到本行之后，null 表示未命中。
+  bool? _dropBefore;
+
+  void _clearDropHint() {
+    if (_dropBefore != null) setState(() => _dropBefore = null);
+  }
+
+  /// 只接受同卷且非本行的章节。
+  bool _onWillAccept(DragTargetDetails<ChapterDragData> details) {
+    final data = details.data;
+    final ok = data.volumeId == widget.chapter.volumeId &&
+        data.chapterId != widget.chapter.id;
+    if (!ok) _clearDropHint();
+    return ok;
+  }
+
+  void _onMove(DragTargetDetails<ChapterDragData> details) {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return;
+    final localY = box.globalToLocal(details.offset).dy;
+    final before = localY < box.size.height / 2;
+    if (before != _dropBefore) setState(() => _dropBefore = before);
+  }
+
+  void _onAccept(DragTargetDetails<ChapterDragData> details) {
+    final before = _dropBefore ?? true;
+    _clearDropHint();
+    final state = context.read<AppState>();
+    final ids = state.chapterList
+        .where((c) => c.volumeId == widget.chapter.volumeId)
+        .map((c) => c.id)
+        .toList();
+    final moving = details.data.chapterId;
+    final from = ids.indexOf(moving);
+    if (from < 0) return;
+    // 先移出被拖章节再定位目标行：下半区 +1 即插到目标之后，
+    // 且天然扣除了被拖章节原本在目标之前造成的索引偏移。
+    ids.removeAt(from);
+    final target = ids.indexOf(widget.chapter.id);
+    if (target < 0) return;
+    ids.insert(before ? target : target + 1, moving);
+    unawaited(state.reorderChapters(widget.chapter.volumeId, ids));
+  }
+
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<int>(
+      valueListenable: widget.dragCount,
+      builder: (context, dragCount, child) => DragTarget<ChapterDragData>(
+        onWillAcceptWithDetails: _onWillAccept,
+        onMove: _onMove,
+        onLeave: (_) => _clearDropHint(),
+        onAcceptWithDetails: _onAccept,
+        builder: (context, candidate, rejected) =>
+            _buildTile(context, dragCount > 0),
+      ),
+    );
+  }
+
+  Widget _buildTile(BuildContext context, bool dragging) {
     final scheme = Theme.of(context).colorScheme;
     // 只订阅「本行是否为当前章」，避免整树广播时每个已构建行都重建。
     final selected = context.select<AppState, bool>(
-      (s) => s.currentChapter?.id == chapter.id,
+      (s) => s.currentChapter?.id == widget.chapter.id,
     );
     return GestureDetector(
       onSecondaryTapUp: (details) => _BookTreeState._showChapterMenu(
         context,
-        chapter,
+        widget.chapter,
         details.globalPosition,
       ),
       child: Stack(
         children: [
           ListTile(
             minTileHeight: _rowHeight,
+            mouseCursor: dragging
+                ? SystemMouseCursors.grabbing
+                : SystemMouseCursors.click,
             titleTextStyle: Theme.of(context).textTheme.bodyLarge?.copyWith(
               fontSize: 14,
               color: selected ? scheme.primary : null,
@@ -559,12 +691,12 @@ class _ChapterTile extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    chapter.title,
+                    widget.chapter.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                if (chapter.pinned) ...[
+                if (widget.chapter.pinned) ...[
                   const SizedBox(width: 6),
                   Icon(
                     Icons.push_pin,
@@ -574,12 +706,12 @@ class _ChapterTile extends StatelessWidget {
                 ],
                 const SizedBox(width: 8),
                 Text(
-                  '${chapter.charCount} 字',
+                  '${widget.chapter.charCount} 字',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
             ),
-            onTap: onTap,
+            onTap: widget.onTap,
           ),
           // 选中态左侧主色竖条，与淡主色底、主色标题共同标示当前章节。
           if (selected)
@@ -594,6 +726,15 @@ class _ChapterTile extends StatelessWidget {
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
+            ),
+          // 拖入本行时的插入线：上半区画上边，下半区画下边。
+          if (_dropBefore != null)
+            Positioned(
+              left: 16,
+              right: 16,
+              top: _dropBefore! ? 0 : null,
+              bottom: _dropBefore! ? null : 0,
+              child: Container(height: 2, color: scheme.primary),
             ),
         ],
       ),

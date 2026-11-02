@@ -21,9 +21,11 @@ import '../services/autosave_service.dart';
 import '../services/durability_service.dart';
 import '../services/session_stats.dart';
 import '../services/sync/sync_engine.dart';
+import 'editor_layout.dart';
+import 'editor_panes.dart';
 import 'settings_controller.dart';
 
-/// 全局应用状态：书架、作品树、当前章节编辑、保存状态、同步入口。
+/// 全局应用状态：书架、作品树、多窗格编辑、保存状态、同步入口。
 class AppState extends ChangeNotifier {
   AppState({
     required this.settings,
@@ -43,9 +45,7 @@ class AppState extends ChangeNotifier {
     required this.session,
     required this.sync,
   }) {
-    // 仅文档内容变化时通知（document.changes 流不发纯选区事件），
-    // 光标移动不再触发保存；未绑定则手动输入不会落盘。
-    _docSub = editorController.document.changes.listen((_) => onEditorChanged());
+    _ensureSession(_activePaneId);
   }
 
   final SettingsController settings;
@@ -69,9 +69,50 @@ class AppState extends ChangeNotifier {
   Book? currentBook;
   List<Volume> volumeTree = [];
   List<Chapter> chapterList = [];
-  Chapter? currentChapter;
 
-  QuillController editorController = QuillController.basic();
+  /// 编辑区分屏布局（结构 + 各窗格标签状态）。
+  EditorLayout _layout = EditorLayout.singlePane();
+
+  /// 窗格运行时集合，键为窗格 id。
+  final Map<String, PaneSession> _sessions = <String, PaneSession>{};
+
+  String _activePaneId = 'pane-1';
+
+  /// 布局落盘防抖。
+  Timer? _layoutDebounce;
+
+  EditorLayout get editorLayout => _layout;
+
+  String get activePaneId => _activePaneId;
+
+  /// 按布局顺序返回窗格 id。
+  List<String> get editorPaneIds => _layout.paneIdsInOrder;
+
+  PaneSession? paneSession(String paneId) => _sessions[paneId];
+
+  /// 活动窗格当前章节。
+  Chapter? get currentChapter => _sessions[_activePaneId]?.activeChapter;
+
+  /// 活动窗格编辑器控制器；窗格尚未建立时的兜底控制器。
+  QuillController get editorController =>
+      _sessions[_activePaneId]?.controller ??
+      (_scratchController ??= QuillController.basic());
+
+  QuillController? _scratchController;
+
+  Chapter? paneChapter(String paneId) => _sessions[paneId]?.activeChapter;
+
+  /// 指定窗格的标签章节（按 id 从最新章列表解析）。
+  List<Chapter> paneTabs(String paneId) {
+    final pane = _sessions[paneId];
+    if (pane == null) return const [];
+    final byId = {for (final c in chapterList) c.id: c};
+    return [
+      for (final id in pane.tabIds)
+        if (byId[id] != null) byId[id]!,
+    ];
+  }
+
   int bookCharTotal = 0;
 
   /// 今日累计新增字数（内存维护，供状态栏与达成检测实时读取）。
@@ -120,6 +161,9 @@ class AppState extends ChangeNotifier {
   /// 片段跳转请求（面板 → 编辑器定位）：编辑器收到后聚焦滚动到选区。
   final ValueNotifier<int> segmentJumpNonce = ValueNotifier(0);
 
+  /// 目录树章节拖出计数，>0 时工作区显示抓取光标。
+  final ValueNotifier<int> chapterDragCount = ValueNotifier<int>(0);
+
   /// 每书 UI 会话快照（内存缓存，跨书保留）：目录树展开卷、离开时的滚动偏移。
   /// 写盘统一延后到切书离开 / 退出（_persistBookUi）。
   final Map<String, BookUiSnapshot> _uiSnaps = {};
@@ -145,11 +189,16 @@ class AppState extends ChangeNotifier {
     return v;
   }
 
-  /// 离开当前书时落盘 UI 快照：当前章光标（内存 + DB）、书级位置与滚动（DB）、
-  /// 树展开与面板状态（config.json）。
+  /// 离开当前书时落盘 UI 快照：所有窗格光标（内存 + DB）、书级位置与滚动（DB）、
+  /// 目录树（config.json）与分屏布局。
   Future<void> _persistBookUi() async {
     final book = currentBook;
     if (book == null) return;
+    await autosave.flush();
+    for (final pane in _sessions.values) {
+      final chapter = pane.activeChapter;
+      if (chapter != null) await _saveCursorTo(chapter);
+    }
     final chapter = currentChapter;
     final snap = _uiSnaps[book.id];
     final sel = editorController.selection;
@@ -157,10 +206,7 @@ class AppState extends ChangeNotifier {
         (sel.baseOffset >= 0 && sel.baseOffset <= editorController.document.length)
             ? sel.baseOffset
             : null;
-    if (chapter != null) {
-      if (cursor != null) chapter.cursorOffset = cursor;
-      await chapters.updateCursor(chapter.id, cursor ?? chapter.cursorOffset);
-    }
+    if (chapter != null && cursor != null) chapter.cursorOffset = cursor;
     final scroll = snap?.scrollOffset.round() ?? 0;
     await books.saveLocation(book.id, chapter?.id, cursor, scrollOffset: scroll);
     // 同步内存实例：切回该书时 openBook 依赖 book.lastChapterId 定位上次章节，
@@ -177,25 +223,12 @@ class AppState extends ChangeNotifier {
         ..lastScrollOffset = scroll;
     }
     if (snap != null) {
-      await settings.saveBookUi(
-        book.id,
-        tree: snap.expandedVolumes.toList(),
-        chapterTabs: snap.chapterTabIds.toList(),
-      );
+      await settings.saveBookTree(book.id, snap.expandedVolumes.toList());
     }
+    await saveLayoutNow();
   }
 
   StreamSubscription<SyncEvent>? _syncSub;
-
-  /// document.changes 内容变化订阅；document 实例被替换时需重绑。
-  StreamSubscription? _docSub;
-
-  /// 程序化加载文档期间为 true，抑制 onEditorChanged 误触发。
-  bool _loadingDoc = false;
-
-  /// 上次编辑器文档序列化结果，用于忽略纯光标/选区变化。
-  String? _lastDocJson;
-
 
   Future<void> loadShelf() async {
     bookList = await books.listAll();
@@ -317,83 +350,90 @@ class AppState extends ChangeNotifier {
     await loadShelf();
   }
 
-  /// 打开作品：加载卷章树并恢复上次编辑位置（12.1）。
-  /// 打开前先将上一本书的 UI 快照落盘（切书还原）。
+  /// 打开作品：加载卷章树、还原分屏布局并恢复活动窗格。
+  /// 打开前先将上一本书的 UI 快照与布局落盘（切书还原）。
   Future<void> openBook(Book book, {String? startChapterId}) async {
     await autosave.flush();
     await _persistBookUi();
     currentBook = book;
-    _resetEditor();
-    currentChapter = null;
-    await _reloadTree();
+    await _reloadTree(prunePanes: false);
     bookCharTotal =
         chapterList.fold(0, (sum, c) => sum + c.charCount);
     await _loadTodayStats();
     await settings.setLastBookId(book.id);
     await settings.touchRecentBook(book.id);
-    final targetId = startChapterId ??
-        book.lastChapterId ??
-        (chapterList.isNotEmpty ? chapterList.first.id : null);
     final snap = uiSnapshot(book.id);
     if (!snap.treeLoaded) {
       // 首次进入快照：从 config.json 还原该书的目录树展开卷（跨会话）。
       snap.expandedVolumes.addAll(settings.bookUiOf(book.id).tree);
       snap.treeLoaded = true;
     }
-    if (!snap.tabsLoaded) {
-      // 首次进入快照：还原章节标签，剔除已删除章节并去重。
-      final validIds = chapterList.map((c) => c.id).toSet();
-      for (final id in settings.bookUiOf(book.id).chapterTabs) {
-        if (validIds.contains(id) && !snap.chapterTabIds.contains(id)) {
-          snap.chapterTabIds.add(id);
-        }
-      }
-      snap.tabsLoaded = true;
+    final validIds = chapterList.map((c) => c.id).toSet();
+    final fallbackId =
+        (book.lastChapterId != null && validIds.contains(book.lastChapterId))
+            ? book.lastChapterId
+            : chapterList.firstOrNull?.id;
+    var layout = settings.editorLayoutOf(book.id);
+    if (layout == null) {
+      // 旧数据迁移：bookUi.chapterTabs 转为单窗格标签。
+      final oldTabs = settings
+          .bookUiOf(book.id)
+          .chapterTabs
+          .where(validIds.contains)
+          .toList();
+      layout = EditorLayout.singlePane(
+        tabIds: oldTabs,
+        activeChapterId: fallbackId,
+      );
     }
-    if (targetId != null) {
-      final ch = await chapters.get(targetId);
-      if (ch != null) {
-        _pendingRestoreScroll = snap.scrollOffset;
-        await openChapter(ch);
-      }
+    final pruned = layout.prune(
+      validChapterIds: validIds,
+      fallbackChapterId: fallbackId,
+      fallbackPaneId: layout.paneIdsInOrder.firstOrNull ?? 'pane-1',
+    );
+    await _applyLayoutAndLoad(pruned, persist: false);
+    _pendingRestoreScroll = snap.scrollOffset;
+    if (startChapterId != null) {
+      final ch = _chapterById(startChapterId);
+      if (ch != null) await openChapter(ch);
     }
+    await saveLayoutNow();
     notifyListeners();
   }
 
-  Future<void> _reloadTree() async {
+  Future<void> _reloadTree({
+    bool prunePanes = true,
+    String? fallbackChapterId,
+    Map<String, String?> preferredActive = const {},
+  }) async {
     if (currentBook == null) return;
     volumeTree = await volumes.listByBook(currentBook!.id);
     chapterList = await chapters.listByBook(currentBook!.id);
-    // 章节被删除 / 同步移除后，标签里不再存在的 id 一并剔除。
-    final snap = uiSnapshot(currentBook!.id);
-    final validIds = chapterList.map((c) => c.id).toSet();
-    final before = snap.chapterTabIds.length;
-    snap.chapterTabIds.removeWhere((id) => !validIds.contains(id));
-    if (snap.chapterTabIds.length != before) await _saveChapterTabs();
-  }
-
-  /// 章节标签顺序落盘（config.json bookUi）。
-  Future<void> _saveChapterTabs() async {
-    final book = currentBook;
-    if (book == null) return;
-    final snap = uiSnapshot(book.id);
-    await settings.saveBookUi(
-      book.id,
-      tree: snap.expandedVolumes.toList(),
-      chapterTabs: snap.chapterTabIds.toList(),
+    if (!prunePanes) return;
+    await _prunePanes(
+      fallbackChapterId: fallbackChapterId,
+      preferredActive: preferredActive,
     );
   }
 
-  /// 当前书的章节标签（按标签顺序解析为章对象）。
-  List<Chapter> get chapterTabs {
-    final book = currentBook;
-    if (book == null) return const [];
-    final byId = {for (final c in chapterList) c.id: c};
-    return [
-      for (final id in uiSnapshot(book.id).chapterTabIds)
-        if (byId[id] != null) byId[id]!,
-    ];
+  /// 剔除所有窗格中失效的章节与空窗格，并同步布局。
+  Future<void> _prunePanes({
+    String? fallbackChapterId,
+    Map<String, String?> preferredActive = const {},
+  }) async {
+    if (_sessions.isEmpty) return;
+    _commitLayout();
+    final validIds = chapterList.map((c) => c.id).toSet();
+    final pruned = _layout.prune(
+      validChapterIds: validIds,
+      fallbackChapterId: fallbackChapterId,
+      fallbackPaneId: _layout.paneIdsInOrder.firstOrNull ?? 'pane-1',
+    );
+    await _applyLayoutAndLoad(pruned, preferredActive: preferredActive);
   }
+
+  /// 当前书的章节标签（活动窗格）。
+  List<Chapter> get chapterTabs => paneTabs(_activePaneId);
 
   /// 当前章在标签中的邻位：先右后左，跳过 [removed]；无则返回 null。
   String? _neighborTabId(
@@ -410,35 +450,303 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  /// 关闭章节标签：移除标签；关的是当前章时切到邻位，无标签则进入空态。
-  Future<void> closeChapterTab(String id) async {
+  // ---------- 窗格运行时 ----------
+
+  Chapter? _chapterById(String? id) {
+    if (id == null) return null;
+    return chapterList.where((c) => c.id == id).firstOrNull;
+  }
+
+  PaneSession _ensureSession(String paneId) {
+    final existing = _sessions[paneId];
+    if (existing != null) return existing;
+    final pane = PaneSession(paneId);
+    final state = _layout.panes[paneId];
+    if (state != null) pane.tabIds = List<String>.of(state.tabIds);
+    pane.bindDocumentListener(() => onPaneChanged(paneId));
+    _sessions[paneId] = pane;
+    return pane;
+  }
+
+  /// 查找包含指定章节的窗格 id（标签或当前文档）。
+  String? _paneOwningChapter(String chapterId) {
+    for (final entry in _sessions.entries) {
+      if (entry.value.tabIds.contains(chapterId) ||
+          entry.value.activeChapter?.id == chapterId) {
+        return entry.key;
+      }
+    }
+    return null;
+  }
+
+  /// 正在显示指定章节的窗格。
+  PaneSession? _paneDisplaying(String chapterId) {
+    for (final pane in _sessions.values) {
+      if (pane.activeChapter?.id == chapterId) return pane;
+    }
+    return null;
+  }
+
+  /// 把窗格会话的标签与当前章节写回布局。
+  void _commitLayout() {
+    final states = <String, EditorPaneState>{};
+    for (final id in _layout.paneIdsInOrder) {
+      final pane = _sessions[id];
+      if (pane == null) continue;
+      states[id] = EditorPaneState(
+        tabIds: List<String>.of(pane.tabIds),
+        activeChapterId: pane.activeChapter?.id,
+      );
+    }
+    _layout = _layout.withPaneStates(states, activePaneId: _activePaneId);
+  }
+
+  /// 立即写入当前书分屏布局。
+  Future<void> saveLayoutNow() async {
+    _layoutDebounce?.cancel();
+    _layoutDebounce = null;
+    _commitLayout();
     final book = currentBook;
     if (book == null) return;
-    final snap = uiSnapshot(book.id);
-    final pos = snap.chapterTabIds.indexOf(id);
-    if (pos < 0) return;
-    final wasCurrent = currentChapter?.id == id;
-    final nextId = wasCurrent
-        ? _neighborTabId(snap.chapterTabIds, pos, {id})
-        : null;
-    snap.chapterTabIds.removeAt(pos);
-    await _saveChapterTabs();
-    if (!wasCurrent) {
+    await settings.saveEditorLayout(book.id, _layout);
+  }
+
+  /// 300ms 防抖写入分屏布局。
+  void saveLayoutSoon() {
+    _layoutDebounce?.cancel();
+    _layoutDebounce = Timer(const Duration(milliseconds: 300), () {
+      _layoutDebounce = null;
+      unawaited(saveLayoutNow());
+    });
+  }
+
+  /// 按布局重建会话：销毁多余窗格，解析各窗格当前章节并加载文档。
+  Future<void> _applyLayoutAndLoad(
+    EditorLayout layout, {
+    Map<String, String?> preferredActive = const {},
+    bool persist = true,
+  }) async {
+    final before = jsonEncode(_layout.toJson());
+    _layout = layout;
+    _activePaneId = layout.activePaneId;
+    final ids = layout.paneIdsInOrder.toSet();
+    for (final id in _sessions.keys.toList()) {
+      if (!ids.contains(id)) _sessions.remove(id)!.dispose();
+    }
+    for (final id in layout.paneIdsInOrder) {
+      final pane = _ensureSession(id);
+      pane.tabIds = List<String>.of(layout.panes[id]?.tabIds ?? const []);
+    }
+    for (final id in layout.paneIdsInOrder) {
+      final pane = _sessions[id]!;
+      final prefer = preferredActive[id];
+      final activeId = (prefer != null && pane.tabIds.contains(prefer))
+          ? prefer
+          : layout.panes[id]?.activeChapterId;
+      final chapter = _chapterById(activeId);
+      if (chapter == null) {
+        if (pane.activeChapter != null) {
+          pane.activeChapter = null;
+          _loadEmptyDocument(pane);
+        }
+      } else if (pane.activeChapter?.id == chapter.id) {
+        pane.activeChapter = chapter;
+      } else {
+        await _loadChapterIntoPane(id, chapter, persist: false);
+      }
+    }
+    _commitLayout();
+    if (persist && jsonEncode(_layout.toJson()) != before) {
+      await saveLayoutNow();
+    }
+  }
+
+  /// 把章节加载进指定窗格，并处理原章节光标与快照。
+  Future<void> _loadChapterIntoPane(
+    String paneId,
+    Chapter chapter, {
+    bool persist = true,
+  }) async {
+    final pane = _sessions[paneId];
+    if (pane == null) return;
+    final fresh = _chapterById(chapter.id) ?? chapter;
+    await autosave.flush();
+    final prev = pane.activeChapter;
+    if (prev != null && prev.id != fresh.id) await _saveCursorTo(prev);
+    pane.activeChapter = fresh;
+    pane.loadingDoc = true;
+    try {
+      pane.replaceDocument(
+        RichTextCodec.documentFromContent(fresh.content),
+        fireChange: false,
+      );
+      final docLen = pane.controller.document.length;
+      pane.controller.updateSelection(
+        TextSelection.collapsed(
+            offset: fresh.cursorOffset.clamp(0, docLen)),
+        ChangeSource.local,
+      );
+    } finally {
+      pane.loadingDoc = false;
+      pane.lastDocJson = jsonEncode(pane.controller.document.toDelta().toJson());
+    }
+    await durability.autoSnapshotIfNeeded(fresh);
+    if (persist) {
+      _commitLayout();
+      await saveLayoutNow();
+    }
+  }
+
+  /// 窗格切换为空文档。
+  void _loadEmptyDocument(PaneSession pane) {
+    pane.loadingDoc = true;
+    try {
+      pane.replaceDocument(
+        RichTextCodec.documentFromContent(''),
+        fireChange: false,
+      );
+      pane.controller.updateSelection(
+          const TextSelection.collapsed(offset: 0), ChangeSource.local);
+    } finally {
+      pane.loadingDoc = false;
+      pane.lastDocJson = jsonEncode(pane.controller.document.toDelta().toJson());
+    }
+  }
+
+  /// 激活窗格并选中章节；章节已在其他窗格时不重复打开。
+  Future<void> _activateChapterInPane(String paneId, Chapter chapter) async {
+    final pane = _sessions[paneId];
+    if (pane == null) return;
+    final fresh = _chapterById(chapter.id) ?? chapter;
+    _activePaneId = paneId;
+    _layout = _layout.withActivePane(paneId);
+    if (!pane.tabIds.contains(fresh.id)) pane.tabIds.add(fresh.id);
+    if (pane.activeChapter?.id == fresh.id) {
+      pane.activeChapter = fresh;
+      _commitLayout();
+      await saveLayoutNow();
       notifyListeners();
       return;
     }
-    final next =
-        chapterList.where((c) => c.id == nextId).firstOrNull;
-    if (next != null) {
-      await openChapter(next);
+    await _loadChapterIntoPane(paneId, fresh);
+    notifyListeners();
+  }
+
+  void activatePane(String paneId) {
+    if (!_sessions.containsKey(paneId) || paneId == _activePaneId) return;
+    final prev = currentChapter;
+    if (prev != null) unawaited(_saveCursorTo(prev));
+    _activePaneId = paneId;
+    _layout = _layout.withActivePane(paneId);
+    _commitLayout();
+    saveLayoutSoon();
+    notifyListeners();
+  }
+
+  /// 在指定窗格打开章节；章节已在其他窗格时只激活并选中。
+  Future<void> openChapterInPane(String paneId, Chapter chapter) async {
+    if (!_sessions.containsKey(paneId)) return;
+    final owner = _paneOwningChapter(chapter.id);
+    await _activateChapterInPane(owner ?? paneId, chapter);
+  }
+
+  /// 按方向分割目标窗格并在新窗格打开章节，成功返回新窗格 id。
+  Future<String?> splitPaneWithChapter(
+    String targetPaneId,
+    EditorSplitDirection direction,
+    Chapter chapter,
+  ) async {
+    if (!_sessions.containsKey(targetPaneId)) return null;
+    final owner = _paneOwningChapter(chapter.id);
+    if (owner != null) {
+      await _activateChapterInPane(owner, chapter);
+      return null;
+    }
+    await autosave.flush();
+    final prev = currentChapter;
+    if (prev != null) await _saveCursorTo(prev);
+    _commitLayout();
+    final next = _layout.splitPane(
+      targetPaneId,
+      direction,
+      newActiveChapterId: chapter.id,
+    );
+    if (identical(next, _layout)) return null;
+    final newPaneId = next.activePaneId;
+    _layout = next;
+    _activePaneId = newPaneId;
+    final pane = _ensureSession(newPaneId);
+    pane.tabIds = List<String>.of(next.panes[newPaneId]?.tabIds ?? [chapter.id]);
+    await _loadChapterIntoPane(newPaneId, chapter, persist: false);
+    _commitLayout();
+    await saveLayoutNow();
+    notifyListeners();
+    return newPaneId;
+  }
+
+  /// 关闭窗格：销毁会话并由兄弟节点顶替（至少保留一个窗格）。
+  Future<void> closePane(String paneId) async {
+    if (_sessions.length <= 1 || !_sessions.containsKey(paneId)) return;
+    await autosave.flush();
+    final pane = _sessions[paneId]!;
+    final chapter = pane.activeChapter;
+    if (chapter != null) await _saveCursorTo(chapter);
+    _commitLayout();
+    _layout = _layout.removePane(paneId);
+    _sessions.remove(paneId)?.dispose();
+    _activePaneId = _layout.activePaneId;
+    for (final id in _layout.paneIdsInOrder) {
+      _ensureSession(id);
+    }
+    _commitLayout();
+    await saveLayoutNow();
+    notifyListeners();
+  }
+
+  /// 在指定窗格关闭章节标签；窗格为空且存在其他窗格时移除该窗格。
+  Future<void> closeChapterTabInPane(String paneId, String chapterId) async {
+    final pane = _sessions[paneId];
+    if (pane == null) return;
+    final pos = pane.tabIds.indexOf(chapterId);
+    if (pos < 0) return;
+    final wasCurrent = pane.activeChapter?.id == chapterId;
+    final nextId =
+        wasCurrent ? _neighborTabId(pane.tabIds, pos, {chapterId}) : null;
+    pane.tabIds.removeAt(pos);
+    if (!wasCurrent) {
+      _commitLayout();
+      await saveLayoutNow();
+      notifyListeners();
       return;
     }
     await autosave.flush();
-    final ch = currentChapter;
-    if (ch != null) await _saveCursorTo(ch);
-    currentChapter = null;
-    _resetEditor();
+    final cur = pane.activeChapter;
+    if (cur != null) await _saveCursorTo(cur);
+    pane.activeChapter = null;
+    final next = _chapterById(nextId);
+    if (next != null) {
+      await _loadChapterIntoPane(paneId, next, persist: false);
+    } else {
+      _loadEmptyDocument(pane);
+    }
+    if (pane.tabIds.isEmpty && _sessions.length > 1) {
+      await closePane(paneId);
+      return;
+    }
+    _commitLayout();
+    await saveLayoutNow();
     notifyListeners();
+  }
+
+  /// 关闭活动窗格的章节标签。
+  Future<void> closeChapterTab(String id) =>
+      closeChapterTabInPane(_activePaneId, id);
+
+  /// 调整分割比例；[path] 为从根出发的 0/1 索引路径。
+  Future<void> updateSplitRatio(List<int> path, double ratio) async {
+    _layout = _layout.withSplitRatioAt(path, ratio);
+    notifyListeners();
+    saveLayoutSoon();
   }
 
   /// 对外暴露的树刷新（大纲编辑等场景）。
@@ -471,7 +779,7 @@ class AppState extends ChangeNotifier {
     if (currentBook == null || query.isEmpty) return 0;
     await autosave.flush();
     var total = 0;
-    var contentChanged = false;
+    final changedChapterIds = <String>{};
 
     for (final ch in List<Chapter>.of(chapterList)) {
       if (ch.content.isNotEmpty) {
@@ -482,7 +790,7 @@ class AppState extends ChangeNotifier {
           ch.content = newJson;
           await chapters.updateContent(ch);
           total += n;
-          if (currentChapter?.id == ch.id) contentChanged = true;
+          if (_paneOwningChapter(ch.id) != null) changedChapterIds.add(ch.id);
         }
       }
       if (ch.outline.contains(query)) {
@@ -554,23 +862,8 @@ class AppState extends ChangeNotifier {
     if (total > 0) {
       await _reloadTree();
       bookCharTotal = chapterList.fold(0, (sum, c) => sum + c.charCount);
-      if (contentChanged && currentChapter != null) {
-        final fresh = chapterList
-            .where((c) => c.id == currentChapter!.id)
-            .firstOrNull;
-        if (fresh != null) {
-          currentChapter = fresh;
-          _loadingDoc = true;
-          try {
-            replaceDocument(
-                RichTextCodec.documentFromContent(fresh.content),
-                fireChange: false);
-          } finally {
-            _loadingDoc = false;
-            _lastDocJson =
-                jsonEncode(editorController.document.toDelta().toJson());
-          }
-        }
+      for (final id in changedChapterIds) {
+        _reloadCurrentDocIfNeeded(id);
       }
       notifyListeners();
     }
@@ -637,19 +930,21 @@ class AppState extends ChangeNotifier {
     final list = List<Chapter>.of(chapterList);
     var total = 0;
     var done = 0;
-    var contentChanged = false;
+    final changedChapterIds = <String>{};
     for (final ch in list) {
       final (n, sk) = await _replaceSensitiveChapter(ch, scanner);
       total += n;
       skipped.addAll(sk);
-      if (n > 0 && currentChapter?.id == ch.id) contentChanged = true;
+      if (n > 0 && _paneOwningChapter(ch.id) != null) {
+        changedChapterIds.add(ch.id);
+      }
       onProgress?.call(++done, list.length);
     }
     if (total > 0) {
       await _reloadTree();
       bookCharTotal = chapterList.fold(0, (sum, c) => sum + c.charCount);
-      if (contentChanged && currentChapter != null) {
-        _reloadCurrentDocIfNeeded(currentChapter!.id);
+      for (final id in changedChapterIds) {
+        _reloadCurrentDocIfNeeded(id);
       }
       notifyListeners();
     }
@@ -673,82 +968,78 @@ class AppState extends ChangeNotifier {
     return (n, skipped);
   }
 
-  /// 替换后重载指定章（仅当它正是当前章）的编辑器文档。
+  /// 替换后重载所有正在显示该章节的窗格文档，并夹取原光标。
   void _reloadCurrentDocIfNeeded(String chapterId) {
-    if (currentChapter?.id != chapterId) return;
-    final fresh = chapterList.where((c) => c.id == chapterId).firstOrNull;
+    final fresh = _chapterById(chapterId);
     if (fresh == null) return;
-    currentChapter = fresh;
-    _loadingDoc = true;
-    try {
-      replaceDocument(RichTextCodec.documentFromContent(fresh.content),
-          fireChange: false);
-    } finally {
-      _loadingDoc = false;
-      _lastDocJson = jsonEncode(editorController.document.toDelta().toJson());
+    for (final pane in _sessions.values) {
+      if (pane.activeChapter?.id != chapterId) continue;
+      final sel = pane.controller.selection;
+      final base = sel.baseOffset;
+      final extent = sel.extentOffset;
+      pane.activeChapter = fresh;
+      pane.loadingDoc = true;
+      try {
+        pane.replaceDocument(
+          RichTextCodec.documentFromContent(fresh.content),
+          fireChange: false,
+        );
+        final docLen = pane.controller.document.length;
+        final b = base < 0 ? 0 : base.clamp(0, docLen);
+        final e = extent < 0 ? 0 : extent.clamp(0, docLen);
+        pane.controller.updateSelection(
+            TextSelection(baseOffset: b, extentOffset: e),
+            ChangeSource.local);
+      } finally {
+        pane.loadingDoc = false;
+        pane.lastDocJson =
+            jsonEncode(pane.controller.document.toDelta().toJson());
+      }
     }
   }
 
-  /// 把编辑器当前光标写回指定章节（内存 + DB）。
+  /// 把章节当前光标写回（内存 + DB）；优先取正在显示该章的窗格。
   Future<void> _saveCursorTo(Chapter chapter) async {
-    final off = editorController.selection.baseOffset;
-    if (off < 0 || off > editorController.document.length) return;
+    final pane = _paneDisplaying(chapter.id) ?? _sessions[_activePaneId];
+    if (pane == null) return;
+    final off = pane.controller.selection.baseOffset;
+    if (off < 0 || off > pane.controller.document.length) return;
     chapter.cursorOffset = off;
     await chapters.updateCursor(chapter.id, off);
   }
 
-  /// 打开章节（≤300ms 预算：单次查询 + 控制器赋值）。
-  /// 离开旧章前把光标偏移写入内存章对象，供同会话切回时还原。
+  /// 打开章节：已在某窗格时激活该窗格，否则在活动窗格打开。
   Future<void> openChapter(Chapter chapter) async {
-    if (currentChapter?.id == chapter.id) return;
-    final book = currentBook;
-    if (book != null && chapter.bookId == book.id) {
-      final snap = uiSnapshot(book.id);
-      if (!snap.chapterTabIds.contains(chapter.id)) {
-        snap.chapterTabIds.add(chapter.id);
-        await _saveChapterTabs();
-      }
+    final owner = _paneOwningChapter(chapter.id);
+    if (owner != null) {
+      await _activateChapterInPane(owner, chapter);
+      return;
     }
-    await autosave.flush();
-    final prev = currentChapter;
-    if (prev != null) await _saveCursorTo(prev);
-    currentChapter = chapter;
-    _loadingDoc = true;
-    try {
-      replaceDocument(RichTextCodec.documentFromContent(chapter.content),
-          fireChange: false);
-      final docLen = editorController.document.length;
-      editorController.updateSelection(
-          TextSelection.collapsed(offset: chapter.cursorOffset.clamp(0, docLen)),
-          ChangeSource.local);
-    } finally {
-      _loadingDoc = false;
-      _lastDocJson = jsonEncode(editorController.document.toDelta().toJson());
-    }
-
-    await durability.autoSnapshotIfNeeded(chapter);
-    await autosave.flush();
-    notifyListeners();
+    await _activateChapterInPane(_activePaneId, chapter);
   }
 
-  /// 替换编辑器文档并重绑内容变化监听。
+  /// 替换活动窗格文档并重绑内容变化监听。
   /// [fireChange] 为 true 时按一次内容变化处理（回滚/替换等主动修改场景）。
   void replaceDocument(Document doc, {bool fireChange = true}) {
-    editorController.document = doc;
-    _docSub?.cancel();
-    _docSub = editorController.document.changes.listen((_) => onEditorChanged());
-    if (fireChange) onEditorChanged();
+    final pane = _sessions[_activePaneId];
+    if (pane == null) return;
+    pane.replaceDocument(doc, fireChange: false);
+    if (fireChange) onPaneChanged(_activePaneId);
   }
 
-  /// 编辑器内容变化：防抖自动保存 + 实时字数。
-  void onEditorChanged() {
-    if (_loadingDoc) return;
-    final chapter = currentChapter;
+  /// 兼容旧入口：处理活动窗格的内容变化。
+  void onEditorChanged() => onPaneChanged(_activePaneId);
+
+  /// 单个窗格内容变化：防抖自动保存 + 字数与目标统计。
+  void onPaneChanged(String paneId) {
+    final pane = _sessions[paneId];
+    if (pane == null || pane.loadingDoc) return;
+    final chapter = pane.activeChapter;
     if (chapter == null) return;
-    final content = jsonEncode(editorController.document.toDelta().toJson());
-    if (content == _lastDocJson) return;
-    _lastDocJson = content;
-    final plainText = editorController.document.toPlainText();
+    final content = jsonEncode(pane.controller.document.toDelta().toJson());
+    if (content == pane.lastDocJson) return;
+    pane.lastDocJson = content;
+    final plainText = pane.controller.document.toPlainText();
     final nowChars = TextStats.count(plainText, settings.countStandard);
     final delta = nowChars - chapter.charCount;
     autosave.onContentChanged(chapter, content);
@@ -758,10 +1049,10 @@ class AppState extends ChangeNotifier {
       bookCharTotal += delta;
       chapter.charCount = nowChars;
       // 作品树直接读 chapterList 的 char_count，需同步同 id 项，
-      // 以免 currentChapter 与 chapterList 为不同实例时字数显示滞后。
+      // 以免窗格章节与 chapterList 为不同实例时字数显示滞后。
       final idx = chapterList.indexWhere((c) => c.id == chapter.id);
       if (idx >= 0) chapterList[idx].charCount = nowChars;
-      _checkGoals();
+      _checkGoals(chapter);
     }
     notifyListeners();
   }
@@ -788,14 +1079,14 @@ class AppState extends ChangeNotifier {
 
   /// 编辑跨越目标时播报达成：每种目标只提示一次（标记落库）。
   /// 同帧内多个目标同时达成时，只播报首个达成项。
-  void _checkGoals() {
+  void _checkGoals([Chapter? chapterOverride]) {
     final book = currentBook;
-    final chapter = currentChapter;
+    final chapter = chapterOverride ?? currentChapter;
     if (book == null || chapter == null) return;
 
     final done = <String>[];
 
-    final chGoal = resolvedChapterGoal;
+    final chGoal = chapter.goal ?? book.chapterGoal;
     if (chGoal > 0 && chapter.charCount >= chGoal && !chapter.goalNotified) {
       chapter.goalNotified = true;
       final idx = chapterList.indexWhere((c) => c.id == chapter.id);
@@ -1112,10 +1403,29 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
+  /// 即将被删除的章节所对应的窗格邻位章节。
+  Map<String, String?> _neighborAfterRemoval(Set<String> removed) {
+    final result = <String, String?>{};
+    for (final entry in _sessions.entries) {
+      final pane = entry.value;
+      final activeId = pane.activeChapter?.id;
+      if (activeId == null || !removed.contains(activeId)) continue;
+      final pos = pane.tabIds.indexOf(activeId);
+      result[entry.key] = _neighborTabId(
+        pane.tabIds,
+        pos < 0 ? pane.tabIds.length : pos,
+        removed,
+      );
+    }
+    return result;
+  }
+
   /// 删除章节 → 回收站（FR-6 / NFR-R5）。
   Future<void> deleteChapter(String id) async {
     final ch = await chapters.get(id);
     if (ch == null) return;
+    await autosave.flush();
+    final neighbors = _neighborAfterRemoval({id});
     await recycle.add(RecycleType.chapter, id, {
       'book_id': ch.bookId,
       'volume_id': ch.volumeId,
@@ -1124,37 +1434,18 @@ class AppState extends ChangeNotifier {
       'outline': ch.outline,
       'sort': ch.sort,
     });
-    final wasCurrent = currentChapter?.id == id;
-    final snap = currentBook == null ? null : uiSnapshot(currentBook!.id);
-    final tabsBefore =
-        snap == null ? const <String>[] : [...snap.chapterTabIds];
-    final pos = tabsBefore.indexOf(id);
-    if (wasCurrent) {
-      currentChapter = null;
-      _resetEditor();
-    }
     await chapters.hardDelete(id);
-    await _reloadTree();
-    if (wasCurrent && snap != null) {
-      final nextId = _neighborTabId(
-        tabsBefore,
-        pos < 0 ? tabsBefore.length : pos,
-        {id},
-      );
-      final next = nextId == null
-          ? null
-          : chapterList.where((c) => c.id == nextId).firstOrNull;
-      if (next != null) {
-        await openChapter(next);
-      }
-    }
+    await _reloadTree(preferredActive: neighbors);
     notifyListeners();
   }
 
   /// 删除卷 → 回收站（卷内章节一并打包）。
   Future<void> deleteVolume(String id) async {
     final vol = volumeTree.firstWhere((v) => v.id == id);
+    await autosave.flush();
     final list = chapterList.where((c) => c.volumeId == id).toList();
+    final removed = list.map((c) => c.id).toSet();
+    final neighbors = _neighborAfterRemoval(removed);
     await recycle.add(RecycleType.volume, id, {
       'book_id': vol.bookId,
       'name': vol.name,
@@ -1167,34 +1458,10 @@ class AppState extends ChangeNotifier {
             'sort': c.sort,
           }).toList(),
     });
-    final currentId = currentChapter?.id;
-    final removed = list.map((c) => c.id).toSet();
-    final wasCurrent = currentId != null && removed.contains(currentId);
-    final snap = currentBook == null ? null : uiSnapshot(currentBook!.id);
-    final tabsBefore =
-        snap == null ? const <String>[] : [...snap.chapterTabIds];
-    final pos = currentId == null ? -1 : tabsBefore.indexOf(currentId);
-    if (wasCurrent) {
-      currentChapter = null;
-      _resetEditor();
-    }
     for (final c in list) {
       await chapters.hardDelete(c.id);
     }
-    await _reloadTree();
-    if (wasCurrent && snap != null) {
-      final nextId = _neighborTabId(
-        tabsBefore,
-        pos < 0 ? tabsBefore.length : pos,
-        removed,
-      );
-      final next = nextId == null
-          ? null
-          : chapterList.where((c) => c.id == nextId).firstOrNull;
-      if (next != null) {
-        await openChapter(next);
-      }
-    }
+    await _reloadTree(preferredActive: neighbors);
     notifyListeners();
   }
 
@@ -1289,7 +1556,7 @@ class AppState extends ChangeNotifier {
     return sync.syncAll(currentBook!.id);
   }
 
-  /// 应用退出前：保存 UI 快照 + 冲刷保存 + 记录写作时长 + 清除崩溃标记。
+  /// 应用退出前：保存 UI 快照与布局 + 冲刷保存 + 记录写作时长 + 清除崩溃标记。
   Future<void> shutdown() async {
     await _persistBookUi();
     await autosave.flush(withBackup: false);
@@ -1298,34 +1565,34 @@ class AppState extends ChangeNotifier {
     autosave.dispose();
   }
 
-  /// 重置编辑器为空文档。
-  void _resetEditor() {
-    replaceDocument(RichTextCodec.documentFromContent(''), fireChange: false);
-    editorController.updateSelection(
-        const TextSelection.collapsed(offset: 0), ChangeSource.local);
-  }
-
   @override
   void dispose() {
     _syncSub?.cancel();
-    _docSub?.cancel();
+    _layoutDebounce?.cancel();
     _goalToasts.close();
-    editorController.dispose();
+    chapterDragCount.dispose();
+    for (final pane in _sessions.values) {
+      pane.dispose();
+    }
+    _sessions.clear();
+    _scratchController?.dispose();
     autosave.dispose();
     super.dispose();
   }
 
-  /// 切换字数口径后：全库重算 char_count，并刷新当前书的内存数据。
+  /// 切换字数口径后：全库重算 char_count，并刷新所有窗格的章节实例。
   Future<void> recountAll() async {
     await autosave.flush();
     await chapters.recountAll(settings.countStandard);
     await _reloadTree();
     bookCharTotal = chapterList.fold(0, (sum, c) => sum + c.charCount);
-    final id = currentChapter?.id;
-    if (id != null) {
-      currentChapter =
-          chapterList.where((c) => c.id == id).firstOrNull ?? currentChapter;
+    for (final pane in _sessions.values) {
+      final id = pane.activeChapter?.id;
+      if (id == null) continue;
+      final fresh = _chapterById(id);
+      if (fresh != null) pane.activeChapter = fresh;
     }
+    _commitLayout();
     notifyListeners();
   }
 }
@@ -1337,14 +1604,8 @@ class BookUiSnapshot {
   /// 左侧目录树中展开的卷 id 集合。
   final Set<String> expandedVolumes = <String>{};
 
-  /// 章节标签顺序（章节 id）。
-  final List<String> chapterTabIds = <String>[];
-
   /// 是否已从 config.json 载入过持久化的展开集合（跨会话还原一次）。
   bool treeLoaded = false;
-
-  /// 是否已从 config.json 载入过章节标签（跨会话还原一次）。
-  bool tabsLoaded = false;
 
   /// 离开该书时编辑器的滚动偏移（EditorArea 滚动时实时同步）。
   double scrollOffset = 0;

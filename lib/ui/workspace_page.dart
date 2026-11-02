@@ -286,11 +286,31 @@ class _WorkspacePageState extends State<WorkspacePage> {
         body: Listener(
           onPointerUp: (_) => _scheduleEndDrag(),
           onPointerCancel: (_) => _scheduleEndDrag(),
-          child: MouseRegion(
-            cursor: _dragging
-                ? SystemMouseCursors.grabbing
-                : MouseCursor.defer,
-            child: _immersive && !wide ? EditorArea(book: _book) : body,
+          child: ValueListenableBuilder<int>(
+            valueListenable: _appState.chapterDragCount,
+            builder: (context, count, child) => Stack(
+              fit: StackFit.expand,
+              children: [
+                child!,
+                if (count > 0)
+                  Positioned.fill(
+                    // 只注册抓取光标注解，不参与命中，下层投放目标仍可接收拖拽。
+                    child: MouseRegion(
+                      opaque: false,
+                      cursor: SystemMouseCursors.grabbing,
+                      child: IgnorePointer(child: SizedBox.expand()),
+                    ),
+                  ),
+              ],
+            ),
+            child: MouseRegion(
+              cursor: _dragging
+                  ? SystemMouseCursors.grabbing
+                  : MouseCursor.defer,
+              child: _immersive && !wide
+                  ? EditorArea(book: _book, singlePaneOnly: true)
+                  : body,
+            ),
           ),
         ),
         bottomNavigationBar: wide
@@ -602,7 +622,8 @@ class _WorkspacePageState extends State<WorkspacePage> {
       case 0:
         return BookTree(book: _book);
       case 1:
-        return EditorArea(book: _book);
+        // 窄屏仅渲染活动窗格，分屏布局保留不丢失。
+        return EditorArea(book: _book, singlePaneOnly: true);
       default:
         // 窄屏底部导航已有「目录」页，工具列表不再重复给出目录图标。
         final ids = [

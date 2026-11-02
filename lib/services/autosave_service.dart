@@ -20,7 +20,9 @@ class AutosaveService {
 
   Timer? _debounce;
   Timer? _interval;
-  Chapter? _pending;
+
+  /// 待保存章节，按章节 id 区分，支持多窗格并发编辑。
+  final Map<String, Chapter> _pending = <String, Chapter>{};
 
   bool _saving = false;
 
@@ -30,7 +32,7 @@ class AutosaveService {
   void startInterval() {
     _interval?.cancel();
     _interval = Timer.periodic(AppConstants.autosaveInterval, (_) {
-      if (_pending != null) flush();
+      if (_pending.isNotEmpty) flush();
     });
   }
 
@@ -42,32 +44,37 @@ class AutosaveService {
   /// 编辑器内容变化时调用。
   void onContentChanged(Chapter chapter, String content) {
     chapter.content = content;
-    _pending = chapter;
+    _pending[chapter.id] = chapter;
     state.value = SaveState.unsaved;
     _debounce?.cancel();
     _debounce = Timer(AppConstants.autosaveDebounce, flush);
   }
 
-  /// 立即落盘（切换章节 / 退出前调用）。
+  /// 立即落盘全部待保存章节（切换章节 / 窗格 / 书籍 / 退出前调用）。
   /// [withBackup] 为 false 时跳过备份副本文件写入：关闭路径只保证主库落盘，
   /// 避免冗余备份被文件系统/杀毒扫描阻塞导致窗口迟迟无法关闭。
   Future<bool> flush({bool withBackup = true}) async {
     _debounce?.cancel();
-    final chapter = _pending;
-    if (chapter == null || _saving) return true;
+    if (_pending.isEmpty || _saving) return true;
     _saving = true;
     state.value = SaveState.saving;
+    final pending = Map<String, Chapter>.of(_pending);
+    _pending.clear();
     try {
-      await _chapters.updateContent(chapter);
-      if (withBackup) {
-        await _durability.backupChapter(chapter);
+      for (final chapter in pending.values) {
+        await _chapters.updateContent(chapter);
+        if (withBackup) {
+          await _durability.backupChapter(chapter);
+        }
       }
-
-      _pending = null;
       state.value = SaveState.saved;
       return true;
     } catch (e, s) {
-      Logger.error('自动保存失败: ${chapter.id}',
+      // 失败章节退回队列，避免直接丢字。
+      for (final entry in pending.entries) {
+        _pending.putIfAbsent(entry.key, () => entry.value);
+      }
+      Logger.error('自动保存失败: ${pending.keys.join(',')}',
           error: e, stackTrace: s, tag: 'Autosave');
       state.value = SaveState.failed;
       return false;

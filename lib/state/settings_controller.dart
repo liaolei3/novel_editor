@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import 'app_config.dart';
+import 'editor_layout.dart';
 import 'rail_layout.dart';
 import '../core/constants.dart';
 import '../core/utils/text_stats.dart';
@@ -210,6 +213,27 @@ class SettingsController extends ChangeNotifier {
   Future<void> saveRailLayout(RailLayout layout) =>
       _cfg.setMap('railLayout', layout.toJson());
 
+  /// 每书分屏布局（config.json 的 editorPanes 键），不存在或损坏返回 null。
+  EditorLayout? editorLayoutOf(String bookId) {
+    final raw = _cfg.getMap('editorPanes')?[bookId];
+    if (raw is Map) return EditorLayout.fromJson(raw);
+    if (raw is String) {
+      try {
+        return EditorLayout.fromJson(jsonDecode(raw));
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  /// 保存指定书的分屏布局，保留其他书条目。
+  Future<void> saveEditorLayout(String bookId, EditorLayout layout) async {
+    final map = _cfg.getMap('editorPanes') ?? <String, Object?>{};
+    map[bookId] = layout.toJson();
+    await _cfg.setMap('editorPanes', map);
+  }
+
   /// 每书 UI 快照（config.json 的 bookUi 键）：目录树展开卷、章节标签。
   BookUiRecord bookUiOf(String bookId) {
     final m = _cfg.getMap('bookUi')?[bookId];
@@ -228,6 +252,18 @@ class SettingsController extends ChangeNotifier {
   }) async {
     final map = _cfg.getMap('bookUi') ?? <String, Object?>{};
     map[bookId] = {'tree': tree, 'chapterTabs': chapterTabs};
+    await _cfg.setMap('bookUi', map);
+  }
+
+  /// 只更新目录树展开状态，保留该书记录里的旧 chapterTabs 字段。
+  Future<void> saveBookTree(String bookId, List<String> tree) async {
+    final map = _cfg.getMap('bookUi') ?? <String, Object?>{};
+    final existing = map[bookId];
+    final oldTabs = existing is Map ? existing['chapterTabs'] : null;
+    map[bookId] = {
+      'tree': tree,
+      if (oldTabs is List) 'chapterTabs': oldTabs.whereType<String>().toList(),
+    };
     await _cfg.setMap('bookUi', map);
   }
 

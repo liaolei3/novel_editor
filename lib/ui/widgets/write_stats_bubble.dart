@@ -71,11 +71,24 @@ class _WriteStatsEntryState extends State<WriteStatsEntry> {
                     : Colors.transparent,
                 borderRadius: BorderRadius.circular(4),
               ),
-              // 与书架主页「码字统计」导航用同一图标；只剩图标后含义不自明，靠 tooltip 说明用途。
-              child: Icon(
-                Icons.insights,
-                size: 15,
-                color: open ? scheme.primary : scheme.onSurfaceVariant,
+              // 与书架主页「码字统计」导航用同一图标，图标旁带文字说明用途。
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.insights,
+                    size: 15,
+                    color: open ? scheme.primary : scheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '码字面板',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: open ? scheme.primary : scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
