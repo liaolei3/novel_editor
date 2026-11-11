@@ -9,7 +9,6 @@ import '../state/rail_layout.dart';
 import '../state/settings_controller.dart';
 import 'app_root.dart';
 import 'global_search_dialog.dart';
-import 'panels/ai_panel.dart';
 import 'panels/character_panel.dart';
 import 'panels/foreshadow_panel.dart';
 import 'panels/outline_panel.dart';
@@ -115,8 +114,9 @@ class _WorkspacePageState extends State<WorkspacePage> {
     final remaining = _settings.recentBookIds;
     Book? next;
     if (remaining.isNotEmpty) {
-      final nextId =
-          pos >= 0 && pos < remaining.length ? remaining[pos] : remaining.last;
+      final nextId = pos >= 0 && pos < remaining.length
+          ? remaining[pos]
+          : remaining.last;
       for (final b in _appState.bookList) {
         if (b.id == nextId) {
           next = b;
@@ -422,21 +422,26 @@ class _WorkspacePageState extends State<WorkspacePage> {
 
   /// 计算宽度预算：优先压缩面板宽度，仍不足时先隐藏右侧面板、再隐藏左侧面板。
   _WideBudget _computeBudget(double total) {
-    final showLeftRail = _rail.panels[RailSlot.leftTop]!.isNotEmpty ||
+    final showLeftRail =
+        _rail.panels[RailSlot.leftTop]!.isNotEmpty ||
         _rail.panels[RailSlot.leftBottom]!.isNotEmpty ||
         _dragging;
-    final showRightRail = _rail.panels[RailSlot.rightTop]!.isNotEmpty ||
+    final showRightRail =
+        _rail.panels[RailSlot.rightTop]!.isNotEmpty ||
         _rail.panels[RailSlot.rightBottom]!.isNotEmpty ||
         _dragging;
 
-    var leftOpen = _rail.active[RailSlot.leftTop] != null ||
+    var leftOpen =
+        _rail.active[RailSlot.leftTop] != null ||
         _rail.active[RailSlot.leftBottom] != null;
-    var rightOpen = _rail.active[RailSlot.rightTop] != null ||
+    var rightOpen =
+        _rail.active[RailSlot.rightTop] != null ||
         _rail.active[RailSlot.rightBottom] != null;
     var leftPanel = leftOpen ? _rail.leftWidth : 0.0;
     var rightPanel = rightOpen ? _rail.rightWidth : 0.0;
 
-    final rails = (showLeftRail ? panelRailWidth : 0.0) +
+    final rails =
+        (showLeftRail ? panelRailWidth : 0.0) +
         (showRightRail ? panelRailWidth : 0.0);
 
     // 编辑器可用宽度 = 总宽 - 图标列 - 面板 - 分隔条。
@@ -449,10 +454,12 @@ class _WorkspacePageState extends State<WorkspacePage> {
 
     var exceeded = over();
     if (exceeded > 0) {
-      final leftCap =
-          leftOpen ? math.max(0.0, leftPanel - RailLayout.minPanelWidth) : 0.0;
-      final rightCap =
-          rightOpen ? math.max(0.0, rightPanel - RailLayout.minPanelWidth) : 0.0;
+      final leftCap = leftOpen
+          ? math.max(0.0, leftPanel - RailLayout.minPanelWidth)
+          : 0.0;
+      final rightCap = rightOpen
+          ? math.max(0.0, rightPanel - RailLayout.minPanelWidth)
+          : 0.0;
       final capacity = leftCap + rightCap;
       if (capacity > 0) {
         final shrink = math.min(exceeded, capacity);
@@ -472,18 +479,23 @@ class _WorkspacePageState extends State<WorkspacePage> {
     }
 
     return _WideBudget(
-      leftPanelWidth:
-          leftOpen ? math.max(leftPanel, RailLayout.minPanelWidth) : 0.0,
-      rightPanelWidth:
-          rightOpen ? math.max(rightPanel, RailLayout.minPanelWidth) : 0.0,
+      leftPanelWidth: leftOpen
+          ? math.max(leftPanel, RailLayout.minPanelWidth)
+          : 0.0,
+      rightPanelWidth: rightOpen
+          ? math.max(rightPanel, RailLayout.minPanelWidth)
+          : 0.0,
       showLeftRail: showLeftRail,
       showRightRail: showRightRail,
       active: {
         RailSlot.leftTop: leftOpen ? _rail.active[RailSlot.leftTop] : null,
-        RailSlot.leftBottom: leftOpen ? _rail.active[RailSlot.leftBottom] : null,
+        RailSlot.leftBottom: leftOpen
+            ? _rail.active[RailSlot.leftBottom]
+            : null,
         RailSlot.rightTop: rightOpen ? _rail.active[RailSlot.rightTop] : null,
-        RailSlot.rightBottom:
-            rightOpen ? _rail.active[RailSlot.rightBottom] : null,
+        RailSlot.rightBottom: rightOpen
+            ? _rail.active[RailSlot.rightBottom]
+            : null,
       },
     );
   }
@@ -494,9 +506,9 @@ class _WorkspacePageState extends State<WorkspacePage> {
     final bottomSlot = isLeft ? RailSlot.leftBottom : RailSlot.rightBottom;
     final topIds = _rail.panels[topSlot]!;
     final bottomIds = _rail.panels[bottomSlot]!;
-    final topVisible = topIds.isNotEmpty || _dragging;
-    final bottomVisible = bottomIds.isNotEmpty || _dragging;
-    if (!topVisible && !bottomVisible) return const SizedBox.shrink();
+    if (topIds.isEmpty && bottomIds.isEmpty && !_dragging) {
+      return const SizedBox.shrink();
+    }
 
     final activeTop = budget.active[topSlot];
     final activeBottom = budget.active[bottomSlot];
@@ -504,13 +516,19 @@ class _WorkspacePageState extends State<WorkspacePage> {
     final panelWidth = isLeft ? budget.leftPanelWidth : budget.rightPanelWidth;
     final sideWidth = panelRailWidth + (anyOpen ? panelWidth : 0.0);
     final split = isLeft ? _rail.leftSplit : _rail.rightSplit;
-    final both = topVisible && bottomVisible;
+    final scheme = Theme.of(context).colorScheme;
+    // 无激活面板的分块不占高度；拖动中临时占位以提供投放区域。
+    final topShown = topIds.isNotEmpty && (activeTop != null || _dragging);
+    final bottomShown =
+        bottomIds.isNotEmpty && (activeBottom != null || _dragging);
+    final both = topShown && bottomShown;
 
-    Widget segment(RailSlot slot, List<String> ids, String? active) {
+    Widget railGroup(RailSlot slot, List<String> ids) {
       final rail = ids.isEmpty
           ? PanelRailDropStub(
               slot: slot,
               borderOnRight: isLeft,
+              decorated: false,
               onDrop: (data, index) => _onRailDrop(slot, data, index),
             )
           : PanelRailColumn(
@@ -518,101 +536,138 @@ class _WorkspacePageState extends State<WorkspacePage> {
               panelIds: ids,
               activeId: _rail.active[slot],
               borderOnRight: isLeft,
+              decorated: false,
               onTap: _onTogglePanel,
               onDragStarted: _onRailDragStarted,
               onDragEnd: _onRailDragEnd,
               onDrop: (data, index) => _onRailDrop(slot, data, index),
               dragging: _dragging,
             );
-      final Widget? panel = !anyOpen
-          ? null
-          : Expanded(
-              child: active == null
-                  ? ColoredBox(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .surfaceContainerLowest
-                          .withValues(alpha: 0.6),
-                      child: const SizedBox.expand(),
-                    )
-                  : AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 150),
-                      switchInCurve: Curves.easeOut,
-                      switchOutCurve: Curves.easeIn,
-                      transitionBuilder: (child, animation) =>
-                          FadeTransition(opacity: animation, child: child),
-                      child: KeyedSubtree(
-                        key: ValueKey('${slot.name}:$active'),
-                        child: _panelWidgets[active] ?? _buildPanel(active),
-                      ),
-                    ),
+      return KeyedSubtree(key: ValueKey('${slot.name}-rail'), child: rail);
+    }
+
+    Widget railSection(RailSlot slot, List<String> ids, Alignment alignment) {
+      final rail = railGroup(slot, ids);
+      final content = ids.isEmpty
+          ? rail
+          : Align(
+              alignment: alignment,
+              child: SizedBox(
+                height: ids.length * panelRailButtonHeight,
+                child: rail,
+              ),
             );
-      final keyedRail = KeyedSubtree(
-        key: ValueKey('${slot.name}-rail'),
-        child: rail,
-      );
-      return PanelRailDropArea(
-        slot: slot,
-        railOnLeft: isLeft,
-        enabled: _dragging,
-        dropIndex: ids.length,
-        onDrop: (data, index) => _onRailDrop(slot, data, index),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: isLeft ? [keyedRail, ?panel] : [?panel, keyedRail],
+      // 整段作为投放区：面板收起后仍可把图标拖到该段的空白处。
+      return Expanded(
+        child: PanelRailDropArea(
+          slot: slot,
+          railOnLeft: isLeft,
+          includeRail: false,
+          enabled: _dragging,
+          dropIndex: ids.length,
+          onDrop: (data, index) => _onRailDrop(slot, data, index),
+          child: content,
         ),
       );
     }
 
+    Widget panelBlock(RailSlot slot, List<String> ids, String? active) {
+      return PanelRailDropArea(
+        slot: slot,
+        railOnLeft: isLeft,
+        includeRail: false,
+        enabled: _dragging,
+        dropIndex: ids.length,
+        onDrop: (data, index) => _onRailDrop(slot, data, index),
+        child: active == null
+            ? ColoredBox(
+                color: scheme.surfaceContainerLowest.withValues(alpha: 0.6),
+                child: const SizedBox.expand(),
+              )
+            : AnimatedSwitcher(
+                duration: const Duration(milliseconds: 150),
+                switchInCurve: Curves.easeOut,
+                switchOutCurve: Curves.easeIn,
+                transitionBuilder: (child, animation) =>
+                    FadeTransition(opacity: animation, child: child),
+                child: KeyedSubtree(
+                  key: ValueKey('${slot.name}:$active'),
+                  child: _panelWidgets[active] ?? _buildPanel(active),
+                ),
+              ),
+      );
+    }
+
+    final rail = SizedBox(
+      width: panelRailWidth,
+      child: DecoratedBox(
+        decoration: panelRailDecoration(scheme, isLeft),
+        child: Column(
+          children: [
+            if (topIds.isNotEmpty || _dragging)
+              railSection(topSlot, topIds, Alignment.topCenter),
+            if (bottomIds.isNotEmpty || _dragging)
+              railSection(bottomSlot, bottomIds, Alignment.bottomCenter),
+          ],
+        ),
+      ),
+    );
+
+    final panelColumn = anyOpen
+        ? Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final height = constraints.maxHeight;
+                final topFlex = both
+                    ? (split * 1000).round().clamp(1, 999).toInt()
+                    : 1;
+                final bottomFlex = both
+                    ? (1000 - (split * 1000).round()).clamp(1, 999).toInt()
+                    : 1;
+                return Column(
+                  children: [
+                    if (topShown)
+                      Expanded(
+                        key: ValueKey('${isLeft ? 'L' : 'R'}-top'),
+                        flex: topFlex,
+                        child: panelBlock(topSlot, topIds, activeTop),
+                      ),
+                    if (both)
+                      PanelRailHorizontalDivider(
+                        key: ValueKey('${isLeft ? 'L' : 'R'}-split'),
+                        onDrag: (delta) {
+                          final usable = math.max(1.0, height - _dividerWidth);
+                          final next = split + delta / usable;
+                          final value = next
+                              .clamp(RailLayout.minSplit, RailLayout.maxSplit)
+                              .toDouble();
+                          if (isLeft) {
+                            _rail.leftSplit = value;
+                          } else {
+                            _rail.rightSplit = value;
+                          }
+                          _layoutTick.value++;
+                        },
+                        onDragEnd: _saveRail,
+                      ),
+                    if (bottomShown)
+                      Expanded(
+                        key: ValueKey('${isLeft ? 'L' : 'R'}-bottom'),
+                        flex: bottomFlex,
+                        child: panelBlock(bottomSlot, bottomIds, activeBottom),
+                      ),
+                  ],
+                );
+              },
+            ),
+          )
+        : null;
+
     return SizedBox(
       width: sideWidth,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final height = constraints.maxHeight;
-          final topFlex = both
-              ? (split * 1000).round().clamp(1, 999).toInt()
-              : 1;
-          final bottomFlex = both
-              ? (1000 - (split * 1000).round()).clamp(1, 999).toInt()
-              : 1;
-          final showSplit = topIds.isNotEmpty && bottomIds.isNotEmpty;
-          return Column(
-            children: [
-              if (topVisible)
-                Expanded(
-                  key: ValueKey('${isLeft ? 'L' : 'R'}-top'),
-                  flex: topFlex,
-                  child: segment(topSlot, topIds, activeTop),
-                ),
-              if (showSplit)
-                PanelRailHorizontalDivider(
-                  key: ValueKey('${isLeft ? 'L' : 'R'}-split'),
-                  onDrag: (delta) {
-                    final usable = math.max(1.0, height - _dividerWidth);
-                    final next =
-                        (isLeft ? _rail.leftSplit : _rail.rightSplit) +
-                            delta / usable;
-                    final value = next
-                        .clamp(RailLayout.minSplit, RailLayout.maxSplit)
-                        .toDouble();
-                    if (isLeft) {
-                      _rail.leftSplit = value;
-                    } else {
-                      _rail.rightSplit = value;
-                    }
-                    _layoutTick.value++;
-                  },
-                  onDragEnd: _saveRail,
-                ),
-              if (bottomVisible)
-                Expanded(
-                  key: ValueKey('${isLeft ? 'L' : 'R'}-bottom'),
-                  flex: bottomFlex,
-                  child: segment(bottomSlot, bottomIds, activeBottom),
-                ),
-            ],
-          );
-        },
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: isLeft ? [rail, ?panelColumn] : [?panelColumn, rail],
       ),
     );
   }
@@ -667,15 +722,10 @@ class _WorkspacePageState extends State<WorkspacePage> {
         return BookTree(book: _book);
       case RailLayout.outline:
         return OutlinePanel(book: _book);
-      case RailLayout.ai:
-        return const AiPanel();
       case RailLayout.snapshot:
         return const SnapshotPanel();
       case RailLayout.character:
-        return CharacterPanel(
-          book: _book,
-          openCharacterId: _openCharacterId,
-        );
+        return CharacterPanel(book: _book, openCharacterId: _openCharacterId);
       case RailLayout.foreshadow:
         return ForeshadowPanel(
           book: _book,

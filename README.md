@@ -1,6 +1,6 @@
 # NovelEditor
 
-跨平台小说编辑器（Windows / Android / iOS），面向中文网文作者，支持专业长篇稿件管理、伏笔管理、防丢稿、多端同步与内置 AI 辅助。
+跨平台小说编辑器（Windows / Android / iOS），面向中文网文作者，支持专业长篇稿件管理、伏笔管理、防丢稿与多端同步。
 
 ## 技术栈
 
@@ -9,7 +9,7 @@
 - **富文本编辑器**：flutter_quill 11.5.1（本地补丁版，见 `third_party/flutter_quill`；Delta 格式存储）
 - **本地数据库**：sqflite + sqflite_common_ffi（桌面 FFI / 移动原生）
 - **统计图表**：fl_chart；**文本差异**：diff_match_patch
-- **其他**：path_provider、window_manager（桌面端窗口控制）、intl、archive、xml、http、crypto、file_picker
+- **其他**：path_provider、window_manager（桌面端窗口控制）、intl、archive、xml、crypto、file_picker
 
 ## 目录结构
 
@@ -17,7 +17,7 @@
 lib\
 ├── main.dart                     # 应用入口（桌面端初始化 sqflite_ffi、window_manager）
 ├── core\
-│   ├── constants.dart            # 自动保存/快照/AI 等常量
+│   ├── constants.dart            # 自动保存/快照等常量
 │   └── utils\                    # 纯工具层（不依赖 UI / DB）
 │       ├── chapter_title_suggest.dart   # 章节/卷标题建议（含中文数字）
 │       ├── foreshadow_delta.dart        # 正文伏笔标注（fsid 内联属性）
@@ -34,7 +34,6 @@ lib\
 │   ├── models.dart               # Book/Volume/Chapter/Foreshadow 等模型
 │   └── repositories.dart         # 各实体 CRUD
 ├── services\
-│   ├── ai\ai_gateway.dart        # AI 网关（续写/润色/灵感/角色卡）
 │   ├── sync\sync_engine.dart     # 云同步引擎（本地优先 + 抽象 CloudGateway）
 │   ├── autosave_service.dart     # 自动保存（2s 停顿 / 30s 间隔）
 │   ├── durability_service.dart   # 快照/备份/崩溃恢复
@@ -55,7 +54,7 @@ lib\
     ├── login_page.dart           # 登录/注册弹窗
     ├── global_search_dialog.dart # 全书全局搜索
     ├── settings_dialog.dart      # 设置（弹窗）
-    ├── panels\                   # 右侧面板：AI/角色/伏笔/素材/大纲/敏感词/快照
+    ├── panels\                   # 右侧面板：角色/伏笔/素材/大纲/敏感词/快照
     ├── widgets\                  # book_tree、editor_area、foreshadow_tip、character_tip、
     │                             # search_replace_bar、toast、window_controls 等
     └── common\                   # dialogs（含拖动弹窗）、context_menu、file_io、book_cover
@@ -101,7 +100,6 @@ flutter test                 # 运行全部测试
 - **角色卡**：角色面板维护设定，正文角色名悬浮 tip 展示卡片。
 - **防丢稿**：自动保存（2s 停顿 / 30s 间隔）、快照保留 50 个、本地多副本备份 7 天、崩溃恢复。
 - **云同步**：本地优先，按章节粒度增量同步；冲突绝不静默覆盖，提供冲突解决页。
-- **AI 辅助**：续写、润色、灵感、角色卡（30s 超时，3000 字上下文）。
 - **导入导出**：TXT 批量导入（按“第X章”切分）、Word(.docx) 导出。
 - **排版与检测**：一键排版（中文标点/缩进）、敏感词检测、中文成对符号自动补全。
 - **统计**：周/月/年指标、时速、摸鱼统计、码字日历（月历/年历）、目标进度。

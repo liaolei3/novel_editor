@@ -3,12 +3,11 @@ import 'package:novel_editor/state/rail_layout.dart';
 
 void main() {
   group('RailLayout.initial', () {
-    test('目录树在左上段展开，其余 8 个图标位于右上段', () {
+    test('目录树在左上段展开，其余 7 个图标位于右上段', () {
       final layout = RailLayout.initial();
       expect(layout.panels[RailSlot.leftTop], [RailLayout.tree]);
       expect(layout.panels[RailSlot.rightTop], [
         RailLayout.outline,
-        RailLayout.ai,
         RailLayout.snapshot,
         RailLayout.character,
         RailLayout.foreshadow,
@@ -16,7 +15,7 @@ void main() {
         RailLayout.recycle,
         RailLayout.preview,
       ]);
-      expect(RailLayout.allPanels.length, 9);
+      expect(RailLayout.allPanels.length, 8);
       for (final slot in RailSlot.values) {
         if (slot != RailSlot.leftTop && slot != RailSlot.rightTop) {
           expect(layout.panels[slot], isEmpty);
@@ -97,7 +96,7 @@ void main() {
         RailLayout.tree,
         'character',
       ]);
-      expect(layout.panels[RailSlot.leftBottom], ['ai']);
+      expect(layout.panels[RailSlot.leftBottom], isEmpty);
       expect(layout.panels[RailSlot.rightTop], [
         'outline',
         'snapshot',
@@ -110,7 +109,7 @@ void main() {
       expect(layout.active[RailSlot.leftBottom], isNull);
     });
 
-    test('旧版 8 图标配置迁移：目录树进左上段并默认展开', () {
+    test('旧版含 AI 面板的配置：丢弃 AI 图标', () {
       final layout = RailLayout.fromJson({
         'panels': {
           'leftTop': [],
@@ -137,7 +136,6 @@ void main() {
       expect(layout.panels[RailSlot.leftTop], [RailLayout.tree]);
       expect(layout.panels[RailSlot.rightTop], [
         'outline',
-        'ai',
         'snapshot',
         'character',
         'foreshadow',
@@ -158,7 +156,6 @@ void main() {
           'leftBottom': [],
           'rightTop': [
             'outline',
-            'ai',
             'snapshot',
             'foreshadow',
             'sensitive',
@@ -220,11 +217,10 @@ void main() {
       final layout = RailLayout.initial();
       layout.move(RailLayout.outline, RailSlot.rightTop, 3);
       expect(layout.panels[RailSlot.rightTop], [
-        'ai',
         'snapshot',
         'character',
-        'outline',
         'foreshadow',
+        'outline',
         'sensitive',
         'recycle',
         'preview',
@@ -233,22 +229,21 @@ void main() {
 
     test('跨段移动并清理原段 active', () {
       final layout = RailLayout.initial();
-      layout.toggle(RailLayout.ai);
-      expect(layout.active[RailSlot.rightTop], 'ai');
+      layout.toggle(RailLayout.snapshot);
+      expect(layout.active[RailSlot.rightTop], 'snapshot');
 
-      layout.move(RailLayout.ai, RailSlot.leftBottom, 0);
+      layout.move(RailLayout.snapshot, RailSlot.leftBottom, 0);
       expect(layout.panels[RailSlot.rightTop], [
         'outline',
-        'snapshot',
         'character',
         'foreshadow',
         'sensitive',
         'recycle',
         'preview',
       ]);
-      expect(layout.panels[RailSlot.leftBottom], ['ai']);
+      expect(layout.panels[RailSlot.leftBottom], ['snapshot']);
       expect(layout.active[RailSlot.rightTop], isNull);
-      expect(layout.slotOf(RailLayout.ai), RailSlot.leftBottom);
+      expect(layout.slotOf(RailLayout.snapshot), RailSlot.leftBottom);
     });
 
     test('移走最后一个图标后该段为空', () {
@@ -291,8 +286,8 @@ void main() {
       expect(layout.isOpen(RailLayout.outline), isFalse);
 
       layout.toggle(RailLayout.outline);
-      layout.toggle(RailLayout.ai);
-      expect(layout.active[RailSlot.rightTop], RailLayout.ai);
+      layout.toggle(RailLayout.snapshot);
+      expect(layout.active[RailSlot.rightTop], RailLayout.snapshot);
       expect(layout.active[RailSlot.leftTop], RailLayout.character);
     });
 
@@ -311,14 +306,13 @@ void main() {
   test('mergedPanels 按四段顺序合并', () {
     final layout = RailLayout.initial();
     layout.move(RailLayout.character, RailSlot.leftTop, 0);
-    layout.move(RailLayout.ai, RailSlot.leftBottom, 0);
+    layout.move(RailLayout.snapshot, RailSlot.leftBottom, 0);
     layout.move(RailLayout.preview, RailSlot.rightBottom, 0);
     expect(layout.mergedPanels, [
       RailLayout.character,
       RailLayout.tree,
-      RailLayout.ai,
-      RailLayout.outline,
       RailLayout.snapshot,
+      RailLayout.outline,
       RailLayout.foreshadow,
       RailLayout.sensitive,
       RailLayout.recycle,

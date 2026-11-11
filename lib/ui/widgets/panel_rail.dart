@@ -16,9 +16,7 @@ String panelRailTitle(String panelId) {
     case RailLayout.tree:
       return '目录';
     case RailLayout.outline:
-      return '大纲视图';
-    case RailLayout.ai:
-      return 'AI 助手';
+      return '章纲';
     case RailLayout.snapshot:
       return '历史快照';
     case RailLayout.character:
@@ -42,8 +40,6 @@ IconData panelRailIcon(String panelId) {
       return Icons.menu_book_outlined;
     case RailLayout.outline:
       return Icons.account_tree_outlined;
-    case RailLayout.ai:
-      return Icons.auto_awesome;
     case RailLayout.snapshot:
       return Icons.history;
     case RailLayout.character:
@@ -70,7 +66,7 @@ class PanelRailDragData {
 }
 
 /// 图标列底色与内外侧描边。
-BoxDecoration _columnDecoration(ColorScheme scheme, bool borderOnRight) {
+BoxDecoration panelRailDecoration(ColorScheme scheme, bool borderOnRight) {
   final side = BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.6));
   return BoxDecoration(
     color: scheme.surfaceContainerHighest.withValues(alpha: 0.45),
@@ -94,6 +90,7 @@ class PanelRailColumn extends StatefulWidget {
     required this.onDragEnd,
     required this.onDrop,
     this.dragging = false,
+    this.decorated = true,
   });
 
   final RailSlot slot;
@@ -109,6 +106,9 @@ class PanelRailColumn extends StatefulWidget {
 
   /// 是否处于全局拖动中（按钮显示抓取指针）。
   final bool dragging;
+
+  /// 是否自带底色与描边；由外层统一绘制时置 false。
+  final bool decorated;
 
   @override
   State<PanelRailColumn> createState() => _PanelRailColumnState();
@@ -155,79 +155,80 @@ class _PanelRailColumnState extends State<PanelRailColumn> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return SizedBox(
-      key: _boxKey,
-      width: panelRailWidth,
-      child: DecoratedBox(
-        decoration: _columnDecoration(scheme, widget.borderOnRight),
-        child: DragTarget<PanelRailDragData>(
-          onWillAcceptWithDetails: (_) => true,
-          onMove: (details) {
-            final index = _indexAt(details.offset.dy);
-            if (index != _insertIndex) setState(() => _insertIndex = index);
-          },
-          onLeave: (_) => _clearInsert(),
-          onAcceptWithDetails: (details) {
-            final index = _indexAt(details.offset.dy);
-            _clearInsert();
-            widget.onDrop(details.data, index);
-          },
-          builder: (context, candidate, _) {
-            final hovered = candidate.isNotEmpty;
-            return Stack(
-              children: [
-                Positioned.fill(
-                  child: ScrollConfiguration(
-                    behavior:
-                        ScrollConfiguration.of(context).copyWith(scrollbars: false),
-                    child: SingleChildScrollView(
-                      controller: _scroll,
-                      child: Column(
-                        children: [
-                          for (final id in widget.panelIds)
-                            _draggableButton(id),
-                        ],
-                      ),
+    final content = DragTarget<PanelRailDragData>(
+      onWillAcceptWithDetails: (_) => true,
+      onMove: (details) {
+        final index = _indexAt(details.offset.dy);
+        if (index != _insertIndex) setState(() => _insertIndex = index);
+      },
+      onLeave: (_) => _clearInsert(),
+      onAcceptWithDetails: (details) {
+        final index = _indexAt(details.offset.dy);
+        _clearInsert();
+        widget.onDrop(details.data, index);
+      },
+      builder: (context, candidate, _) {
+        final hovered = candidate.isNotEmpty;
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: ScrollConfiguration(
+                behavior: ScrollConfiguration.of(
+                  context,
+                ).copyWith(scrollbars: false),
+                child: SingleChildScrollView(
+                  controller: _scroll,
+                  child: Column(
+                    children: [
+                      for (final id in widget.panelIds) _draggableButton(id),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            if (hovered)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: _DashedRectPainter(
+                      color: hovered
+                          ? scheme.primary.withValues(alpha: 0.55)
+                          : scheme.primary.withValues(alpha: 0.2),
+                      fill: hovered
+                          ? scheme.primary.withValues(alpha: 0.06)
+                          : null,
                     ),
                   ),
                 ),
-                if (hovered)
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: CustomPaint(
-                        painter: _DashedRectPainter(
-                          color: hovered
-                              ? scheme.primary.withValues(alpha: 0.55)
-                              : scheme.primary.withValues(alpha: 0.2),
-                          fill: hovered
-                              ? scheme.primary.withValues(alpha: 0.06)
-                              : null,
-                        ),
-                      ),
+              ),
+            if (hovered && _insertIndex != null)
+              Positioned(
+                left: 1,
+                right: 1,
+                top: _insertIndex! * panelRailButtonHeight - _scroll.offset - 2,
+                child: IgnorePointer(
+                  child: Container(
+                    height: 3,
+                    decoration: BoxDecoration(
+                      color: scheme.primary,
+                      borderRadius: BorderRadius.circular(1.5),
                     ),
                   ),
-                if (hovered && _insertIndex != null)
-                  Positioned(
-                    left: 2,
-                    right: 2,
-                    top: _insertIndex! * panelRailButtonHeight -
-                        _scroll.offset -
-                        1,
-                    child: IgnorePointer(
-                      child: Container(
-                        height: 2,
-                        decoration: BoxDecoration(
-                          color: scheme.primary,
-                          borderRadius: BorderRadius.circular(1),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            );
-          },
-        ),
-      ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+    return SizedBox(
+      key: _boxKey,
+      width: panelRailWidth,
+      child: widget.decorated
+          ? DecoratedBox(
+              decoration: panelRailDecoration(scheme, widget.borderOnRight),
+              child: content,
+            )
+          : content,
     );
   }
 
@@ -237,12 +238,16 @@ class _PanelRailColumnState extends State<PanelRailColumn> {
     return Draggable<PanelRailDragData>(
       data: data,
       dragAnchorStrategy: pointerDragAnchorStrategy,
+      // 残影跟随指针居中，半透明以便透出下方的插入位置提示。
       feedback: Transform.translate(
         offset: const Offset(
           -panelRailButtonHeight / 2,
           -panelRailButtonHeight / 2,
         ),
-        child: _RailDragFeedback(panelId: id),
+        child: Opacity(
+          opacity: 0.55,
+          child: _RailDragFeedback(panelId: id),
+        ),
       ),
       childWhenDragging: Opacity(
         opacity: 0.35,
@@ -276,6 +281,7 @@ class PanelRailDropArea extends StatefulWidget {
     required this.enabled,
     required this.dropIndex,
     required this.onDrop,
+    this.includeRail = true,
     required this.child,
   });
 
@@ -283,6 +289,9 @@ class PanelRailDropArea extends StatefulWidget {
 
   /// true 时图标列位于左端，false 时位于右端。
   final bool railOnLeft;
+
+  /// 投放区是否包含图标列；仅包裹面板区时置 false。
+  final bool includeRail;
 
   /// 是否处于拖动中。
   final bool enabled;
@@ -314,9 +323,11 @@ class _PanelRailDropAreaState extends State<PanelRailDropArea> {
     final box = context.findRenderObject() as RenderBox?;
     if (box == null || !box.hasSize) return;
     final localX = box.globalToLocal(details.offset).dx;
-    final inRail = widget.railOnLeft
-        ? localX < panelRailWidth
-        : localX > box.size.width - panelRailWidth;
+    final inRail =
+        widget.includeRail &&
+        (widget.railOnLeft
+            ? localX < panelRailWidth
+            : localX > box.size.width - panelRailWidth);
     _setHover(!inRail);
   }
 
@@ -346,8 +357,9 @@ class _PanelRailDropAreaState extends State<PanelRailDropArea> {
                 child: IgnorePointer(
                   child: CustomPaint(
                     painter: _DashedRectPainter(
-                      color: scheme.primary
-                          .withValues(alpha: _hovered ? 0.55 : 0.2),
+                      color: scheme.primary.withValues(
+                        alpha: _hovered ? 0.55 : 0.2,
+                      ),
                       fill: _hovered
                           ? scheme.primary.withValues(alpha: 0.06)
                           : null,
@@ -369,11 +381,15 @@ class PanelRailDropStub extends StatefulWidget {
     required this.slot,
     required this.borderOnRight,
     required this.onDrop,
+    this.decorated = true,
   });
 
   final RailSlot slot;
   final bool borderOnRight;
   final void Function(PanelRailDragData data, int index) onDrop;
+
+  /// 是否自带底色与描边；由外层统一绘制时置 false。
+  final bool decorated;
 
   @override
   State<PanelRailDropStub> createState() => _PanelRailDropStubState();
@@ -383,43 +399,45 @@ class _PanelRailDropStubState extends State<PanelRailDropStub> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final content = DragTarget<PanelRailDragData>(
+      onWillAcceptWithDetails: (_) => true,
+      onAcceptWithDetails: (details) => widget.onDrop(details.data, 0),
+      builder: (context, candidate, _) {
+        final hovered = candidate.isNotEmpty;
+        final color = hovered
+            ? scheme.primary
+            : scheme.outlineVariant.withValues(alpha: 0.9);
+        return Padding(
+          padding: const EdgeInsets.all(4),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              CustomPaint(
+                painter: _DashedRectPainter(
+                  color: color,
+                  fill: hovered ? scheme.primary.withValues(alpha: 0.08) : null,
+                ),
+              ),
+              Center(
+                child: Icon(
+                  Icons.add,
+                  size: 16,
+                  color: color.withValues(alpha: hovered ? 1 : 0.6),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
     return SizedBox(
       width: panelRailWidth,
-      child: DecoratedBox(
-        decoration: _columnDecoration(scheme, widget.borderOnRight),
-        child: DragTarget<PanelRailDragData>(
-          onWillAcceptWithDetails: (_) => true,
-          onAcceptWithDetails: (details) => widget.onDrop(details.data, 0),
-          builder: (context, candidate, _) {
-            final hovered = candidate.isNotEmpty;
-            final color =
-                hovered ? scheme.primary : scheme.outlineVariant.withValues(alpha: 0.9);
-            return Padding(
-              padding: const EdgeInsets.all(4),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  CustomPaint(
-                    painter: _DashedRectPainter(
-                      color: color,
-                      fill: hovered
-                          ? scheme.primary.withValues(alpha: 0.08)
-                          : null,
-                    ),
-                  ),
-                  Center(
-                    child: Icon(
-                      Icons.add,
-                      size: 16,
-                      color: color.withValues(alpha: hovered ? 1 : 0.6),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      ),
+      child: widget.decorated
+          ? DecoratedBox(
+              decoration: panelRailDecoration(scheme, widget.borderOnRight),
+              child: content,
+            )
+          : content,
     );
   }
 }
@@ -443,7 +461,7 @@ class PanelRailPlainList extends StatelessWidget {
     return SizedBox(
       width: panelRailWidth,
       child: DecoratedBox(
-        decoration: _columnDecoration(scheme, false),
+        decoration: panelRailDecoration(scheme, false),
         child: SingleChildScrollView(
           child: Column(
             children: [
@@ -618,7 +636,8 @@ class PanelRailHorizontalDivider extends StatefulWidget {
       _PanelRailHorizontalDividerState();
 }
 
-class _PanelRailHorizontalDividerState extends State<PanelRailHorizontalDivider> {
+class _PanelRailHorizontalDividerState
+    extends State<PanelRailHorizontalDivider> {
   bool _hovered = false;
 
   @override

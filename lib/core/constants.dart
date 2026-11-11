@@ -40,8 +40,6 @@ class AppConstants {
   static const backupKeepDays = 7;
   static const recycleKeepDays = 30;
   static const undoHistoryLength = 200;
-  static const aiTimeout = Duration(seconds: 30);
-  static const aiContextLimit = 3000;
   static const defaultDailyGoal = 2000;
   static const outlineMaxLength = 200;
   static const longChapterThreshold = 50000;

@@ -50,7 +50,6 @@ class RailLayout {
 
   static const String tree = 'tree';
   static const String outline = 'outline';
-  static const String ai = 'ai';
   static const String snapshot = 'snapshot';
   static const String character = 'character';
   static const String foreshadow = 'foreshadow';
@@ -62,7 +61,6 @@ class RailLayout {
   static const List<String> allPanels = [
     tree,
     outline,
-    ai,
     snapshot,
     character,
     foreshadow,

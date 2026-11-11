@@ -9,7 +9,7 @@
 - **涉及文生图的任务，生图后必须先让用户审批通过，再进行后续操作（如抠图、裁剪、替换资源等）；未审批前不得改动现有资源。**
 - 代码注释要简洁明了：只阐述代码干了什么，不解释"为什么"，不举例；禁止给未改动的代码补注释。
 - 禁止擅自 commit / push，仅在用户明确要求时提交。
-- **每次 push 完成后必须执行打包**：运行 `flutter build windows --release`，将 `build\windows\x64\runner\Release\` 下全部内容（exe、DLL、data 目录）用 `Compress-Archive` 压缩为 `NovelEditor-<pubspec 版本号>-windows-x64.zip` 放在项目根目录，压缩包内保持可直接运行的目录结构。
+- **每次 push 完成后必须执行打包**：按「三、运行与依赖 → Windows 打包」的步骤生成 `NovelEditor-<pubspec 版本号>-windows-x64.zip` 放在项目根目录，压缩包内保持可直接运行的目录结构。
 - 禁止破坏性 git 操作（force push、reset --hard、clean -f 等），除非用户明确要求。
 - 新增依赖、资源前先确认必要性，避免过度工程；优先编辑现有文件而非新建文件。
 
@@ -34,7 +34,6 @@ lib/
 │   ├── models.dart                  # 数据模型
 │   └── repositories.dart            # 仓储层（含章节 sortNumber 移位）
 ├── services/
-│   ├── ai/ai_gateway.dart           # AI 网关（OpenAI 兼容）
 │   ├── sync/sync_engine.dart        # 同步引擎
 │   └── autosave_service.dart / durability_service.dart / font_service.dart / logger.dart / session_stats.dart
 ├── state/
@@ -45,14 +44,13 @@ lib/
     ├── app_root.dart / workspace_page.dart / shelf_page.dart / stats_page.dart
     ├── recycle_page.dart / conflict_page.dart / login_page.dart
     ├── settings_dialog.dart / global_search_dialog.dart
-    ├── panels/                      # 右侧面板：character、foreshadow、outline、snapshot、preview、sensitive、ai
+    ├── panels/                      # 右侧面板：character、foreshadow、outline、snapshot、preview、sensitive
     ├── widgets/                     # book_tree、editor_area、toast、search_replace_bar、write_stats_bubble 等
     └── common/                      # dialogs、context_menu、file_io、book_cover、foreshadow_dialogs、import_preview_dialog 等
 third_party/flutter_quill/       # flutter_quill 11.5.1 本地补丁
 test/                            # 单元测试与 Widget 测试
 assets/avatars/                  # 角色默认头像
 assets/branding/                 # 品牌图标 / 立绘
-prd/                             # 产品需求文档
 ```
 
 ## 三、运行与依赖
@@ -68,6 +66,17 @@ flutter analyze          # 静态检查
 - `objective_c` 固定 9.6.0，禁止升级（9.6.1 在 Windows 构建失败）。
 - 新增资源必须放入 `assets/` 并在 pubspec 注册。
 
+### Windows 打包
+
+按顺序执行：
+
+```powershell
+flutter build windows --release
+Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath NovelEditor-<pubspec 版本号>-windows-x64.zip
+```
+
+- 压缩包内必须保留 `novel_editor.exe`、DLL、`data\` 的原始相对结构，禁止只分发 exe 或拆散目录。
+
 ## 四、代码约定
 
 - 通用工具逻辑放 `lib/core/utils/` 并必须配套单元测试。
@@ -79,9 +88,13 @@ flutter analyze          # 静态检查
 
 ### 对话框与弹窗
 
-- **弹窗通用规则**：每个 `showDialog` 调用点击外部永不关闭，只能通过显式按钮 / 图标关闭，且必须支持拖动；默认宽度 320px，并设置 `actionsAlignment: MainAxisAlignment.end`。特殊尺寸需用户明确同意后方可偏离。
+- **弹窗通用规则**：每个 `showDialog` 调用点击外部永不关闭，只能通过显式按钮 / 图标关闭，且必须支持拖动；宽度按内容自行推断，最低 320px，并设置 `actionsAlignment: MainAxisAlignment.end`。
 - **弹窗输入框的高度与字体大小必须统一**：一律复用 `lib/ui/common/dialogs.dart` 的 `dialogFieldDecoration`（浮动 label、正文 13px、label/hint 12px、单行内边距 (14,13)、多行 (12,12)），禁止在弹窗内手写字号 / 内边距；字段必须带 `labelText`，禁止只写 `hintText` 导致输入后无标识。
 - 提示统一使用 `lib/ui/widgets/toast.dart` 的 `showToast`，禁止使用 SnackBar 等其他形式。
 - **操作成功 / 失败提示统一为「xxx + 成功 / 失败」格式**（如「保存成功」「删除失败」）。
 - **所有可点击的地方鼠标必须为手型**：`InkWell` / `GestureDetector` 等可点击组件需设置 `mouseCursor: SystemMouseCursors.click`。
+
+### 按钮
+
+- **全应用按钮视觉体量统一**：默认复用主题按钮样式，高度 40px 左右、字号 13–14px、左右内边距 16–20px；禁止用 `visualDensity: VisualDensity.compact`、把 `minimumSize` 高度压到 40px 以下或缩小字号来局部压缩按钮。弹窗操作按钮高度 44px、同组按钮间距不小于 12px。
 

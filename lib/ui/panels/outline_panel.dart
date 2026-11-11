@@ -10,7 +10,7 @@ import '../common/long_press_drag_listener.dart';
 import '../widgets/tinted_card.dart';
 import '../widgets/view_toggle.dart';
 
-/// 大纲条目：卷分组头或章节卡片。
+/// 章纲条目：卷分组头或章节卡片。
 class _Entry {
   const _Entry.header(this.volume) : chapter = null;
   const _Entry.chapter(this.chapter) : volume = null;
@@ -20,7 +20,7 @@ class _Entry {
   bool get isHeader => volume != null;
 }
 
-/// 大纲视图（FR-8 / 9.2）：按卷分组的章节大纲卡片，卷可收起，
+/// 章纲视图（FR-8 / 9.2）：按卷分组的章节章纲卡片，卷可收起，
 /// 支持列表 / 网格两种视图切换；列表视图长按拖动调整卷内顺序。
 class OutlinePanel extends StatefulWidget {
   const OutlinePanel({super.key, required this.book});
@@ -94,7 +94,7 @@ class _OutlinePanelState extends State<OutlinePanel> {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
       child: Row(children: [
-        Text('大纲',
+        Text('章纲',
             style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
@@ -238,7 +238,7 @@ class _OutlinePanelState extends State<OutlinePanel> {
           crossAxisCount: columns,
           mainAxisSpacing: 6,
           crossAxisSpacing: 6,
-          // 固定内边距（44）+ 随缩放的行高（标题行 + 5 行大纲）。
+          // 固定内边距（44）+ 随缩放的行高（标题行 + 5 行章纲）。
           mainAxisExtent: 44 + 114 * scale,
         ),
         itemBuilder: (ctx, i) => _OutlineCard(
@@ -331,14 +331,14 @@ class _OutlinePanelState extends State<OutlinePanel> {
     );
   }
 
-  /// 点击卡片直接编辑大纲；超过 200 字自动截断。
+  /// 点击卡片直接编辑章纲；超过 200 字自动截断。
   Future<void> _editOutline(BuildContext context, Chapter chapter) async {
     final state = context.read<AppState>();
     final text = await inputDialog(
       context,
-      title: '本章大纲',
+      title: '本章章纲',
       initial: chapter.outline,
-      label: '大纲内容',
+      label: '章纲内容',
       hint: '写一两句本章要点',
       maxLines: 8,
       width: 400,
@@ -353,7 +353,7 @@ class _OutlinePanelState extends State<OutlinePanel> {
   }
 }
 
-/// 章节大纲卡片：主题色板彩底卡（无边框），样式与伏笔面板列表卡片一致。
+/// 章节章纲卡片：主题色板彩底卡（无边框），样式与伏笔面板列表卡片一致。
 class _OutlineCard extends StatefulWidget {
   const _OutlineCard({
     required this.chapter,
@@ -422,7 +422,7 @@ class _OutlineCardState extends State<_OutlineCard> {
                   const SizedBox(height: 6),
                   Text(
                     widget.chapter.outline.isEmpty
-                        ? '（未填写大纲）'
+                        ? '（未填写章纲）'
                         : widget.chapter.outline,
                     maxLines: widget.outlineMaxLines,
                     overflow: TextOverflow.ellipsis,

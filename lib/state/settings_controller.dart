@@ -11,7 +11,7 @@ import '../ui/app_theme.dart';
 import '../ui/widgets/highlight_swatches.dart';
 
 /// 设置控制器（9.8 设置页）：
-/// 主题（玻璃拟态/有机自然/活力涂鸦）、字体大小、行距、自动保存频率、每日目标、AI 配置、同步开关。
+/// 主题（玻璃拟态/有机自然/活力涂鸦）、字体大小、行距、自动保存频率、每日目标、同步开关。
 /// 配置持久化在数据目录的 config.json 中，随数据目录一起迁移。
 class SettingsController extends ChangeNotifier {
   SettingsController(this._cfg);
@@ -75,9 +75,7 @@ class SettingsController extends ChangeNotifier {
         orElse: () => CountStandard.withPunctuation,
       );
   bool get syncEnabled => _cfg.getBool('syncEnabled') ?? false;
-  String get aiBaseUrl => _cfg.getString('aiBaseUrl') ?? '';
-  String get aiApiKey => _cfg.getString('aiApiKey') ?? '';
-  String get aiModel => _cfg.getString('aiModel') ?? '';
+
   String get lastBookId => _cfg.getString('lastBookId') ?? '';
   String get dataDir => _cfg.getString('dataDir') ?? '';
 
@@ -151,13 +149,6 @@ class SettingsController extends ChangeNotifier {
       _set('countStandard', v.name, () => notifyListeners());
 
   Future<void> setSyncEnabled(bool v) => _set('syncEnabled', v, null);
-
-  Future<void> setAiConfig(String baseUrl, String apiKey, String model) async {
-    await _cfg.setString('aiBaseUrl', baseUrl);
-    await _cfg.setString('aiApiKey', apiKey);
-    await _cfg.setString('aiModel', model);
-    notifyListeners();
-  }
 
   Future<void> setLastBookId(String v) => _set('lastBookId', v, null);
 

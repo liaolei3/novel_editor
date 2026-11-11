@@ -63,7 +63,6 @@ const _categories = [
   _Category(Icons.palette_outlined, '外观'),
   _Category(Icons.edit_note, '写作'),
   _Category(Icons.sync, '同步与账号'),
-  _Category(Icons.message_outlined, 'AI 配置'),
   _Category(Icons.folder_open, '数据'),
 ];
 
@@ -71,7 +70,6 @@ const _pageDescriptions = [
   '主题、界面字体与缩放',
   '正文排版、统计与保存',
   '本地优先的云端增量同步',
-  '连接 OpenAI 兼容网关（可选）',
   '存储、词库与日志',
 ];
 
@@ -239,7 +237,6 @@ class _SettingsDialogState extends State<SettingsDialog> {
                             0 => _appearance(settings, fontService, hairline),
                             1 => _writing(settings, state, fontService, hairline),
                             2 => _sync(settings, state, hairline),
-                            3 => _ai(settings, hairline),
                             _ => _data(settings, hairline),
                           },
                         ],
@@ -603,24 +600,6 @@ class _SettingsDialogState extends State<SettingsDialog> {
     ];
   }
 
-  List<Widget> _ai(SettingsController s, Color hairline) {
-    return [
-      _group(hairline, [
-        ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-          title: const Text('AI 网关'),
-          subtitle: Text(
-            s.aiBaseUrl.isEmpty
-                ? '未配置（自动降级为纯写作模式）'
-                : '${s.aiModel} @ ${s.aiBaseUrl}',
-          ),
-          trailing: _chevron(),
-          onTap: _editAi,
-        ),
-      ]),
-    ];
-  }
-
   List<Widget> _data(SettingsController s, Color hairline) {
     return [
       _group(hairline, [
@@ -718,15 +697,6 @@ class _SettingsDialogState extends State<SettingsDialog> {
         ),
       ),
       child: Icon(icon, size: 15, color: scheme.onSurfaceVariant),
-    );
-  }
-
-  /// 跳转行 trailing：弱色 chevron。
-  Widget _chevron() {
-    return Icon(
-      Icons.chevron_right,
-      size: 18,
-      color: Theme.of(context).colorScheme.onSurfaceVariant,
     );
   }
 
@@ -1072,79 +1042,6 @@ class _SettingsDialogState extends State<SettingsDialog> {
     if (resolved == true && mounted) {
       showToast(context, '冲突解决成功，同步完成');
       await state.reloadTreePublic();
-    }
-  }
-
-  Future<void> _editAi() async {
-    final settings = context.read<SettingsController>();
-    final urlCtrl = TextEditingController(text: settings.aiBaseUrl);
-    final keyCtrl = TextEditingController(text: settings.aiApiKey);
-    final modelCtrl = TextEditingController(text: settings.aiModel);
-    final ok = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => DraggableDialog(
-        child: AlertDialog(
-          title: const Text('AI 网关（OpenAI 兼容）'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: urlCtrl,
-                style: TextStyle(
-                    fontSize: 13, color: Theme.of(ctx).colorScheme.onSurface),
-                decoration: dialogFieldDecoration(
-                  Theme.of(ctx).colorScheme,
-                  label: 'Base URL',
-                  hint: '如 https://api.xxx.com/v1',
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: keyCtrl,
-                obscureText: true,
-                style: TextStyle(
-                    fontSize: 13, color: Theme.of(ctx).colorScheme.onSurface),
-                decoration: dialogFieldDecoration(
-                    Theme.of(ctx).colorScheme, label: 'API Key'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: modelCtrl,
-                style: TextStyle(
-                    fontSize: 13, color: Theme.of(ctx).colorScheme.onSurface),
-                decoration: dialogFieldDecoration(
-                    Theme.of(ctx).colorScheme, label: '模型名'),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              style: TextButton.styleFrom(
-                minimumSize: const Size(64, 44),
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-              ),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size(72, 44),
-                padding: const EdgeInsets.symmetric(horizontal: 18),
-              ),
-              child: const Text('保存'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (ok == true) {
-      await settings.setAiConfig(
-        urlCtrl.text.trim(),
-        keyCtrl.text.trim(),
-        modelCtrl.text.trim(),
-      );
     }
   }
 
